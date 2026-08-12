@@ -1,0 +1,57 @@
+# macOS and local editor state
+.DS_Store
+**/.DS_Store
+.claude/
+.idea/
+.vscode/
+.superpowers/
+**/.superpowers/
+
+# Secrets and local environment
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+*apikey*.txt
+**/*apikey*.txt
+*.pem
+*.key
+*.csr
+*.crt
+certificate/
+certbot/
+
+# Python caches and local environments
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+**/venv/
+
+# Runtime data, uploads, and local database backups
+backend/*.db
+backend/*.db.*
+backend/local-uploads/
+backend/source-uploads/
+backend/uploads/
+backend/uploads.*/
+backend/sdek_test/
+
+# Logs and temporary files
+*.log
+*.tmp
+*.swp
+*.bak
+*.old
+*.orig
+*.backup
+*.backup-*
+*~
+backup/
+backups/

@@ -1,0 +1,115 @@
+.banner {
+    position: fixed;
+    bottom: max(16px, env(safe-area-inset-bottom));
+    left: 50%;
+    z-index: 2147483647;
+    display: flex;
+    width: min(calc(100vw - 16px), 624px);
+    box-sizing: border-box;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    padding: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 20px;
+    background: rgb(227 227 227 / 85%);
+    box-shadow: rgba(0, 0, 0, 0.1) 0 8px 32px,
+        rgba(255, 255, 255, 0.5) 0 1px 2px inset,
+        rgba(255, 255, 255, 0.05) 0 -1px 2px inset;
+    backdrop-filter: blur(12px) saturate(160%);
+    -webkit-backdrop-filter: blur(12px) saturate(160%);
+    overflow: hidden;
+    opacity: 0;
+    transform: translate3d(-50%, 0, 0);
+    pointer-events: none;
+    transition: opacity 420ms cubic-bezier(0.4, 0, 0.2, 1);
+    will-change: opacity;
+    font-family: var(--font-manrope), Manrope, sans-serif;
+}
+
+.bannerVisible {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.bannerHidden {
+    opacity: 0;
+    pointer-events: none;
+    transition-duration: 360ms;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.copy {
+    color: rgba(0, 0, 0, 0.78);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.45;
+    text-align: center;
+}
+
+.link {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    transition: color 180ms ease;
+}
+
+.link:hover {
+    color: #000;
+}
+
+.acceptButton {
+    width: 100%;
+    height: 40px;
+    flex: 0 0 auto;
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    border-radius: 10px;
+    background: rgb(255 255 255 / 48%);
+    box-shadow: rgba(255, 255, 255, 0.5) 0 1px 2px inset,
+        rgba(0, 0, 0, 0.12) 0 2px 8px;
+    color: #2d2d2d;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    transition: background-color 180ms ease, box-shadow 180ms ease, transform 120ms ease;
+}
+
+.acceptButton:hover {
+    background: rgb(255 255 255 / 62%);
+}
+
+.acceptButton:active {
+    transform: translateY(1px);
+}
+
+.acceptButton:focus-visible,
+.link:focus-visible {
+    outline: 1px solid rgba(45, 45, 45, 0.7);
+    outline-offset: 3px;
+}
+
+@media (min-width: 768px) {
+    .banner {
+        flex-direction: row;
+        text-align: left;
+    }
+
+    .copy {
+        text-align: left;
+    }
+
+    .acceptButton {
+        width: auto;
+        min-width: 116px;
+        padding-inline: 24px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .banner,
+    .link,
+    .acceptButton {
+        transition: none;
+    }
+}

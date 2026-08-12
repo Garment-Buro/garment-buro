@@ -1,0 +1,431 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      - APP_ENV=${APP_ENV:-local}
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-http://localhost:3000}
+      - LEGACY_DATABASE_URL=${LEGACY_DATABASE_URL:-sqlite:///./ecommerce.db}
+      - DATABASE_ENABLED=true
+      - DATABASE_URL=postgresql+asyncpg://garment:${POSTGRES_PASSWORD:-garment-local}@postgres:5432/garment_buro
+      - DATABASE_ECHO=${DATABASE_ECHO:-false}
+      - DATABASE_POOL_SIZE=${DATABASE_POOL_SIZE:-10}
+      - DATABASE_MAX_OVERFLOW=${DATABASE_MAX_OVERFLOW:-20}
+      - CATALOG_READS_ENABLED=${CATALOG_READS_ENABLED:-false}
+      - CATALOG_WRITES_ENABLED=${CATALOG_WRITES_ENABLED:-false}
+      - CATALOG_MIGRATION_FINGERPRINT=${CATALOG_MIGRATION_FINGERPRINT:-}
+      - CATALOG_CONTENT_MIGRATION_FINGERPRINT=${CATALOG_CONTENT_MIGRATION_FINGERPRINT:-}
+      - CARTS_V2_ENABLED=${CARTS_V2_ENABLED:-false}
+      - CARTS_MIGRATION_FINGERPRINT=${CARTS_MIGRATION_FINGERPRINT:-}
+      - INVENTORY_RESERVATION_TTL_SECONDS=${INVENTORY_RESERVATION_TTL_SECONDS:-1800}
+      - ORDER_READS_ENABLED=${ORDER_READS_ENABLED:-false}
+      - ORDER_MIGRATION_FINGERPRINT=${ORDER_MIGRATION_FINGERPRINT:-}
+      - CHECKOUT_V2_ENABLED=${CHECKOUT_V2_ENABLED:-false}
+      - CRM_API_ENABLED=${CRM_API_ENABLED:-false}
+      - CRM_WRITES_ENABLED=${CRM_WRITES_ENABLED:-false}
+      - CRM_FILES_ENABLED=${CRM_FILES_ENABLED:-false}
+      - ORDER_GUEST_ACCESS_TTL_DAYS=${ORDER_GUEST_ACCESS_TTL_DAYS:-30}
+      - MINIO_ENABLED=true
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-garment-local}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-garment-local-secret}
+      - MINIO_SECURE=false
+      - MINIO_BUCKET_PREFIX=${MINIO_BUCKET_PREFIX:-garment-buro}
+      - MINIO_PUBLIC_BASE_URL=${MINIO_PUBLIC_BASE_URL:-http://localhost:9000}
+      - MINIO_PRESIGNED_EXPIRE_SECONDS=${MINIO_PRESIGNED_EXPIRE_SECONDS:-900}
+      - MEDIA_MAX_UPLOAD_BYTES=${MEDIA_MAX_UPLOAD_BYTES:-104857600}
+      - CRM_FILE_MAX_UPLOAD_BYTES=${CRM_FILE_MAX_UPLOAD_BYTES:-26214400}
+      - REDIS_URL=redis://redis:6379/0
+      - PRODUCTS_CACHE_TTL_SECONDS=3600
+      - PRODUCT_CACHE_TTL_SECONDS=3600
+      - CART_CACHE_TTL_SECONDS=2592000
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
+      - JWT_ACCESS_EXPIRE_MINUTES=${JWT_ACCESS_EXPIRE_MINUTES:-43200}
+      - IDENTITY_OTP_PEPPER=${IDENTITY_OTP_PEPPER:-}
+      - IDENTITY_OTP_DIGITS=${IDENTITY_OTP_DIGITS:-4}
+      - IDENTITY_OTP_EXPIRE_MINUTES=${IDENTITY_OTP_EXPIRE_MINUTES:-10}
+      - IDENTITY_OTP_RESEND_SECONDS=${IDENTITY_OTP_RESEND_SECONDS:-60}
+      - IDENTITY_OTP_HOURLY_LIMIT=${IDENTITY_OTP_HOURLY_LIMIT:-5}
+      - IDENTITY_OTP_MAX_ATTEMPTS=${IDENTITY_OTP_MAX_ATTEMPTS:-5}
+      - IDENTITY_ACCESS_EXPIRE_MINUTES=${IDENTITY_ACCESS_EXPIRE_MINUTES:-15}
+      - IDENTITY_REFRESH_EXPIRE_DAYS=${IDENTITY_REFRESH_EXPIRE_DAYS:-30}
+      - IDENTITY_MAX_ACTIVE_SESSIONS=${IDENTITY_MAX_ACTIVE_SESSIONS:-10}
+      - IDENTITY_API_ENABLED=${IDENTITY_API_ENABLED:-false}
+      - IDENTITY_MIGRATION_FINGERPRINT=${IDENTITY_MIGRATION_FINGERPRINT:-}
+      - IDENTITY_LEGACY_TOKEN_GRACE_UNTIL=${IDENTITY_LEGACY_TOKEN_GRACE_UNTIL:-}
+      - IDENTITY_REFRESH_COOKIE_NAME=${IDENTITY_REFRESH_COOKIE_NAME:-gb_refresh}
+      - NOTIFICATION_ENCRYPTION_KEY=${NOTIFICATION_ENCRYPTION_KEY:-}
+      - NOTIFICATION_PREVIOUS_ENCRYPTION_KEYS=${NOTIFICATION_PREVIOUS_ENCRYPTION_KEYS:-}
+      - NOTIFICATION_ENCRYPTION_KEY_VERSION=${NOTIFICATION_ENCRYPTION_KEY_VERSION:-1}
+      - NOTIFICATION_MAX_ATTEMPTS=${NOTIFICATION_MAX_ATTEMPTS:-5}
+      - NOTIFICATION_RETRY_BASE_SECONDS=${NOTIFICATION_RETRY_BASE_SECONDS:-60}
+      - NOTIFICATION_RETRY_CAP_SECONDS=${NOTIFICATION_RETRY_CAP_SECONDS:-3600}
+      - NOTIFICATION_PROCESSING_TIMEOUT_SECONDS=${NOTIFICATION_PROCESSING_TIMEOUT_SECONDS:-300}
+      - NOTIFICATION_POLL_SECONDS=${NOTIFICATION_POLL_SECONDS:-5}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      - CDEK_API_URL=${CDEK_API_URL:-https://api.cdek.ru/v2}
+      - CDEK_CLIENT_ID=${CDEK_CLIENT_ID}
+      - CDEK_CLIENT_SECRET=${CDEK_CLIENT_SECRET}
+      - CDEK_REQUEST_ENCRYPTION_KEY=${CDEK_REQUEST_ENCRYPTION_KEY:-}
+      - CDEK_PREVIOUS_REQUEST_ENCRYPTION_KEYS=${CDEK_PREVIOUS_REQUEST_ENCRYPTION_KEYS:-}
+      - CDEK_REQUEST_ENCRYPTION_KEY_VERSION=${CDEK_REQUEST_ENCRYPTION_KEY_VERSION:-1}
+      - CDEK_SENDER_NAME=${CDEK_SENDER_NAME:-GARMENT BURO}
+      - CDEK_SENDER_CITY_CODE=${CDEK_SENDER_CITY_CODE:-245}
+      - CDEK_WAREHOUSE_TO_WAREHOUSE_TARIFF=${CDEK_WAREHOUSE_TO_WAREHOUSE_TARIFF:-136}
+      - CDEK_WAREHOUSE_TO_DOOR_TARIFF=${CDEK_WAREHOUSE_TO_DOOR_TARIFF:-137}
+      - CDEK_MAX_PACKAGES=${CDEK_MAX_PACKAGES:-100}
+      - CDEK_CREATION_MAX_ATTEMPTS=${CDEK_CREATION_MAX_ATTEMPTS:-5}
+      - YOOKASSA_SHOP_ID=${YOOKASSA_SHOP_ID}
+      - YOOKASSA_API_KEY=${YOOKASSA_API_KEY}
+      - YOOKASSA_API_URL=${YOOKASSA_API_URL:-https://api.yookassa.ru/v3}
+      - YOOKASSA_TIMEOUT_SECONDS=${YOOKASSA_TIMEOUT_SECONDS:-10}
+      - YOOKASSA_WEBHOOK_URL=${YOOKASSA_WEBHOOK_URL:-}
+      - PAYMENT_CREATION_ENABLED=${PAYMENT_CREATION_ENABLED:-false}
+      - PAYMENT_CREATION_RETRY_WINDOW_SECONDS=${PAYMENT_CREATION_RETRY_WINDOW_SECONDS:-82800}
+      - PAYMENT_CREATION_PROCESSING_TIMEOUT_SECONDS=${PAYMENT_CREATION_PROCESSING_TIMEOUT_SECONDS:-60}
+      - PAYMENT_MAX_ATTEMPTS_PER_ORDER=${PAYMENT_MAX_ATTEMPTS_PER_ORDER:-3}
+      - FULFILLMENT_OUTBOX_ENABLED=${FULFILLMENT_OUTBOX_ENABLED:-false}
+      - FULFILLMENT_EMAIL_ENABLED=${FULFILLMENT_EMAIL_ENABLED:-false}
+      - FULFILLMENT_CDEK_ENABLED=${FULFILLMENT_CDEK_ENABLED:-false}
+      - FULFILLMENT_CRM_ENABLED=${FULFILLMENT_CRM_ENABLED:-false}
+      - CDEK_QUOTE_ENABLED=${CDEK_QUOTE_ENABLED:-false}
+      - FULFILLMENT_MAX_ATTEMPTS=${FULFILLMENT_MAX_ATTEMPTS:-5}
+      - FULFILLMENT_RETRY_BASE_SECONDS=${FULFILLMENT_RETRY_BASE_SECONDS:-30}
+      - FULFILLMENT_RETRY_CAP_SECONDS=${FULFILLMENT_RETRY_CAP_SECONDS:-1800}
+      - FULFILLMENT_PROCESSING_TIMEOUT_SECONDS=${FULFILLMENT_PROCESSING_TIMEOUT_SECONDS:-300}
+      - FULFILLMENT_POLL_SECONDS=${FULFILLMENT_POLL_SECONDS:-5}
+      - YOOKASSA_RECEIPT_TAX_SYSTEM_CODE=${YOOKASSA_RECEIPT_TAX_SYSTEM_CODE:-}
+      - YOOKASSA_RECEIPT_PRODUCT_VAT_CODE=${YOOKASSA_RECEIPT_PRODUCT_VAT_CODE:-}
+      - YOOKASSA_RECEIPT_DELIVERY_VAT_CODE=${YOOKASSA_RECEIPT_DELIVERY_VAT_CODE:-}
+      - YOOKASSA_RECEIPT_PRODUCT_PAYMENT_MODE=${YOOKASSA_RECEIPT_PRODUCT_PAYMENT_MODE:-}
+      - YOOKASSA_RECEIPT_DELIVERY_PAYMENT_MODE=${YOOKASSA_RECEIPT_DELIVERY_PAYMENT_MODE:-}
+      - YOOKASSA_RECEIPT_PRODUCT_SUBJECT=${YOOKASSA_RECEIPT_PRODUCT_SUBJECT:-}
+      - YOOKASSA_RECEIPT_DELIVERY_SUBJECT=${YOOKASSA_RECEIPT_DELIVERY_SUBJECT:-}
+      - PAYMENT_WEBHOOK_V2_ENABLED=${PAYMENT_WEBHOOK_V2_ENABLED:-false}
+      - PAYMENT_WEBHOOK_TRUSTED_PROXY_CIDRS=${PAYMENT_WEBHOOK_TRUSTED_PROXY_CIDRS:-}
+      - PAYMENT_EVENT_MAX_ATTEMPTS=${PAYMENT_EVENT_MAX_ATTEMPTS:-5}
+      - PAYMENT_EVENT_RETRY_BASE_SECONDS=${PAYMENT_EVENT_RETRY_BASE_SECONDS:-30}
+      - PAYMENT_EVENT_RETRY_CAP_SECONDS=${PAYMENT_EVENT_RETRY_CAP_SECONDS:-1800}
+      - PAYMENT_EVENT_PROCESSING_TIMEOUT_SECONDS=${PAYMENT_EVENT_PROCESSING_TIMEOUT_SECONDS:-300}
+      - PAYMENT_EVENT_POLL_SECONDS=${PAYMENT_EVENT_POLL_SECONDS:-5}
+      - FULFILLMENT_OUTBOX_ENABLED=${FULFILLMENT_OUTBOX_ENABLED:-false}
+      - FULFILLMENT_MAX_ATTEMPTS=${FULFILLMENT_MAX_ATTEMPTS:-5}
+      - PAYMENT_RECONCILIATION_ENABLED=${PAYMENT_RECONCILIATION_ENABLED:-false}
+      - PAYMENT_RECONCILIATION_MAX_ATTEMPTS=${PAYMENT_RECONCILIATION_MAX_ATTEMPTS:-288}
+      - PAYMENT_RECONCILIATION_INTERVAL_SECONDS=${PAYMENT_RECONCILIATION_INTERVAL_SECONDS:-300}
+      - PAYMENT_RECONCILIATION_RETRY_BASE_SECONDS=${PAYMENT_RECONCILIATION_RETRY_BASE_SECONDS:-30}
+      - PAYMENT_RECONCILIATION_RETRY_CAP_SECONDS=${PAYMENT_RECONCILIATION_RETRY_CAP_SECONDS:-1800}
+      - PAYMENT_RECONCILIATION_PROCESSING_TIMEOUT_SECONDS=${PAYMENT_RECONCILIATION_PROCESSING_TIMEOUT_SECONDS:-300}
+      - PAYMENT_RECONCILIATION_POLL_SECONDS=${PAYMENT_RECONCILIATION_POLL_SECONDS:-5}
+      - FULFILLMENT_OUTBOX_ENABLED=${FULFILLMENT_OUTBOX_ENABLED:-false}
+      - FULFILLMENT_MAX_ATTEMPTS=${FULFILLMENT_MAX_ATTEMPTS:-5}
+      - SMTP_SERVER=${SMTP_SERVER:-mail.hosting.reg.ru}
+      - SMTP_PORT=${SMTP_PORT:-465}
+      - SMTP_USER=${SMTP_USER:-noreply@garment-buro.ru}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - SMTP_USE_SSL=${SMTP_USE_SSL:-true}
+    volumes:
+      - ./backend:/app
+      - ./backend/uploads:/app/uploads
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready', timeout=2)",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  migrate:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: ["python", "-m", "alembic", "-c", "alembic.ini", "upgrade", "head"]
+    environment:
+      - APP_ENV=local
+      - DATABASE_ENABLED=true
+      - DATABASE_URL=postgresql+asyncpg://garment:${POSTGRES_PASSWORD:-garment-local}@postgres:5432/garment_buro
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  notification-worker:
+    profiles: ["notifications"]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: ["python", "-m", "scripts.process_notification_outbox"]
+    environment:
+      - APP_ENV=local
+      - DATABASE_ENABLED=true
+      - DATABASE_URL=postgresql+asyncpg://garment:${POSTGRES_PASSWORD:-garment-local}@postgres:5432/garment_buro
+      - NOTIFICATION_ENCRYPTION_KEY=${NOTIFICATION_ENCRYPTION_KEY:-}
+      - NOTIFICATION_PREVIOUS_ENCRYPTION_KEYS=${NOTIFICATION_PREVIOUS_ENCRYPTION_KEYS:-}
+      - NOTIFICATION_ENCRYPTION_KEY_VERSION=${NOTIFICATION_ENCRYPTION_KEY_VERSION:-1}
+      - NOTIFICATION_MAX_ATTEMPTS=${NOTIFICATION_MAX_ATTEMPTS:-5}
+      - NOTIFICATION_RETRY_BASE_SECONDS=${NOTIFICATION_RETRY_BASE_SECONDS:-60}
+      - NOTIFICATION_RETRY_CAP_SECONDS=${NOTIFICATION_RETRY_CAP_SECONDS:-3600}
+      - NOTIFICATION_PROCESSING_TIMEOUT_SECONDS=${NOTIFICATION_PROCESSING_TIMEOUT_SECONDS:-300}
+      - NOTIFICATION_POLL_SECONDS=${NOTIFICATION_POLL_SECONDS:-5}
+      - SMTP_SERVER=${SMTP_SERVER:-mail.hosting.reg.ru}
+      - SMTP_PORT=${SMTP_PORT:-465}
+      - SMTP_USER=${SMTP_USER:-noreply@garment-buro.ru}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_USE_SSL=${SMTP_USE_SSL:-true}
+    volumes:
+      - ./backend:/app
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  payment-worker:
+    profiles: ["payments"]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: ["python", "-m", "scripts.process_payment_events"]
+    environment:
+      - APP_ENV=local
+      - DATABASE_ENABLED=true
+      - DATABASE_URL=postgresql+asyncpg://garment:${POSTGRES_PASSWORD:-garment-local}@postgres:5432/garment_buro
+      - YOOKASSA_SHOP_ID=${YOOKASSA_SHOP_ID:-}
+      - YOOKASSA_API_KEY=${YOOKASSA_API_KEY:-}
+      - YOOKASSA_API_URL=${YOOKASSA_API_URL:-https://api.yookassa.ru/v3}
+      - YOOKASSA_TIMEOUT_SECONDS=${YOOKASSA_TIMEOUT_SECONDS:-10}
+      - PAYMENT_EVENT_MAX_ATTEMPTS=${PAYMENT_EVENT_MAX_ATTEMPTS:-5}
+      - PAYMENT_EVENT_RETRY_BASE_SECONDS=${PAYMENT_EVENT_RETRY_BASE_SECONDS:-30}
+      - PAYMENT_EVENT_RETRY_CAP_SECONDS=${PAYMENT_EVENT_RETRY_CAP_SECONDS:-1800}
+      - PAYMENT_EVENT_PROCESSING_TIMEOUT_SECONDS=${PAYMENT_EVENT_PROCESSING_TIMEOUT_SECONDS:-300}
+      - PAYMENT_EVENT_POLL_SECONDS=${PAYMENT_EVENT_POLL_SECONDS:-5}
+    volumes:
+      - ./backend:/app
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  payment-reconciler:
+    profiles: ["payment-reconciliation"]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: ["python", "-m", "scripts.reconcile_payments"]
+    environment:
+      - APP_ENV=local
+      - DATABASE_ENABLED=true
+      - DATABASE_URL=postgresql+asyncpg://garment:${POSTGRES_PASSWORD:-garment-local}@postgres:5432/garment_buro
+      - YOOKASSA_SHOP_ID=${YOOKASSA_SHOP_ID:-}
+      - YOOKASSA_API_KEY=${YOOKASSA_API_KEY:-}
+      - YOOKASSA_API_URL=${YOOKASSA_API_URL:-https://api.yookassa.ru/v3}
+      - YOOKASSA_TIMEOUT_SECONDS=${YOOKASSA_TIMEOUT_SECONDS:-10}
+      - PAYMENT_RECONCILIATION_ENABLED=${PAYMENT_RECONCILIATION_ENABLED:-true}
+      - PAYMENT_RECONCILIATION_MAX_ATTEMPTS=${PAYMENT_RECONCILIATION_MAX_ATTEMPTS:-288}
+      - PAYMENT_RECONCILIATION_INTERVAL_SECONDS=${PAYMENT_RECONCILIATION_INTERVAL_SECONDS:-300}
+      - PAYMENT_RECONCILIATION_RETRY_BASE_SECONDS=${PAYMENT_RECONCILIATION_RETRY_BASE_SECONDS:-30}
+      - PAYMENT_RECONCILIATION_RETRY_CAP_SECONDS=${PAYMENT_RECONCILIATION_RETRY_CAP_SECONDS:-1800}
+      - PAYMENT_RECONCILIATION_PROCESSING_TIMEOUT_SECONDS=${PAYMENT_RECONCILIATION_PROCESSING_TIMEOUT_SECONDS:-300}
+      - PAYMENT_RECONCILIATION_POLL_SECONDS=${PAYMENT_RECONCILIATION_POLL_SECONDS:-5}
+    volumes:
+      - ./backend:/app
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  fulfillment-worker:
+    profiles: ["fulfillment"]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: ["python", "-m", "scripts.process_fulfillment_jobs"]
+    environment:
+      - APP_ENV=local
+      - DATABASE_ENABLED=true
+      - DATABASE_URL=postgresql+asyncpg://garment:${POSTGRES_PASSWORD:-garment-local}@postgres:5432/garment_buro
+      - FULFILLMENT_OUTBOX_ENABLED=${FULFILLMENT_OUTBOX_ENABLED:-false}
+      - FULFILLMENT_EMAIL_ENABLED=${FULFILLMENT_EMAIL_ENABLED:-false}
+      - FULFILLMENT_CDEK_ENABLED=${FULFILLMENT_CDEK_ENABLED:-false}
+      - FULFILLMENT_CRM_ENABLED=${FULFILLMENT_CRM_ENABLED:-false}
+      - FULFILLMENT_MAX_ATTEMPTS=${FULFILLMENT_MAX_ATTEMPTS:-5}
+      - FULFILLMENT_RETRY_BASE_SECONDS=${FULFILLMENT_RETRY_BASE_SECONDS:-30}
+      - FULFILLMENT_RETRY_CAP_SECONDS=${FULFILLMENT_RETRY_CAP_SECONDS:-1800}
+      - FULFILLMENT_PROCESSING_TIMEOUT_SECONDS=${FULFILLMENT_PROCESSING_TIMEOUT_SECONDS:-300}
+      - FULFILLMENT_POLL_SECONDS=${FULFILLMENT_POLL_SECONDS:-5}
+      - NOTIFICATION_ENCRYPTION_KEY=${NOTIFICATION_ENCRYPTION_KEY:-}
+      - NOTIFICATION_PREVIOUS_ENCRYPTION_KEYS=${NOTIFICATION_PREVIOUS_ENCRYPTION_KEYS:-}
+      - NOTIFICATION_ENCRYPTION_KEY_VERSION=${NOTIFICATION_ENCRYPTION_KEY_VERSION:-1}
+      - NOTIFICATION_MAX_ATTEMPTS=${NOTIFICATION_MAX_ATTEMPTS:-5}
+      - CDEK_REQUEST_ENCRYPTION_KEY=${CDEK_REQUEST_ENCRYPTION_KEY:-}
+      - CDEK_PREVIOUS_REQUEST_ENCRYPTION_KEYS=${CDEK_PREVIOUS_REQUEST_ENCRYPTION_KEYS:-}
+      - CDEK_REQUEST_ENCRYPTION_KEY_VERSION=${CDEK_REQUEST_ENCRYPTION_KEY_VERSION:-1}
+      - CDEK_SENDER_NAME=${CDEK_SENDER_NAME:-GARMENT BURO}
+      - CDEK_SENDER_CITY_CODE=${CDEK_SENDER_CITY_CODE:-245}
+      - CDEK_WAREHOUSE_TO_WAREHOUSE_TARIFF=${CDEK_WAREHOUSE_TO_WAREHOUSE_TARIFF:-136}
+      - CDEK_WAREHOUSE_TO_DOOR_TARIFF=${CDEK_WAREHOUSE_TO_DOOR_TARIFF:-137}
+      - CDEK_MAX_PACKAGES=${CDEK_MAX_PACKAGES:-100}
+      - CDEK_CREATION_MAX_ATTEMPTS=${CDEK_CREATION_MAX_ATTEMPTS:-5}
+    volumes:
+      - ./backend:/app
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  cdek-worker:
+    profiles: ["cdek"]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: ["python", "-m", "scripts.process_cdek_shipments"]
+    environment:
+      - APP_ENV=local
+      - DATABASE_ENABLED=true
+      - DATABASE_URL=postgresql+asyncpg://garment:${POSTGRES_PASSWORD:-garment-local}@postgres:5432/garment_buro
+      - CDEK_CLIENT_ID=${CDEK_CLIENT_ID:-}
+      - CDEK_CLIENT_SECRET=${CDEK_CLIENT_SECRET:-}
+      - CDEK_API_URL=${CDEK_API_URL:-https://api.cdek.ru/v2}
+      - CDEK_REQUEST_ENCRYPTION_KEY=${CDEK_REQUEST_ENCRYPTION_KEY:-}
+      - CDEK_PREVIOUS_REQUEST_ENCRYPTION_KEYS=${CDEK_PREVIOUS_REQUEST_ENCRYPTION_KEYS:-}
+      - CDEK_REQUEST_ENCRYPTION_KEY_VERSION=${CDEK_REQUEST_ENCRYPTION_KEY_VERSION:-1}
+      - FULFILLMENT_OUTBOX_ENABLED=${FULFILLMENT_OUTBOX_ENABLED:-false}
+      - FULFILLMENT_CDEK_ENABLED=${FULFILLMENT_CDEK_ENABLED:-false}
+      - CDEK_CREATION_ENABLED=${CDEK_CREATION_ENABLED:-false}
+      - CDEK_CREATION_MAX_ATTEMPTS=${CDEK_CREATION_MAX_ATTEMPTS:-5}
+      - CDEK_TIMEOUT_SECONDS=${CDEK_TIMEOUT_SECONDS:-15}
+      - CDEK_RETRY_BASE_SECONDS=${CDEK_RETRY_BASE_SECONDS:-30}
+      - CDEK_RETRY_CAP_SECONDS=${CDEK_RETRY_CAP_SECONDS:-1800}
+      - CDEK_PROCESSING_TIMEOUT_SECONDS=${CDEK_PROCESSING_TIMEOUT_SECONDS:-120}
+      - CDEK_POLL_SECONDS=${CDEK_POLL_SECONDS:-5}
+    volumes:
+      - ./backend:/app
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  minio:
+    # Local development only. Production storage requires an explicit supported
+    # MinIO/S3 deployment decision; the upstream community server image is archived.
+    image: minio/minio:RELEASE.2025-07-23T15-54-02Z
+    command: ["server", "/data", "--console-address", ":9001"]
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ACCESS_KEY:-garment-local}
+      - MINIO_ROOT_PASSWORD=${MINIO_SECRET_KEY:-garment-local-secret}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - minio_data:/data
+    restart: unless-stopped
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        mc alias set local http://minio:9000 "$${MINIO_ACCESS_KEY}" "$${MINIO_SECRET_KEY}" &&
+        mc mb --ignore-existing "local/$${MINIO_MEDIA_BUCKET}" &&
+        mc anonymous set download "local/$${MINIO_MEDIA_BUCKET}" &&
+        mc mb --ignore-existing "local/$${MINIO_CRM_BUCKET}" &&
+        mc anonymous set none "local/$${MINIO_CRM_BUCKET}"
+    environment:
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-garment-local}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-garment-local-secret}
+      - MINIO_MEDIA_BUCKET=${MINIO_BUCKET_PREFIX:-garment-buro}-${APP_ENV:-local}-media
+      - MINIO_CRM_BUCKET=${MINIO_BUCKET_PREFIX:-garment-buro}-${APP_ENV:-local}-crm-private
+    depends_on:
+      minio:
+        condition: service_healthy
+    restart: "no"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_IDENTITY_SESSION_V2_ENABLED: ${NEXT_PUBLIC_IDENTITY_SESSION_V2_ENABLED:-false}
+        NEXT_PUBLIC_CATALOG_WRITES_ENABLED: ${NEXT_PUBLIC_CATALOG_WRITES_ENABLED:-false}
+        NEXT_PUBLIC_CRM_CABINET_ENABLED: ${NEXT_PUBLIC_CRM_CABINET_ENABLED:-false}
+        NEXT_PUBLIC_YANDEX_MAPS_API_KEY: ${NEXT_PUBLIC_YANDEX_MAPS_API_KEY:-}
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_USE_MOCK_DATA=false
+      - NEXT_PUBLIC_IDENTITY_SESSION_V2_ENABLED=${NEXT_PUBLIC_IDENTITY_SESSION_V2_ENABLED:-false}
+      - NEXT_PUBLIC_CATALOG_WRITES_ENABLED=${NEXT_PUBLIC_CATALOG_WRITES_ENABLED:-false}
+      - NEXT_PUBLIC_CRM_CABINET_ENABLED=${NEXT_PUBLIC_CRM_CABINET_ENABLED:-false}
+      - NEXT_PUBLIC_YANDEX_MAPS_API_KEY=${NEXT_PUBLIC_YANDEX_MAPS_API_KEY:-}
+      - INTERNAL_API_URL=http://backend:8000
+      - CDEK_API_URL=${CDEK_API_URL:-https://api.cdek.ru/v2}
+      - CDEK_CLIENT_ID=${CDEK_CLIENT_ID}
+      - CDEK_CLIENT_SECRET=${CDEK_CLIENT_SECRET}
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-garment_buro}
+      - POSTGRES_USER=${POSTGRES_USER:-garment}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-garment-local}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  backend_data:
+  backend_uploads:
+  redis_data:
+  postgres_data:
+  minio_data:

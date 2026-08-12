@@ -1,0 +1,18 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Generated frontend build output"
+paths = ['''(^|/)frontend/\.next/''']
+
+[[allowlists]]
+description = "Known non-secret storage and idempotency identifiers"
+regexTarget = "match"
+regexes = [
+  '''same-key retry''',
+  '''material-invalid-precision-0001''',
+  '''reconciliation_order_0001''',
+  '''plus2opacity-my-collection''',
+  '''__p2oSplashHandledThisAppRun''',
+  '''p2o_skip_splash_once''',
+]

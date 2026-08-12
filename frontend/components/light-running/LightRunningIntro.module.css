@@ -1,0 +1,256 @@
+.page {
+    --light-running-content-width: clamp(
+        297px,
+        calc(33.1579vw + 174.3158px),
+        360px
+    );
+    display: flex;
+    min-height: 100vh;
+    min-height: 100dvh;
+    padding-top: 105px;
+    padding-bottom: 0;
+    flex-direction: column;
+    align-items: center;
+    overflow-x: hidden;
+    background: #141414;
+    color: #fff;
+}
+
+.logo {
+    display: block;
+    width: 304px;
+    height: 63px;
+    margin-bottom: 33px;
+}
+
+.brandLine {
+    display: flex;
+    width: var(--light-running-content-width);
+    height: 7px;
+    margin-bottom: 137px;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.triangle,
+.triangleRotated {
+    display: block;
+    flex: 0 0 auto;
+    color: #fff;
+}
+
+.triangle {
+    width: 7px;
+    height: 4px;
+}
+
+.triangleRotated {
+    width: 7px;
+    height: 4px;
+    transform: rotate(90deg);
+}
+
+.raum {
+    display: block;
+    width: 24px;
+    height: 7px;
+}
+
+.runners {
+    position: relative;
+    width: clamp(251px, calc(23.1579vw + 165.3158px), 295px);
+    height: 587px;
+    margin-right: auto;
+    margin-bottom: 55px;
+    overflow: hidden;
+}
+
+.runnersImage {
+    object-fit: contain;
+    object-position: left top;
+}
+
+.copy {
+    display: flex;
+    width: max-content;
+    margin-right: clamp(18px, calc(28.4211vw - 87.1579px), 72px);
+    margin-bottom: 18px;
+    margin-left: auto;
+    flex-direction: column;
+    gap: 23px;
+}
+
+.sloganRow {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+}
+
+.slogan {
+    margin-top: -3px;
+    color: #fff;
+    font-family: var(--font-ibm-plex-mono), "IBM Plex Mono", monospace;
+    font-size: 10px;
+    font-style: normal;
+    font-weight: 500;
+    line-height: normal;
+    leading-trim: both;
+    text-edge: cap;
+}
+
+.description {
+    padding-left: 17px;
+    color: #767676;
+    font-family: var(--font-manrope), Manrope, sans-serif;
+    font-size: 10px;
+    font-style: normal;
+    font-weight: 500;
+    line-height: 150%;
+    leading-trim: both;
+    text-edge: cap;
+}
+
+.runInLightBand {
+    width: 100%;
+    height: 63px;
+    flex: 0 0 auto;
+    background: linear-gradient(0deg, #4D4D4D 0%, #141414 100%);
+}
+
+.runInLightLabel {
+    display: flex;
+    margin-left: clamp(13px, calc(19.4737vw - 59.0526px), 50px);
+    padding-top: 12px;
+    padding-bottom: 12px;
+    align-self: stretch;
+    align-items: flex-start;
+    gap: 9px;
+}
+
+.runInLightText {
+    margin-top: -3px;
+    color: #fff;
+    font-family: var(--font-ibm-plex-mono), "IBM Plex Mono", monospace;
+    font-size: 10px;
+    font-style: normal;
+    font-weight: 500;
+    line-height: normal;
+    leading-trim: both;
+    text-edge: cap;
+}
+
+.modelImageBlock {
+    position: relative;
+    width: 100vw;
+    height: 678px;
+    margin-bottom: 155px;
+    flex: 0 0 auto;
+}
+
+.modelImage {
+    overflow: hidden;
+    object-fit: cover;
+    object-position: center;
+}
+
+.modelBottomFade {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    height: 25px;
+    background: linear-gradient(180deg, rgba(20, 20, 20, 0.00) 0%, #141414 100%);
+}
+
+.modelLightMessage {
+    position: absolute;
+    top: 395px;
+    left: 50%;
+    z-index: 1;
+    display: flex;
+    padding-right: 82px;
+    transform: translateX(-50%);
+    align-items: flex-start;
+    gap: 7px;
+    color: #fff;
+    font-family: var(--font-ibm-plex-mono), "IBM Plex Mono", monospace;
+    font-size: 10px;
+    font-style: normal;
+    font-weight: 500;
+    line-height: normal;
+    text-align: right;
+    leading-trim: both;
+    text-edge: cap;
+}
+
+.modelLightMessage > p {
+    margin-top: -3px;
+}
+
+.modelMonogram {
+    position: absolute;
+    top: 525px;
+    left: 50%;
+    z-index: 1;
+    padding-left: 200px;
+    transform: translateX(-50%);
+    color: #fff;
+    font-family: var(--font-ibm-plex-mono), "IBM Plex Mono", monospace;
+    font-size: 10px;
+    font-style: normal;
+    font-weight: 500;
+    line-height: normal;
+    text-align: right;
+    leading-trim: both;
+    text-edge: cap;
+}
+
+.customizeButton {
+    position: absolute;
+    bottom: -22px;
+    left: 50%;
+    z-index: 1;
+    display: flex;
+    width: clamp(230px, calc(50vw + 45px), 325px);
+    height: 50px;
+    padding: 19px 0;
+    transform: translateX(-50%);
+    align-items: center;
+    justify-content: center;
+    border-radius: 20px;
+    background: #F1F1F1;
+    box-sizing: border-box;
+}
+
+.customizeButtonContent {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(25px, calc(6.8421vw - 0.3158px), 38px);
+}
+
+.customizeButtonText {
+    color: #000;
+    font-family: var(--font-manrope), Manrope, sans-serif;
+    font-size: 15px;
+    font-style: normal;
+    font-weight: 700;
+    line-height: 150%;
+    white-space: nowrap;
+    leading-trim: both;
+    text-edge: cap;
+}
+
+.customizeButtonArrow {
+    display: block;
+    width: 16px;
+    height: 12px;
+    flex: 0 0 auto;
+}
+
+@media (max-width: 320px) {
+    .logo {
+        width: calc(100vw - 16px);
+        height: auto;
+    }
+}

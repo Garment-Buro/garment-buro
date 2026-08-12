@@ -1,0 +1,40 @@
+.preview {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    container-type: size;
+}
+
+.canvas {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: min(100cqw, calc(100cqh * var(--draft-model-aspect)));
+    height: min(100cqh, calc(100cqw / var(--draft-model-aspect)));
+    overflow: visible;
+    transform: translate(-50%, -50%);
+}
+
+.model,
+.decoration {
+    position: absolute;
+    display: block;
+}
+
+.model {
+    inset: 0;
+    z-index: 1;
+}
+
+.decoration {
+    z-index: 2;
+    transform-origin: center;
+}
+
+.image {
+    object-fit: contain;
+    pointer-events: none;
+    user-select: none;
+}
