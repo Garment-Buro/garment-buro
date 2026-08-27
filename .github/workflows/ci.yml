@@ -97,10 +97,62 @@ jobs:
       - name: Run quality gates
         run: npm run check
 
+  deployment:
+    name: Deployment descriptors
+    runs-on: ubuntu-latest
+    env:
+      DEPLOY_ENV: development
+      APP_ENV: staging
+      PUBLIC_BASE_URL: https://dev.garment-buro.ru
+      BACKEND_IMAGE: example/backend:ci
+      FRONTEND_IMAGE: example/frontend:ci
+      POSTGRES_DB: garment_role_ci
+      POSTGRES_USER: garment_owner
+      POSTGRES_PASSWORD: owner-ci-only
+      DATABASE_APP_USER: garment_app
+      DATABASE_APP_PASSWORD: app-ci-only
+      MINIO_ACCESS_KEY: minio-ci
+      MINIO_SECRET_KEY: minio-secret-ci
+      MINIO_BUCKET_PREFIX: garment-buro
+      FRONTEND_HOST_PORT: "3199"
+      BACKEND_HOST_PORT: "8199"
+      MINIO_HOST_PORT: "9199"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Validate Compose and PostgreSQL runtime role
+        shell: bash
+        run: |
+          touch deploy/.env
+          compose=(docker compose --project-name garment-role-ci -f deploy/docker-compose.server.yml)
+          cleanup() { "${compose[@]}" down -v --remove-orphans >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+
+          "${compose[@]}" config --quiet
+          "${compose[@]}" up -d --wait postgres
+          "${compose[@]}" run --rm database-role-init
+          "${compose[@]}" run --rm database-role-init
+          "${compose[@]}" exec -T postgres psql \
+            -U garment_owner -d garment_role_ci -v ON_ERROR_STOP=1 \
+            -c 'CREATE TABLE role_smoke (id bigserial PRIMARY KEY, value text NOT NULL);'
+          "${compose[@]}" exec -T -e PGPASSWORD=app-ci-only postgres psql \
+            -U garment_app -d garment_role_ci -v ON_ERROR_STOP=1 \
+            -c "INSERT INTO role_smoke(value) VALUES ('ok'); UPDATE role_smoke SET value='updated'; DELETE FROM role_smoke;"
+
+          role_flags=$("${compose[@]}" exec -T postgres psql \
+            -U garment_owner -d garment_role_ci -Atc \
+            "SELECT rolsuper::int || ':' || rolcreatedb::int || ':' || rolcreaterole::int || ':' || rolreplication::int FROM pg_roles WHERE rolname='garment_app';")
+          test "$role_flags" = "0:0:0:0"
+          if "${compose[@]}" exec -T -e PGPASSWORD=app-ci-only postgres psql \
+            -U garment_app -d garment_role_ci -v ON_ERROR_STOP=1 \
+            -c 'CREATE TABLE must_be_denied (id int);' >/dev/null 2>&1; then
+            exit 1
+          fi
+
   containers:
     name: Container build
     runs-on: ubuntu-latest
-    needs: [backend, frontend]
+    needs: [backend, frontend, deployment]
     steps:
       - name: Checkout
         uses: actions/checkout@v7

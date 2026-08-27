@@ -20,6 +20,8 @@ Only Nginx exposes ports 80 and 443. Application and storage ports listen on
 - A reviewed legacy SQLite snapshot and uploads are seeded once into rootless
   Docker volumes and remain available during the guarded migration.
 - PostgreSQL, Redis and MinIO use separate named volumes per environment.
+- Alembic uses the PostgreSQL owner role only during deployment; the API and
+  workers use a separate non-superuser role without schema-creation rights.
 - Optional workers are activated only through reviewed Compose profiles.
 
 ## One-time host bootstrap
@@ -35,7 +37,8 @@ Run these steps as root from a trusted terminal:
    its `Security Options`. The script deliberately does not add `garment` to
    the root-equivalent `docker` group.
 5. Create a reviewed `.env` in each environment directory from
-   `env.server.example`, with mode `0600`.
+   `env.server.example`, with mode `0600`. Generate independent values for
+   `POSTGRES_PASSWORD` (schema owner) and `DATABASE_APP_PASSWORD` (API/workers).
 6. Copy the SQLite snapshot and uploads into each
    `/srv/garment-buro/<environment>/legacy` directory.
 7. Install the bootstrap Nginx config, obtain one certificate containing
