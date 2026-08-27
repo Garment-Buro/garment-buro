@@ -588,9 +588,16 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "FULFILLMENT_OUTBOX_ENABLED must be true when FULFILLMENT_EMAIL_ENABLED is true"
                 )
-            if not self.secret_value(self.notification_encryption_key):
+            required_email = {
+                "NOTIFICATION_ENCRYPTION_KEY": self.notification_encryption_key,
+                "SMTP_PASSWORD": self.smtp_password,
+            }
+            missing_email = [
+                name for name, value in required_email.items() if not self.secret_value(value)
+            ]
+            if missing_email:
                 raise ValueError(
-                    "NOTIFICATION_ENCRYPTION_KEY is required when FULFILLMENT_EMAIL_ENABLED is true"
+                    "Missing required email fulfillment settings: " + ", ".join(missing_email)
                 )
         if self.fulfillment_crm_enabled and not self.fulfillment_outbox_enabled:
             raise ValueError(
@@ -775,7 +782,7 @@ class Settings(BaseSettings):
                 "YOOKASSA_TIMEOUT_SECONDS"
             )
 
-        if self.app_env in {AppEnvironment.STAGING, AppEnvironment.PRODUCTION}:
+        if self.app_env is AppEnvironment.PRODUCTION:
             required_secrets = {
                 "JWT_SECRET": self.jwt_secret,
                 "CDEK_CLIENT_ID": self.cdek_client_id,
