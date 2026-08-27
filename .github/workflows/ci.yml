@@ -35,6 +35,20 @@ jobs:
   backend:
     name: Backend
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: garment_buro_ci
+          POSTGRES_USER: garment_ci
+          POSTGRES_PASSWORD: garment-ci-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U garment_ci -d garment_buro_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
     defaults:
       run:
         working-directory: backend
@@ -53,6 +67,15 @@ jobs:
         run: python -m pip install --requirement requirements-dev.txt
       - name: Run quality gates
         run: make PYTHON=python check
+      - name: Exercise migrations on PostgreSQL
+        env:
+          APP_ENV: test
+          DATABASE_ENABLED: "true"
+          DATABASE_URL: postgresql+asyncpg://garment_ci:garment-ci-only@127.0.0.1:5432/garment_buro_ci
+        run: |
+          python -m alembic -c alembic.ini upgrade head
+          python -m alembic -c alembic.ini downgrade base
+          python -m alembic -c alembic.ini upgrade head
 
   frontend:
     name: Frontend
