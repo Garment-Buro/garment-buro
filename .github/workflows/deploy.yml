@@ -1,0 +1,123 @@
+name: Build and deploy
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: deploy-${{ github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  DEPLOY_ENV: ${{ github.ref_name == 'main' && 'production' || 'development' }}
+  BACKEND_IMAGE: ghcr.io/garment-buro/garment-buro-backend:${{ github.ref_name == 'main' && 'production' || 'development' }}-${{ github.sha }}
+  FRONTEND_IMAGE: ghcr.io/garment-buro/garment-buro-frontend:${{ github.ref_name == 'main' && 'production' || 'development' }}-${{ github.sha }}
+
+jobs:
+  quality:
+    uses: ./.github/workflows/ci.yml
+    secrets: inherit
+
+  build:
+    name: Publish GHCR images
+    runs-on: ubuntu-latest
+    needs: quality
+    environment: ${{ github.ref_name == 'main' && 'production' || 'development' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v4
+      - name: Sign in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push backend
+        uses: docker/build-push-action@v7
+        with:
+          context: backend
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.BACKEND_IMAGE }}
+            ghcr.io/garment-buro/garment-buro-backend:${{ env.DEPLOY_ENV }}
+          cache-from: type=gha,scope=release-backend
+          cache-to: type=gha,mode=max,scope=release-backend
+      - name: Build and push frontend
+        uses: docker/build-push-action@v7
+        with:
+          context: frontend
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.FRONTEND_IMAGE }}
+            ghcr.io/garment-buro/garment-buro-frontend:${{ env.DEPLOY_ENV }}
+          build-args: |
+            NEXT_PUBLIC_IDENTITY_SESSION_V2_ENABLED=${{ vars.NEXT_PUBLIC_IDENTITY_SESSION_V2_ENABLED || 'false' }}
+            NEXT_PUBLIC_CATALOG_WRITES_ENABLED=${{ vars.NEXT_PUBLIC_CATALOG_WRITES_ENABLED || 'false' }}
+            NEXT_PUBLIC_CRM_CABINET_ENABLED=${{ vars.NEXT_PUBLIC_CRM_CABINET_ENABLED || 'false' }}
+            NEXT_PUBLIC_YANDEX_MAPS_API_KEY=${{ vars.NEXT_PUBLIC_YANDEX_MAPS_API_KEY }}
+          cache-from: type=gha,scope=release-frontend-${{ env.DEPLOY_ENV }}
+          cache-to: type=gha,mode=max,scope=release-frontend-${{ env.DEPLOY_ENV }}
+
+  deploy:
+    name: Deploy ${{ github.ref_name == 'main' && 'production' || 'development' }}
+    runs-on: ubuntu-latest
+    needs: build
+    environment:
+      name: ${{ github.ref_name == 'main' && 'production' || 'development' }}
+      url: ${{ github.ref_name == 'main' && 'https://garment-buro.ru' || 'https://dev.garment-buro.ru' }}
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_PORT: ${{ secrets.DEPLOY_SSH_PORT || '22' }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+      GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout deployment descriptors
+        uses: actions/checkout@v7
+      - name: Configure SSH
+        shell: bash
+        run: |
+          install -d -m 0700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" >~/.ssh/garment_buro_ci
+          chmod 0600 ~/.ssh/garment_buro_ci
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" >~/.ssh/known_hosts
+          chmod 0600 ~/.ssh/known_hosts
+      - name: Upload deployment descriptors
+        shell: bash
+        run: |
+          target="/srv/garment-buro/$DEPLOY_ENV"
+          ssh -p "$DEPLOY_PORT" -i ~/.ssh/garment_buro_ci -o IdentitiesOnly=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p '$target'"
+          scp -P "$DEPLOY_PORT" -i ~/.ssh/garment_buro_ci -o IdentitiesOnly=yes \
+            deploy/docker-compose.server.yml \
+            "$DEPLOY_USER@$DEPLOY_HOST:$target/docker-compose.next.yml"
+          scp -P "$DEPLOY_PORT" -i ~/.ssh/garment_buro_ci -o IdentitiesOnly=yes \
+            deploy/scripts/remote-deploy.sh \
+            "$DEPLOY_USER@$DEPLOY_HOST:$target/remote-deploy.next.sh"
+          scp -P "$DEPLOY_PORT" -i ~/.ssh/garment_buro_ci -o IdentitiesOnly=yes \
+            deploy/scripts/backup-server.sh \
+            "$DEPLOY_USER@$DEPLOY_HOST:$target/backup-server.next.sh"
+      - name: Pull and deploy release
+        shell: bash
+        run: |
+          printf '%s' "$GHCR_TOKEN" | \
+            ssh -p "$DEPLOY_PORT" -i ~/.ssh/garment_buro_ci -o IdentitiesOnly=yes \
+              "$DEPLOY_USER@$DEPLOY_HOST" \
+              "docker login ghcr.io -u '${{ github.actor }}' --password-stdin"
+          ssh -p "$DEPLOY_PORT" -i ~/.ssh/garment_buro_ci -o IdentitiesOnly=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "bash '/srv/garment-buro/$DEPLOY_ENV/remote-deploy.next.sh' \
+              '$DEPLOY_ENV' '$BACKEND_IMAGE' '$FRONTEND_IMAGE'"
+          ssh -p "$DEPLOY_PORT" -i ~/.ssh/garment_buro_ci -o IdentitiesOnly=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" "docker logout ghcr.io"

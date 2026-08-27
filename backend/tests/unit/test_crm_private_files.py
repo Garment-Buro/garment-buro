@@ -152,9 +152,9 @@ def test_crm_file_uses_private_bucket_and_only_signed_download(tmp_path: Path) -
                 assert media.original_filename == "private-pattern.webp"
                 assert attachment.tech_card_revision_id == 1
                 assert download.filename == "private-pattern.webp"
-                assert download.url.startswith("https://signed.test/garment-buro-test-crm-private/")
+                assert download.url.startswith("https://cdn.test/garment-buro-test-crm-private/")
                 assert download.url.endswith("&download=1")
-                assert "cdn.test" not in download.url
+                assert "signed.test" not in download.url
                 assert access_event is not None
                 assert access_event.attachment_id == attachment.id
                 assert access_event.actor_user_id == 1
@@ -335,9 +335,9 @@ def test_crm_file_http_is_guarded_bounded_private_and_audited(tmp_path: Path) ->
                 assert download_body["checksum_sha256"] == body["checksum_sha256"]
                 assert download_body["expires_seconds"] == 900
                 assert download_body["url"].startswith(
-                    "https://signed.test/garment-buro-test-crm-private/"
+                    "https://cdn.test/garment-buro-test-crm-private/"
                 )
-                assert "cdn.test" not in download_body["url"]
+                assert "signed.test" not in download_body["url"]
 
                 missing_download = await client.get(
                     "/api/crm/files/9999/download",

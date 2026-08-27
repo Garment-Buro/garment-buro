@@ -5,7 +5,7 @@ import { buildAddressSearchParams, normalizeAddressSuggestions } from './utils';
 const GEOCODING_API_URL = process.env.GEOCODING_API_URL
     || 'https://nominatim.openstreetmap.org/search';
 const GEOCODING_USER_AGENT = process.env.GEOCODING_USER_AGENT
-    || 'plus2opacity-address-suggest/1.0 info@garment-buro.ru';
+    || 'garment-buro-address-suggest/1.0 info@garment-buro.ru';
 const GEOCODING_CACHE_SECONDS = 60 * 60 * 24;
 const GEOCODING_TIMEOUT_MS = 5_000;
 

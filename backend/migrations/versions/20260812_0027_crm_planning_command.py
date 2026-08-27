@@ -26,8 +26,9 @@ PLANNING_TYPES = (
 
 
 def upgrade() -> None:
-    op.drop_constraint(CONSTRAINT_NAME, "crm_staff_commands", type_="check")
-    op.create_check_constraint(CONSTRAINT_NAME, "crm_staff_commands", PLANNING_TYPES)
+    constraint_name = op.f(CONSTRAINT_NAME)
+    op.drop_constraint(constraint_name, "crm_staff_commands", type_="check")
+    op.create_check_constraint(constraint_name, "crm_staff_commands", PLANNING_TYPES)
 
 
 def downgrade() -> None:
@@ -41,5 +42,6 @@ def downgrade() -> None:
         )
         if planning_commands:
             raise RuntimeError("Cannot downgrade CRM planning command support while receipts exist")
-    op.drop_constraint(CONSTRAINT_NAME, "crm_staff_commands", type_="check")
-    op.create_check_constraint(CONSTRAINT_NAME, "crm_staff_commands", PREVIOUS_TYPES)
+    constraint_name = op.f(CONSTRAINT_NAME)
+    op.drop_constraint(constraint_name, "crm_staff_commands", type_="check")
+    op.create_check_constraint(constraint_name, "crm_staff_commands", PREVIOUS_TYPES)

@@ -1,0 +1,301 @@
+name: garment-buro-${DEPLOY_ENV:?DEPLOY_ENV is required}
+
+x-backend-common: &backend-common
+  image: ${BACKEND_IMAGE:?BACKEND_IMAGE is required}
+  env_file:
+    - .env
+  environment:
+    APP_ENV: ${APP_ENV:?APP_ENV is required}
+    PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?PUBLIC_BASE_URL is required}
+    LEGACY_DATABASE_URL: sqlite:////app/legacy/ecommerce.db
+    DATABASE_ENABLED: "true"
+    DATABASE_URL: postgresql+asyncpg://${DATABASE_APP_USER:?DATABASE_APP_USER is required}:${DATABASE_APP_PASSWORD:?DATABASE_APP_PASSWORD is required}@postgres:5432/${POSTGRES_DB:?POSTGRES_DB is required}
+    # The owner credential is used only by the one-shot role/bootstrap and
+    # migration services. Do not leak it into the long-running application.
+    POSTGRES_PASSWORD: ""
+    DATABASE_APP_PASSWORD: ""
+    REDIS_URL: redis://redis:6379/0
+    MINIO_ENABLED: "true"
+    MINIO_ENDPOINT: minio:9000
+    MINIO_SECURE: "false"
+  volumes:
+    - legacy_data:/app/legacy
+    - legacy_uploads:/app/uploads
+  networks:
+    - app
+  security_opt:
+    - no-new-privileges:true
+  restart: unless-stopped
+
+services:
+  legacy-init:
+    image: ${BACKEND_IMAGE:?BACKEND_IMAGE is required}
+    user: "0:0"
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        test -s /seed/ecommerce.db
+        if [ ! -e /legacy/ecommerce.db ]; then
+          cp /seed/ecommerce.db /legacy/ecommerce.db
+        fi
+        if [ -d /seed/uploads ] && [ ! -e /uploads/.legacy-seeded ]; then
+          cp -a /seed/uploads/. /uploads/
+          touch /uploads/.legacy-seeded
+        fi
+        chown -R 10001:10001 /legacy /uploads
+    volumes:
+      - ./legacy:/seed:ro
+      - legacy_data:/legacy
+      - legacy_uploads:/uploads
+    networks:
+      - app
+    security_opt:
+      - no-new-privileges:true
+    restart: "no"
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - app
+    restart: unless-stopped
+
+  database-role-init:
+    image: postgres:17-alpine
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        owner_args="-h postgres -U $${POSTGRES_USER} -d $${POSTGRES_DB}"
+        psql $$owner_args \
+          --set=app_user="$${DATABASE_APP_USER}" \
+          --set=app_password="$${DATABASE_APP_PASSWORD}" \
+          --set=app_db="$${POSTGRES_DB}" \
+          --set=owner_user="$${POSTGRES_USER}" \
+          --set=ON_ERROR_STOP=1 <<'SQL'
+        SELECT format('CREATE ROLE %I', :'app_user')
+        WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'app_user')
+        \gexec
+        ALTER ROLE :"app_user" WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE
+          NOINHERIT NOREPLICATION PASSWORD :'app_password';
+        GRANT CONNECT ON DATABASE :"app_db" TO :"app_user";
+        GRANT USAGE ON SCHEMA public TO :"app_user";
+        GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO :"app_user";
+        GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO :"app_user";
+        ALTER DEFAULT PRIVILEGES FOR ROLE :"owner_user" IN SCHEMA public
+          GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO :"app_user";
+        ALTER DEFAULT PRIVILEGES FOR ROLE :"owner_user" IN SCHEMA public
+          GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO :"app_user";
+        SQL
+    environment:
+      PGHOST: postgres
+      PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      DATABASE_APP_USER: ${DATABASE_APP_USER:?DATABASE_APP_USER is required}
+      DATABASE_APP_PASSWORD: ${DATABASE_APP_PASSWORD:?DATABASE_APP_PASSWORD is required}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - app
+    security_opt:
+      - no-new-privileges:true
+    restart: "no"
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - redis_data:/data
+    networks:
+      - app
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:RELEASE.2025-07-23T15-54-02Z
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY is required}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?MINIO_SECRET_KEY is required}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/minio/health/live >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    ports:
+      - "127.0.0.1:${MINIO_HOST_PORT:?MINIO_HOST_PORT is required}:9000"
+    volumes:
+      - minio_data:/data
+    networks:
+      - app
+    restart: unless-stopped
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        mc alias set local http://minio:9000 "$${MINIO_ACCESS_KEY}" "$${MINIO_SECRET_KEY}"
+        mc mb --ignore-existing "local/$${MINIO_MEDIA_BUCKET}"
+        mc anonymous set download "local/$${MINIO_MEDIA_BUCKET}"
+        mc mb --ignore-existing "local/$${MINIO_CRM_BUCKET}"
+        mc anonymous set none "local/$${MINIO_CRM_BUCKET}"
+    environment:
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY is required}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?MINIO_SECRET_KEY is required}
+      MINIO_MEDIA_BUCKET: ${MINIO_BUCKET_PREFIX:?MINIO_BUCKET_PREFIX is required}-${APP_ENV:?APP_ENV is required}-media
+      MINIO_CRM_BUCKET: ${MINIO_BUCKET_PREFIX:?MINIO_BUCKET_PREFIX is required}-${APP_ENV:?APP_ENV is required}-crm-private
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks:
+      - app
+    restart: "no"
+
+  migrate:
+    <<: *backend-common
+    command: ["python", "-m", "alembic", "-c", "alembic.ini", "upgrade", "head"]
+    environment:
+      APP_ENV: ${APP_ENV:?APP_ENV is required}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?PUBLIC_BASE_URL is required}
+      DATABASE_ENABLED: "true"
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:?POSTGRES_USER is required}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:?POSTGRES_DB is required}
+    volumes: []
+    depends_on:
+      database-role-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    restart: "no"
+
+  backend:
+    <<: *backend-common
+    ports:
+      - "127.0.0.1:${BACKEND_HOST_PORT:?BACKEND_HOST_PORT is required}:8000"
+    depends_on:
+      legacy-init:
+        condition: service_completed_successfully
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=2)",
+        ]
+      interval: 10s
+      timeout: 3s
+      start_period: 20s
+      retries: 12
+
+  frontend:
+    image: ${FRONTEND_IMAGE:?FRONTEND_IMAGE is required}
+    environment:
+      INTERNAL_API_URL: http://backend:8000
+      NEXT_PUBLIC_USE_MOCK_DATA: "false"
+    ports:
+      - "127.0.0.1:${FRONTEND_HOST_PORT:?FRONTEND_HOST_PORT is required}:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - app
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+  notification-worker:
+    <<: *backend-common
+    profiles: ["notifications"]
+    command: ["python", "-m", "scripts.process_notification_outbox"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+
+  payment-worker:
+    <<: *backend-common
+    profiles: ["payments"]
+    command: ["python", "-m", "scripts.process_payment_events"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+
+  payment-reconciler:
+    <<: *backend-common
+    profiles: ["payment-reconciliation"]
+    command: ["python", "-m", "scripts.reconcile_payments"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+
+  fulfillment-worker:
+    <<: *backend-common
+    profiles: ["fulfillment"]
+    command: ["python", "-m", "scripts.process_fulfillment_jobs"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+
+  cdek-worker:
+    <<: *backend-common
+    profiles: ["cdek"]
+    command: ["python", "-m", "scripts.process_cdek_shipments"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+
+networks:
+  app:
+    driver: bridge
+
+volumes:
+  legacy_data:
+  legacy_uploads:
+  postgres_data:
+  redis_data:
+  minio_data:

@@ -5,7 +5,7 @@ from datetime import timedelta
 from functools import partial
 from io import BytesIO
 from typing import Any, Protocol
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit, urlunsplit
 
 from anyio import to_thread
 from fastapi import HTTPException, Request
@@ -175,7 +175,7 @@ class MinioStorage:
 
     async def presigned_get_url(self, object_key: str) -> str:
         self._validate_object_key(object_key)
-        return await to_thread.run_sync(
+        signed_url = await to_thread.run_sync(
             partial(
                 self.client.presigned_get_object,
                 bucket_name=self.settings.minio_media_bucket,
@@ -183,11 +183,12 @@ class MinioStorage:
                 expires=timedelta(seconds=self.settings.minio_presigned_expire_seconds),
             )
         )
+        return self._externalize_presigned_url(signed_url)
 
     async def presigned_crm_get_url(self, object_key: str, *, filename: str) -> str:
         self._validate_object_key(object_key)
         encoded_filename = quote(filename or "download", safe="")
-        return await to_thread.run_sync(
+        signed_url = await to_thread.run_sync(
             partial(
                 self.client.presigned_get_object,
                 bucket_name=self.settings.minio_crm_bucket,
@@ -201,6 +202,7 @@ class MinioStorage:
                 },
             )
         )
+        return self._externalize_presigned_url(signed_url)
 
     async def private_crm_object_exists(self, object_key: str) -> bool:
         self._validate_object_key(object_key)
@@ -270,6 +272,28 @@ class MinioStorage:
             raise ConfigurationError("MinIO public URL is not configured")
         encoded_key = quote(object_key, safe="/")
         return f"{public_base_url}/{self.settings.minio_media_bucket}/{encoded_key}"
+
+    def _externalize_presigned_url(self, signed_url: str) -> str:
+        """Expose SDK signatures through the configured reverse-proxy prefix.
+
+        The proxy must strip the public prefix and send the internal MinIO Host
+        header so the original SigV4 canonical request is preserved.
+        """
+
+        public = urlsplit((self.settings.minio_public_base_url or "").rstrip("/"))
+        signed = urlsplit(signed_url)
+        if not public.scheme or not public.netloc or not signed.path:
+            raise ConfigurationError("MinIO public URL is not configured")
+        public_path = public.path.rstrip("/")
+        return urlunsplit(
+            (
+                public.scheme,
+                public.netloc,
+                f"{public_path}{signed.path}",
+                signed.query,
+                "",
+            )
+        )
 
     @staticmethod
     def _validate_object_key(object_key: str) -> None:

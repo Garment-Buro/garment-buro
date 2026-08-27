@@ -6,6 +6,8 @@
 .vscode/
 .superpowers/
 **/.superpowers/
+garment-buro-referencing/
+.local-backups/
 
 # Secrets and local environment
 .env
@@ -55,3 +57,6 @@ backend/sdek_test/
 *~
 backup/
 backups/
+deploy/.env
+deploy/*/.env
+deploy/legacy/

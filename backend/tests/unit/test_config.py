@@ -349,6 +349,23 @@ def test_minio_bucket_is_isolated_by_environment() -> None:
     assert settings.minio_crm_bucket == "garment-buro-staging-crm-private"
 
 
+def test_staging_allows_disabled_external_integrations_without_credentials() -> None:
+    settings = Settings(
+        _env_file=None,
+        app_env=AppEnvironment.STAGING,
+        cdek_client_id=None,
+        cdek_client_secret=None,
+        yookassa_shop_id=None,
+        yookassa_api_key=None,
+        smtp_password=None,
+    )
+
+    assert not settings.cdek_quote_enabled
+    assert not settings.cdek_creation_enabled
+    assert not settings.payment_creation_enabled
+    assert not settings.fulfillment_email_enabled
+
+
 def test_production_requires_all_external_service_secrets() -> None:
     with pytest.raises(ValidationError) as error:
         production_settings(
@@ -710,6 +727,7 @@ def test_fulfillment_outbox_is_bounded_and_requires_database() -> None:
             _env_file=None,
             fulfillment_email_enabled=True,
             notification_encryption_key=("ZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmY="),
+            smtp_password=None,
         )
     with pytest.raises(ValidationError, match="NOTIFICATION_ENCRYPTION_KEY"):
         Settings(
@@ -718,6 +736,16 @@ def test_fulfillment_outbox_is_bounded_and_requires_database() -> None:
             database_url="sqlite+aiosqlite:///:memory:",
             fulfillment_outbox_enabled=True,
             fulfillment_email_enabled=True,
+        )
+    with pytest.raises(ValidationError, match="SMTP_PASSWORD"):
+        Settings(
+            _env_file=None,
+            database_enabled=True,
+            database_url="sqlite+aiosqlite:///:memory:",
+            fulfillment_outbox_enabled=True,
+            fulfillment_email_enabled=True,
+            notification_encryption_key=("ZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmY="),
+            smtp_password=None,
         )
     with pytest.raises(ValidationError, match="FULFILLMENT_OUTBOX_ENABLED"):
         Settings(_env_file=None, fulfillment_crm_enabled=True)
