@@ -28,6 +28,8 @@ export type SavedProfileItemInput = {
     draftState?: ConstructorDraftState;
 };
 
+// Preserve the legacy browser namespace so existing customer drafts survive
+// the product rename. Migrate it deliberately if these records move server-side.
 export const CONSTRUCTOR_DRAFTS_STORAGE_KEY = 'plus2opacity-constructor-drafts';
 export const MY_COLLECTION_STORAGE_KEY = 'plus2opacity-my-collection';
 

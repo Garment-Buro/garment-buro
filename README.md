@@ -9,7 +9,8 @@
   [![Next.js](https://img.shields.io/badge/Next.js_16-000000?logo=nextdotjs&logoColor=white)](https://nextjs.org/)
   [![PostgreSQL](https://img.shields.io/badge/PostgreSQL_17-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
   [![MinIO](https://img.shields.io/badge/S3%20Storage-MinIO-C72E49?logo=minio&logoColor=white)](https://min.io/)
-  [![Private](https://img.shields.io/badge/repository-private-555)](#)
+  [![CI](https://github.com/Garment-Buro/garment-buro/actions/workflows/ci.yml/badge.svg)](https://github.com/Garment-Buro/garment-buro/actions/workflows/ci.yml)
+  [![Repository](https://img.shields.io/badge/repository-public-2ea44f)](https://github.com/Garment-Buro/garment-buro)
 </div>
 
 ---
@@ -28,7 +29,7 @@ Garment Buro объединяет клиентскую веб/PWA-часть, ba
 - производственная CRM: материалы, модели, техкарты и движение заказов.
 
 > [!IMPORTANT]
-> Проект находится в активном переходе от legacy MVP к новой архитектуре. Новые модули закрыты feature flags и включаются только после миграции данных и проверки на staging. Ветка пригодна для разработки, но не должна выкладываться в production без прохождения rehearsal и проверки внешних интеграций.
+> Кодовая база подготовлена для безопасного перехода от legacy MVP к новой архитектуре. Новые модули закрыты feature flags и включаются только после миграции данных и проверки на development/staging. Production не переключается на новые пути до rehearsal и проверки внешних интеграций.
 
 ## Технологии
 
@@ -39,7 +40,7 @@ Garment Buro объединяет клиентскую веб/PWA-часть, ba
 | Данные | PostgreSQL 17, Alembic, Redis |
 | Файлы | MinIO / S3-compatible storage |
 | Интеграции | ЮKassa, СДЭК, SMTP |
-| Инфраструктура | Docker Compose, Nginx, health checks, фоновые workers |
+| Инфраструктура | Docker Compose, GHCR, GitHub Actions, Nginx, health checks, workers |
 
 ## Архитектура
 
@@ -159,8 +160,10 @@ garment-buro/
 │   ├── hooks/                # клиентские controllers
 │   ├── lib/                  # API, domain logic и конфигурация
 │   └── public/               # PWA и статические ресурсы
+├── deploy/                   # server Compose, Nginx, backup и deploy scripts
+├── .github/workflows/        # CI и GHCR deployment pipelines
 ├── docker-compose.local.yml  # локальная среда
-├── docker-compose.yml        # staging / production base
+├── docker-compose.yml        # legacy production compatibility
 ├── .env.example              # полный перечень конфигурации
 └── nginx*.conf               # reverse proxy и TLS bootstrap
 ```
@@ -193,12 +196,30 @@ git pull --ff-only
 git switch -c feature/short-description
 ```
 
+## Ветки и окружения
+
+| Ветка | Окружение | Адрес |
+| --- | --- | --- |
+| `main` | production | https://garment-buro.ru |
+| `develop` | development | https://dev.garment-buro.ru |
+| feature / `codex/*` | только CI | без автоматического deploy |
+
+После успешных тестов GitHub Actions собирает отдельные backend/frontend образы,
+публикует их в GHCR и передаёт серверу только ссылки на образы и deployment
+descriptors. Исходный код на сервере не собирается. Перед переключением контейнеров
+обязательно выполняются Alembic migrations и readiness-проверки.
+Docker Engine для приложения работает в rootless-режиме от отдельного пользователя
+`garment`; системный rootful-демон не используется после завершения переноса.
+
+Полная инструкция: [deploy/README.md](deploy/README.md).
+
 ## Документация
 
 - [Backend: запуск, миграции и интеграции](backend/README.md)
 - [План рефакторинга backend](backend/REFACTORING_PLAN.md)
 - [Схема внутренних CRM-данных](CRM_DATA_SCHEMA.md)
 - [Frontend: запуск и устройство](frontend/README.md)
+- [Production/development deployment](deploy/README.md)
 - [Отчёты по этапам рефакторинга](backend/docs/refactoring/)
 
 ---

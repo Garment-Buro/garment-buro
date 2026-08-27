@@ -50,7 +50,10 @@ def test_minio_storage_upload_remove_and_presign_contract() -> None:
         ]
 
         signed_url = await storage.presigned_get_url("private/crm/spec.pdf")
-        assert signed_url.endswith("private/crm/spec.pdf?ttl=900")
+        assert (
+            signed_url
+            == "https://cdn.test/assets/garment-buro-test-media/private/crm/spec.pdf?ttl=900"
+        )
 
         private = await storage.put_private_crm_object(
             object_key="crm/pattern/2026/08/13/pattern.pdf",
@@ -58,6 +61,12 @@ def test_minio_storage_upload_remove_and_presign_contract() -> None:
             content_type="application/pdf",
         )
         assert private.public_url is None
+        private_url = await storage.presigned_crm_get_url(
+            private.object_key,
+            filename="pattern.pdf",
+        )
+        assert private_url.startswith("https://cdn.test/assets/garment-buro-test-crm-private/")
+        assert private_url.endswith("?ttl=900&download=1")
         assert await storage.private_crm_object_exists(private.object_key)
         assert await storage.get_private_crm_bucket_policy() == ""
         await storage.remove_private_crm_object(private.object_key)

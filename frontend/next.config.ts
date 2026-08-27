@@ -18,6 +18,7 @@ if (CRM_CABINET_ENABLED && !IDENTITY_SESSION_V2_ENABLED) {
 }
 
 const nextConfig: NextConfig = {
+  output: 'standalone',
   async rewrites() {
     return {
       beforeFiles: [
