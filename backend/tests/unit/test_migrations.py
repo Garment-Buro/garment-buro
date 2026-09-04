@@ -9,15 +9,15 @@ from app.db import models as database_models  # noqa: F401
 from app.db.base import Base
 
 
-def test_alembic_has_one_linear_partner_program_head() -> None:
+def test_alembic_has_one_linear_landing_platform_head() -> None:
     backend_dir = Path(__file__).resolve().parents[2]
     config = Config(str(backend_dir / "alembic.ini"))
     scripts = ScriptDirectory.from_config(config)
 
-    assert scripts.get_heads() == ["20260904_0029"]
-    revision = scripts.get_revision("20260904_0029")
+    assert scripts.get_heads() == ["20260904_0030"]
+    revision = scripts.get_revision("20260904_0030")
     assert revision is not None
-    assert revision.down_revision == "20260904_0028"
+    assert revision.down_revision == "20260904_0029"
 
 
 def test_metadata_has_deterministic_constraint_names() -> None:

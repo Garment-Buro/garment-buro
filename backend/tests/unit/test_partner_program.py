@@ -17,6 +17,7 @@ from app.modules.partners.models import PartnerVisit
 from app.modules.partners.schemas import (
     PartnerCreateRequest,
     PartnerLandingCreateRequest,
+    PartnerLandingUpdateRequest,
 )
 from app.modules.partners.security import (
     InvalidPartnerAttributionTokenError,
@@ -105,6 +106,10 @@ def test_partner_lifecycle_tracks_paid_order_and_reserves_payout(tmp_path) -> No
                     cta_label="Смотреть изделия",
                     cta_href="/",
                     product_ids=[1, 2],
+                    content={
+                        "story_title": "Бег начинается с собственной формы",
+                        "proof_line": "Произведено GARMENT BURO",
+                    },
                     status="published",
                 ),
                 now=observed_at,
@@ -115,6 +120,25 @@ def test_partner_lifecycle_tracks_paid_order_and_reserves_payout(tmp_path) -> No
                 visitor_value="same-browser",
                 now=observed_at,
             )
+            updated_landing = await service.update_landing(
+                session,
+                landing_id=landing.id,
+                payload=PartnerLandingUpdateRequest(
+                    content={"model_heading": "Выберите основу"},
+                    product_ids=[2],
+                    status="draft",
+                ),
+            )
+            assert updated_landing.content["model_heading"] == "Выберите основу"
+            assert updated_landing.product_ids == [2]
+            assert updated_landing.published_at is None
+            updated_landing = await service.update_landing(
+                session,
+                landing_id=landing.id,
+                payload=PartnerLandingUpdateRequest(status="published"),
+                now=observed_at,
+            )
+            assert updated_landing.published_at == observed_at
             await service.register_visit(
                 session,
                 slug=landing.slug,

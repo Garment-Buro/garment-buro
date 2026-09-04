@@ -150,6 +150,15 @@ class PartnerRepository:
             )
         )
 
+    async def list_all_landings(self, session: AsyncSession) -> list[PartnerLanding]:
+        return list(
+            await session.scalars(
+                select(PartnerLanding)
+                .options(selectinload(PartnerLanding.partner))
+                .order_by(PartnerLanding.created_at.desc())
+            )
+        )
+
     async def add_visit_once_per_day(
         self,
         session: AsyncSession,

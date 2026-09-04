@@ -20,8 +20,8 @@ export function AdminProductsScreen() {
 
     return (
         <AdminPageShell
-            activeSection="products"
-            title="Управление товарами"
+            activeSection="models"
+            title="Модели для конструктора"
             action={createProductAction}
         >
             {isLoading

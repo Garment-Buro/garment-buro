@@ -21,6 +21,7 @@ export type PartnerDashboard = {
 
 export type PartnerLanding = {
     id: number;
+    partner_id: number;
     slug: string;
     title: string;
     eyebrow?: string;
@@ -29,6 +30,8 @@ export type PartnerLanding = {
     cta_label: string;
     cta_href: string;
     image_url?: string;
+    template_key: 'light-running';
+    content: PartnerLandingContent;
     product_ids: number[];
     status: 'draft' | 'published' | 'archived';
     published_at?: string;
@@ -36,8 +39,24 @@ export type PartnerLanding = {
     updated_at: string;
 };
 
+export type PartnerLandingFaqItem = {
+    question: string;
+    answer: string;
+};
+
+export type PartnerLandingContent = {
+    logo_url?: string;
+    secondary_image_url?: string;
+    story_title?: string;
+    story_body?: string;
+    model_heading?: string;
+    proof_line?: string;
+    final_heading?: string;
+    faq: PartnerLandingFaqItem[];
+};
+
 export type PublicPartnerLanding = Omit<PartnerLanding,
-    'id' | 'status' | 'published_at' | 'created_at' | 'updated_at'
+    'id' | 'partner_id' | 'status' | 'published_at' | 'created_at' | 'updated_at'
 > & {
     partner_name: string;
 };
@@ -80,6 +99,10 @@ export type PartnerLandingCreatePayload = {
     cta_label: string;
     cta_href: string;
     image_url?: string;
+    template_key: 'light-running';
+    content: PartnerLandingContent;
     product_ids: number[];
     status: 'draft' | 'published';
 };
+
+export type PartnerLandingUpdatePayload = Partial<Omit<PartnerLandingCreatePayload, 'slug'>>;

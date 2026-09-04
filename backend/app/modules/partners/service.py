@@ -25,6 +25,7 @@ from app.modules.partners.schemas import (
     PartnerCreateRequest,
     PartnerDashboardResponse,
     PartnerLandingCreateRequest,
+    PartnerLandingUpdateRequest,
     PartnerProfileResponse,
     PartnerUpdateRequest,
     PublicPartnerLandingResponse,
@@ -105,6 +106,8 @@ class PartnerProgramService:
             cta_label=landing.cta_label,
             cta_href=landing.cta_href,
             image_url=landing.image_url,
+            template_key=landing.template_key,
+            content=landing.content,
             product_ids=list(landing.product_ids),
         )
 
@@ -339,6 +342,35 @@ class PartnerProgramService:
             published_at=published_at,
         )
         await self.repository.add_landing(session, landing)
+        return landing
+
+    async def update_landing(
+        self,
+        session: AsyncSession,
+        *,
+        landing_id: int,
+        payload: PartnerLandingUpdateRequest,
+        now: datetime | None = None,
+    ) -> PartnerLanding:
+        self.require_enabled()
+        landing = await self.repository.get_landing(session, landing_id=landing_id)
+        if landing is None:
+            raise PartnerLandingNotFoundError("Partner landing was not found")
+        previous_status = landing.status
+        for field in payload.model_fields_set:
+            value = getattr(payload, field)
+            if value is None and field not in {"eyebrow", "image_url"}:
+                continue
+            if field == "content" and value is not None:
+                value = value.model_dump(mode="json")
+            setattr(landing, field, value)
+        if landing.status == PartnerLandingStatus.PUBLISHED.value and (
+            previous_status != PartnerLandingStatus.PUBLISHED.value or landing.published_at is None
+        ):
+            landing.published_at = ensure_utc(now or datetime.now(timezone.utc))
+        elif landing.status != PartnerLandingStatus.PUBLISHED.value:
+            landing.published_at = None
+        await session.flush()
         return landing
 
     async def request_payout(

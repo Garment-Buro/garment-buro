@@ -1,5 +1,5 @@
-import { AdminProductsScreen } from '@/components/admin/AdminProductsScreen';
+import { redirect } from 'next/navigation';
 
 export default function AdminDashboardPage() {
-    return <AdminProductsScreen />;
+    redirect('/admin/partners');
 }
