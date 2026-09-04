@@ -737,6 +737,89 @@ create/redirect/webhook/reconciliation scenarios pass. See
 [`docs/refactoring/20-durable-payment-creation.md`](docs/refactoring/20-durable-payment-creation.md)
 for the exact gate, recovery rules, verification, and rollback.
 
+## YooKassa automatic payments, holds, and payouts
+
+Revision `20260904_0028` extends the payment domain without changing the default
+checkout behavior. `POST /api/orders` still creates a one-stage payment unless
+the request explicitly contains:
+
+```json
+{
+  "payment_method": "card",
+  "payment_capture_mode": "manual"
+}
+```
+
+`automatic` sends `capture=true`; `manual` sends `capture=false`. A manually
+captured payment becomes actionable only after YooKassa reports
+`waiting_for_capture`. The provider's `expires_at` is persisted and exposed to
+staff as `capture_expires_at`; YooKassa documents a method-dependent capture
+window from two hours to seven days. See the official
+[two-stage payment flow](https://yookassa.ru/developers/payment-acceptance/getting-started/payment-process#capture-and-cancel).
+
+Set `PAYMENT_MANAGEMENT_ENABLED=true` only with the target database, identity,
+payment creation, shop credentials, and either webhook processing or payment
+reconciliation enabled. Users need
+`payments.manage` (`manager` and `admin` system roles). The staff API is:
+
+```text
+GET  /api/payments/orders/{order_id}
+POST /api/payments/orders/{order_id}/capture
+POST /api/payments/orders/{order_id}/cancel
+```
+
+Capture and cancel requests require an empty body and a client
+`Idempotency-Key`. The backend persists a separate provider UUIDv4 key before
+network access. Exactly one terminal operation is allowed per held payment, so
+capture and cancel cannot race. Unknown outcomes retry only with the same
+operation and key; confirmed provider rejections are not blindly repeated.
+
+Payouts are a separate domain and never reuse shop credentials. YooKassa
+requires the payout gateway `agentId` and its own secret key; configure them as
+`YOOKASSA_PAYOUT_AGENT_ID` and `YOOKASSA_PAYOUT_API_KEY`. Then explicitly enable
+`YOOKASSA_PAYOUTS_ENABLED=true`. Only `admin` receives `payouts.manage`.
+YooKassa must also enable payouts and fund the gateway balance before live use.
+See the official [payout overview](https://yookassa.ru/developers/payouts/overview)
+and [authentication rules](https://yookassa.ru/developers/using-api/interaction-format#auth).
+
+Create and inspect payouts through:
+
+```text
+POST /api/payouts
+GET  /api/payouts/{payout_id}
+POST /api/payouts/{payout_id}/refresh
+```
+
+Creation requires a client `Idempotency-Key` and supports YooKassa payout
+tokens, saved payment method IDs, bank cards, YooMoney wallets, and SBP. Prefer
+a token or saved payment method so raw card data does not traverse this API.
+For example:
+
+```json
+{
+  "amount": {"value": "500.00", "currency": "RUB"},
+  "destination": {
+    "type": "payout_token",
+    "token": "<token-created-by-the-approved-YooKassa-client-flow>"
+  },
+  "description": "Выплата по заказу 17",
+  "reference": "order:17"
+}
+```
+
+Raw destination data and payout tokens are used only to build the outbound
+request and are never stored. PostgreSQL keeps the amount, safe reference,
+destination type, request digest, provider identity, status, terminal evidence,
+actor, and retry metadata. A provider timeout remains `unknown`; the identical
+request can be retried for 23 hours, within YooKassa's documented 24-hour
+idempotency window. `refresh` performs the provider GET needed to move a
+persisted `pending` payout to `succeeded` or `canceled`.
+
+Both flags default to false. Apply the migration, verify RBAC, and complete
+YooKassa sandbox payment/hold/payout scenarios before enabling either feature
+in staging. No production credentials or real financial operation belongs in
+pytest, source control, or a manual smoke test.
+
 ## Atomic target checkout orchestration
 
 Stage 21 introduced the service-only target checkout boundary now used by the
