@@ -36,3 +36,4 @@ yookassa==2.4.0
 aiohttp==3.14.3
 redis==5.2.1
 Pillow==12.3.0
+qrcode==8.2

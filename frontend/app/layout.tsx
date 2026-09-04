@@ -71,6 +71,7 @@ import { CookieConsent } from "@/components/shared/CookieConsent";
 
 import { CartSyncBootstrap } from "@/components/cart/CartSyncBootstrap";
 import { PhantomUiBootstrap } from "@/components/runtime/PhantomUiBootstrap";
+import { PwaRegistration } from "@/components/pwa/PwaRegistration";
 
 export default function RootLayout({
   children,
@@ -86,6 +87,7 @@ export default function RootLayout({
       >
         <AppEnvironmentProvider>
           <AuthSessionBootstrap />
+          <PwaRegistration />
           <SplashBoundary>
             <Header />
             <main className="appPageShell flex-1">

@@ -59,6 +59,7 @@ def test_factory_leaves_persistent_cart_routes_disabled_by_default() -> None:
     application = create_app(settings=settings)
     registered_paths = {route.path for route in application.routes}
 
+    assert "/api/qr-code" in registered_paths
     assert "/api/cart/{cart_id}" not in registered_paths
     assert "/api/crm/projects" not in registered_paths
     assert "/api/crm/files" not in registered_paths

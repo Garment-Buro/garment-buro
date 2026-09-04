@@ -8,6 +8,8 @@ services:
     environment:
       - APP_ENV=${APP_ENV:-production}
       - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-https://garment-buro.ru}
+      - PARTNER_PUBLIC_BASE_URL=${PARTNER_PUBLIC_BASE_URL:-https://partner.garment-buro.ru}
+      - WIDGET_PUBLIC_BASE_URL=${WIDGET_PUBLIC_BASE_URL:-https://widget.garment-buro.ru}
       - LEGACY_DATABASE_URL=${LEGACY_DATABASE_URL:-sqlite:////app/legacy/ecommerce.db}
       - DATABASE_ENABLED=${DATABASE_ENABLED:-false}
       - DATABASE_URL=${DATABASE_URL:-}

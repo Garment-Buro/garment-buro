@@ -44,7 +44,7 @@ test('the hoodie carousel is swipeable and exposes four controls', () => {
 
 test('tablet and desktop show the reusable blurred-photo QR gate', () => {
     assert.match(desktopSource, /PartnerLandingDesktopGate/);
-    assert.match(desktopSource, /qr-code\.png/);
+    assert.match(desktopSource, /\/api\/qr-code\?path=%2Fnikitamoiseev&size=1024/);
     assert.match(sharedGateSource, /Откройте дроп на телефоне/);
     assert.match(sharedGateCss, /@media \(min-width: 768px\)/);
     assert.match(sharedGateCss, /filter:\s*blur\(20px\)/);

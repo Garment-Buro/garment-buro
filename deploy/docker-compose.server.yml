@@ -7,6 +7,8 @@ x-backend-common: &backend-common
   environment:
     APP_ENV: ${APP_ENV:?APP_ENV is required}
     PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?PUBLIC_BASE_URL is required}
+    PARTNER_PUBLIC_BASE_URL: ${PARTNER_PUBLIC_BASE_URL:-https://partner.garment-buro.ru}
+    WIDGET_PUBLIC_BASE_URL: ${WIDGET_PUBLIC_BASE_URL:-https://widget.garment-buro.ru}
     LEGACY_DATABASE_URL: sqlite:////app/legacy/ecommerce.db
     DATABASE_ENABLED: "true"
     DATABASE_URL: postgresql+asyncpg://${DATABASE_APP_USER:?DATABASE_APP_USER is required}:${DATABASE_APP_PASSWORD:?DATABASE_APP_PASSWORD is required}@postgres:5432/${POSTGRES_DB:?POSTGRES_DB is required}

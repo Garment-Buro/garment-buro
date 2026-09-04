@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#F2F2F2">
+    <title>Garment Buro — нет сети</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            min-height: 100vh;
+            min-height: 100dvh;
+            display: grid;
+            place-items: center;
+            margin: 0;
+            padding: 24px;
+            background: #f2f2f2;
+            color: #181818;
+            font-family: Manrope, Inter, system-ui, sans-serif;
+        }
+        main {
+            width: min(100%, 440px);
+            padding: 32px 24px;
+            border: 1px solid rgb(24 24 24 / 10%);
+            border-radius: 24px;
+            background: #fff;
+        }
+        h1 {
+            margin: 0;
+            font-size: clamp(32px, 9vw, 46px);
+            letter-spacing: -0.05em;
+            line-height: 1;
+        }
+        p { margin: 20px 0 0; color: #555; line-height: 1.5; }
+        button {
+            width: 100%;
+            min-height: 52px;
+            margin-top: 28px;
+            border: 0;
+            border-radius: 14px;
+            background: #181818;
+            color: #fff;
+            font: inherit;
+            font-weight: 700;
+        }
+    </style>
+</head>
+<body>
+    <main>
+        <h1>Нет соединения</h1>
+        <p>Проверьте интернет и повторите попытку, чтобы продолжить работу с конструктором.</p>
+        <button type="button" onclick="window.location.reload()">Повторить</button>
+    </main>
+</body>
+</html>

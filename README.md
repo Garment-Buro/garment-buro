@@ -100,6 +100,16 @@ docker compose -f docker-compose.local.yml up --build
 | MinIO API | http://localhost:9000 |
 | MinIO Console | http://localhost:9001 |
 
+QR-код страницы генерируется backend без статического файла:
+
+```text
+http://localhost:3000/api/qr-code?path=/nikitamoiseev&size=512
+```
+
+Публичные лендинги доступны в браузере. Конструктор открывается только из
+установленного PWA; кабинет партнёра и виджет используют отдельные PWA на своих
+поддоменах.
+
 Остановка проекта:
 
 ```bash
