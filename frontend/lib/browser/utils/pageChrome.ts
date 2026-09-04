@@ -54,10 +54,13 @@ export const PAGE_CHROME: PageChromeConfig[] = [
 ];
 
 const SITE_CHROME_HIDDEN_ROUTES = new Set([
+    '/',
     '/checkout',
     '/constructor',
     '/unfinished',
     '/lk',
+    '/mycollection',
+    '/profile',
     '/light-running',
 ]);
 
@@ -74,7 +77,7 @@ export const getPageChrome = (pathname: string | null): PageChromeConfig => {
     if (pathname?.startsWith('/constructor')) return PAGE_CHROME[1];
     if (pathname?.startsWith('/product')) return PAGE_CHROME[2];
     if (pathname?.startsWith('/unfinished')) return PAGE_CHROME[3];
-    if (pathname === '/lk') return PAGE_CHROME[4];
+    if (pathname === '/lk' || pathname === '/mycollection' || pathname === '/profile') return PAGE_CHROME[4];
     if (pathname === '/light-running') return PAGE_CHROME[5];
     return DEFAULT_PAGE_CHROME;
 };

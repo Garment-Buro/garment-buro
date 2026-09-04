@@ -18,7 +18,6 @@ const SECONDARY_LINKS = [
     { href: '/offer', label: 'ОФЕРТА' },
     { href: '/consent-cookies', label: 'ИСПОЛЬЗОВАНИЕ COOKIE', mobileLabel: 'COOKIE' },
     { href: '/contacts', label: 'КОНТАКТЫ' },
-    { href: '/presentation', label: 'ПРЕЗЕНТАЦИЯ' },
 ];
 
 type FooterLinkItem = (typeof PRIMARY_LINKS)[number] | (typeof SECONDARY_LINKS)[number];

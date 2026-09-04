@@ -41,11 +41,12 @@ const ibmPlexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://garment-buro.ru"),
   title: {
     template: "Garment Buro | %s",
     default: "Garment Buro | Главная",
   },
-  description: "Когда вещь почти подходит — можно её доработать.",
+  description: "Совместные коллекции, конструктор одежды, производство и доставка GARMENT BURO.",
   manifest: "/manifest.webmanifest",
   icons: {
     icon: "/favicon.ico",
@@ -79,7 +80,7 @@ export default function RootLayout({
   modal: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="ru">
       <body
         className={`${manrope.variable} ${questrial.variable} ${michroma.variable} ${inter.variable} ${alumniSansSc.variable} ${ibmPlexMono.variable} font-manrope antialiased min-h-screen flex flex-col relative`}
       >

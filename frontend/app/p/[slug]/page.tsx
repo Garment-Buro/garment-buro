@@ -18,7 +18,13 @@ export async function generateMetadata({ params }: PartnerLandingPageProps): Pro
     return {
         title: landing.title,
         description: landing.description.slice(0, 160),
-        robots: { index: false, follow: true },
+        robots: { index: true, follow: true },
+        alternates: { canonical: `/p/${landing.slug}` },
+        openGraph: {
+            title: landing.title,
+            description: landing.description.slice(0, 160),
+            images: landing.image_url ? [landing.image_url] : undefined,
+        },
     };
 }
 

@@ -1,21 +1,12 @@
-import { LandingPage } from '@/components/shared/LandingPage';
-import { CatalogPresentationOverlay } from '@/components/presentation/CatalogPresentationOverlay';
-import { getCatalogData } from '@/lib/catalog/data';
 import type { Metadata } from 'next';
-import { Suspense } from 'react';
+
+import { PlatformHome } from '@/components/platform/PlatformHome';
 
 export const metadata: Metadata = {
-  title: "Главная"
+  title: 'Совместные коллекции',
+  description: 'Платформа GARMENT BURO для совместных коллекций, кастомизации, производства и доставки.',
 };
 
-export default async function Home() {
-  const { products, settings } = await getCatalogData();
-  return (
-    <>
-      <LandingPage initialProducts={products} initialSettings={settings} />
-      <Suspense fallback={null}>
-        <CatalogPresentationOverlay />
-      </Suspense>
-    </>
-  );
+export default function Home() {
+  return <PlatformHome />;
 }

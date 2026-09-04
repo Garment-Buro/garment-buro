@@ -26,15 +26,18 @@ const catalogOverlaySource = fs.readFileSync(
     "utf8",
 );
 const homeSource = fs.readFileSync(path.join(root, "app", "page.tsx"), "utf8");
+const presentationPageSource = fs.readFileSync(path.join(root, "app", "presentation", "page.tsx"), "utf8");
 
-test("presentation is reachable through a full route, an intercepted route, the footer, and a catalog-backed overlay", () => {
+test("presentation implementation is retained while the catalog surface is paused", () => {
     assert.equal(fs.existsSync(path.join(root, "app", "presentation", "page.tsx")), true);
     assert.equal(fs.existsSync(path.join(root, "app", "@modal", "(.)presentation", "page.tsx")), true);
-    assert.match(footerSource, /href:\s*'\/presentation',\s*label:\s*'ПРЕЗЕНТАЦИЯ'/);
+    assert.doesNotMatch(footerSource, /href:\s*'\/presentation'/);
     assert.match(catalogOverlaySource, /useSearchParams/);
     assert.match(catalogOverlaySource, /searchParams\.get\("presentation"\) !== "open"/);
     assert.match(catalogOverlaySource, /<PresentationSurface isOverlay \/>/);
-    assert.match(homeSource, /<LandingPage[\s\S]*?<Suspense fallback=\{null\}>[\s\S]*?<CatalogPresentationOverlay \/>/);
+    assert.match(presentationPageSource, /PUBLIC_CATALOG_ENABLED/);
+    assert.match(presentationPageSource, /notFound\(\)/);
+    assert.doesNotMatch(homeSource, /CatalogPresentationOverlay|LandingPage/);
 });
 
 test("presentation sheet follows the requested viewport geometry and motion", () => {
