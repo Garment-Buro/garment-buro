@@ -82,9 +82,7 @@ class PartnerProfile(Base, IntegerIdMixin, TimestampMixin):
     commission_bps: Mapped[int] = mapped_column(Integer, nullable=False)
 
     landings: Mapped[list[PartnerLanding]] = relationship(back_populates="partner")
-    attributions: Mapped[list[PartnerOrderAttribution]] = relationship(
-        back_populates="partner"
-    )
+    attributions: Mapped[list[PartnerOrderAttribution]] = relationship(back_populates="partner")
     payouts: Mapped[list[PartnerPayoutRequest]] = relationship(back_populates="partner")
 
 
@@ -129,9 +127,7 @@ class PartnerLanding(Base, IntegerIdMixin, TimestampMixin):
 
     partner: Mapped[PartnerProfile] = relationship(back_populates="landings")
     visits: Mapped[list[PartnerVisit]] = relationship(back_populates="landing")
-    attributions: Mapped[list[PartnerOrderAttribution]] = relationship(
-        back_populates="landing"
-    )
+    attributions: Mapped[list[PartnerOrderAttribution]] = relationship(back_populates="landing")
 
 
 class PartnerVisit(Base, IntegerIdMixin):
@@ -278,9 +274,7 @@ class PartnerCommission(Base, IntegerIdMixin, TimestampMixin):
     )
     cancel_reason: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
-    attribution: Mapped[PartnerOrderAttribution] = relationship(
-        back_populates="commission"
-    )
+    attribution: Mapped[PartnerOrderAttribution] = relationship(back_populates="commission")
 
 
 class PartnerPayoutRequest(Base, IntegerIdMixin, TimestampMixin):

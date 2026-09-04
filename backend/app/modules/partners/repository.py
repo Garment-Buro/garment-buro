@@ -56,15 +56,11 @@ class PartnerRepository:
         *,
         code: str,
     ) -> PartnerProfile | None:
-        return await session.scalar(
-            select(PartnerProfile).where(PartnerProfile.code == code)
-        )
+        return await session.scalar(select(PartnerProfile).where(PartnerProfile.code == code))
 
     async def list_profiles(self, session: AsyncSession) -> list[PartnerProfile]:
         return list(
-            await session.scalars(
-                select(PartnerProfile).order_by(PartnerProfile.created_at.desc())
-            )
+            await session.scalars(select(PartnerProfile).order_by(PartnerProfile.created_at.desc()))
         )
 
     @staticmethod
@@ -79,9 +75,7 @@ class PartnerRepository:
         user_id: int,
         assigned_by_user_id: int,
     ) -> None:
-        role_id = await session.scalar(
-            select(Role.id).where(Role.name == RoleName.PARTNER.value)
-        )
+        role_id = await session.scalar(select(Role.id).where(Role.name == RoleName.PARTNER.value))
         if role_id is None:
             raise RuntimeError("Partner system role is not initialized")
         values = {
@@ -97,9 +91,7 @@ class PartnerRepository:
         else:
             raise RuntimeError("Partner role assignment requires PostgreSQL or SQLite")
         await session.execute(
-            statement.on_conflict_do_nothing(
-                index_elements=[UserRole.user_id, UserRole.role_id]
-            )
+            statement.on_conflict_do_nothing(index_elements=[UserRole.user_id, UserRole.role_id])
         )
 
     async def get_published_landing_by_slug(
@@ -137,9 +129,7 @@ class PartnerRepository:
         *,
         slug: str,
     ) -> PartnerLanding | None:
-        return await session.scalar(
-            select(PartnerLanding).where(PartnerLanding.slug == slug)
-        )
+        return await session.scalar(select(PartnerLanding).where(PartnerLanding.slug == slug))
 
     @staticmethod
     async def add_landing(session: AsyncSession, landing: PartnerLanding) -> None:
@@ -194,9 +184,7 @@ class PartnerRepository:
         *,
         order_id: int,
     ) -> Order | None:
-        return await session.scalar(
-            select(Order).where(Order.id == order_id).with_for_update()
-        )
+        return await session.scalar(select(Order).where(Order.id == order_id).with_for_update())
 
     async def get_attribution_by_order(
         self,
@@ -205,9 +193,7 @@ class PartnerRepository:
         order_id: int,
     ) -> PartnerOrderAttribution | None:
         return await session.scalar(
-            select(PartnerOrderAttribution).where(
-                PartnerOrderAttribution.order_id == order_id
-            )
+            select(PartnerOrderAttribution).where(PartnerOrderAttribution.order_id == order_id)
         )
 
     @staticmethod

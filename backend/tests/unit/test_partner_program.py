@@ -37,9 +37,7 @@ def settings(tmp_path) -> Settings:
         identity_migration_fingerprint="1" * 64,
         jwt_secret="identity-jwt-secret-that-is-long-enough",
         identity_otp_pepper="identity-otp-pepper-that-is-long-enough",
-        notification_encryption_key=(
-            "bm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm4="
-        ),
+        notification_encryption_key=("bm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm4="),
         partner_program_enabled=True,
         partner_attribution_secret=SECRET,
         partner_commission_hold_days=0,
