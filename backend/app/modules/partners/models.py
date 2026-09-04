@@ -85,6 +85,10 @@ class PartnerProfile(Base, IntegerIdMixin, TimestampMixin):
     landings: Mapped[list[PartnerLanding]] = relationship(back_populates="partner")
     attributions: Mapped[list[PartnerOrderAttribution]] = relationship(back_populates="partner")
     payouts: Mapped[list[PartnerPayoutRequest]] = relationship(back_populates="partner")
+    requisites: Mapped[PartnerRequisites | None] = relationship(
+        back_populates="partner",
+        uselist=False,
+    )
 
 
 class PartnerLanding(Base, IntegerIdMixin, TimestampMixin):
@@ -331,3 +335,33 @@ class PartnerPayoutRequest(Base, IntegerIdMixin, TimestampMixin):
     note: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     partner: Mapped[PartnerProfile] = relationship(back_populates="payouts")
+
+
+class PartnerRequisites(Base, IntegerIdMixin, TimestampMixin):
+    __tablename__ = "partner_requisites"
+    __table_args__ = (
+        CheckConstraint("key_version > 0", name="partner_requisites_key_version_positive"),
+        CheckConstraint(
+            "schema_version > 0",
+            name="partner_requisites_schema_version_positive",
+        ),
+        CheckConstraint(
+            "length(payload_sha256) = 64",
+            name="partner_requisites_payload_sha256_length",
+        ),
+    )
+
+    partner_id: Mapped[int] = mapped_column(
+        ForeignKey("partner_profiles.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    ciphertext: Mapped[str] = mapped_column(Text, nullable=False)
+    nonce: Mapped[str] = mapped_column(String(64), nullable=False)
+    tag: Mapped[str] = mapped_column(String(64), nullable=False)
+    key_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    schema_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    payload_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    partner: Mapped[PartnerProfile] = relationship(back_populates="requisites")

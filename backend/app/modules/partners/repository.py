@@ -20,6 +20,7 @@ from app.modules.partners.models import (
     PartnerPayoutRequest,
     PartnerPayoutStatus,
     PartnerProfile,
+    PartnerRequisites,
     PartnerStatus,
     PartnerVisit,
 )
@@ -262,6 +263,26 @@ class PartnerRepository:
                 .limit(limit)
             )
         )
+
+    async def get_partner_requisites(
+        self,
+        session: AsyncSession,
+        *,
+        partner_id: int,
+        for_update: bool = False,
+    ) -> PartnerRequisites | None:
+        statement = select(PartnerRequisites).where(PartnerRequisites.partner_id == partner_id)
+        if for_update:
+            statement = statement.with_for_update()
+        return await session.scalar(statement)
+
+    @staticmethod
+    async def add_partner_requisites(
+        session: AsyncSession,
+        requisites: PartnerRequisites,
+    ) -> None:
+        session.add(requisites)
+        await session.flush()
 
     async def get_payout_for_update(
         self,

@@ -25,7 +25,7 @@ provides the landing system, garment constructor, checkout, manufacturing, and d
 | Constructor | `/constructor` | Customize an internal garment model |
 | Cart and checkout | `/checkout` | Authenticate, deliver, and pay |
 | Customer cabinet | `/unfinished`, `/mycollection`, `/profile` | Drafts, purchased collection, and account |
-| Partner cabinet | `partner.garment-buro.ru` | Links, attributed sales, commission, and payouts |
+| Partner cabinet | `partner.garment-buro.ru` | Read-only partner identity, landing links, encrypted bank requisites, balance, payout requests, legal links, and support |
 | Admin | `/admin/partners` | Partner onboarding, landing assembly, publishing, and model selection |
 | Production | `/production` | Entry point to the existing protected production CRM |
 

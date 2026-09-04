@@ -10,8 +10,8 @@ const manifest = {
     display: 'standalone',
     orientation: 'portrait-primary',
     lang: 'ru',
-    background_color: '#F2F2F2',
-    theme_color: '#F2F2F2',
+    background_color: '#E7EEF1',
+    theme_color: '#E7EEF1',
     icons: [
         {
             src: '/pwa-icon-192.png',

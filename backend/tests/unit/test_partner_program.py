@@ -18,12 +18,17 @@ from app.modules.partners.schemas import (
     PartnerCreateRequest,
     PartnerLandingCreateRequest,
     PartnerLandingUpdateRequest,
+    PartnerRequisitesRequest,
 )
 from app.modules.partners.security import (
     InvalidPartnerAttributionTokenError,
     PartnerAttributionSecurity,
 )
-from app.modules.partners.service import PartnerPayoutBalanceError, PartnerProgramService
+from app.modules.partners.service import (
+    PartnerPayoutBalanceError,
+    PartnerPayoutRequisitesError,
+    PartnerProgramService,
+)
 
 SECRET = "partner-attribution-secret-that-is-long-enough"
 
@@ -195,6 +200,35 @@ def test_partner_lifecycle_tracks_paid_order_and_reserves_payout(tmp_path) -> No
             assert dashboard.orders == 1
             assert dashboard.conversion_percent == Decimal("100.00")
             assert dashboard.available == Decimal("150.00")
+
+            with pytest.raises(PartnerPayoutRequisitesError):
+                await service.request_payout(
+                    session,
+                    user_id=partner_user.id,
+                    amount=Decimal("100.00"),
+                    now=observed_at,
+                )
+
+            saved_requisites = await service.save_requisites(
+                session,
+                user_id=partner_user.id,
+                payload=PartnerRequisitesRequest(
+                    entity_type="sole_proprietor",
+                    recipient_name="ИП Иванов Иван Иванович",
+                    tax_id="123456789012",
+                    bank_name="Тестовый банк",
+                    bic="044525225",
+                    correspondent_account="30101810400000000225",
+                    settlement_account="40802810900000000001",
+                ),
+            )
+            assert saved_requisites.tax_id == "123456789012"
+            loaded_requisites = await service.get_requisites(
+                session,
+                user_id=partner_user.id,
+            )
+            assert loaded_requisites is not None
+            assert loaded_requisites.settlement_account == "40802810900000000001"
 
             payout = await service.request_payout(
                 session,
