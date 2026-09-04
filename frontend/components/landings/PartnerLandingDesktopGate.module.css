@@ -1,0 +1,125 @@
+.gate {
+    position: relative;
+    display: none;
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow: hidden;
+    align-items: center;
+    justify-content: center;
+    background: #e8f1f8;
+    font-family: var(--font-manrope), Manrope, sans-serif;
+}
+
+.background {
+    transform: scale(1.12);
+    filter: blur(20px);
+    object-fit: cover;
+    object-position: center 48%;
+}
+
+.wash {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgb(255 255 255 / 0%) 48%, #e8f1f8 100%);
+}
+
+.card {
+    position: relative;
+    z-index: 2;
+    width: clamp(360px, 22.9167vw, 440px);
+    aspect-ratio: 440 / 677;
+    transform: translateY(-3.3%);
+    border-radius: 27px;
+    background: #fff;
+    box-shadow: 0 24px 80px rgb(3 61 100 / 13%);
+}
+
+.brand {
+    position: absolute;
+    top: 6.65%;
+    left: 50%;
+    width: max-content;
+    margin: 0;
+    transform: translateX(-50%);
+    color: #033d64;
+    font-weight: 800;
+    letter-spacing: -0.07em;
+    line-height: 0.999;
+    text-align: center;
+    text-wrap: balance;
+}
+
+.brand > span {
+    display: block;
+    font-size: clamp(40px, 2.575vw, 49px);
+}
+
+.brand > small {
+    display: block;
+    font-size: clamp(20px, 1.25vw, 24px);
+    line-height: 1;
+}
+
+.qrFrame {
+    position: absolute;
+    top: 25.85%;
+    left: 2.27%;
+    width: 95.68%;
+    height: 53.77%;
+    overflow: hidden;
+}
+
+.qrImage {
+    top: -7.97% !important;
+    height: auto !important;
+    aspect-ratio: 1;
+    object-fit: contain;
+}
+
+.prompt {
+    position: absolute;
+    top: 80.94%;
+    left: 50%;
+    width: 100%;
+    margin: 0;
+    transform: translateX(-50%);
+    color: #033d64;
+    font-size: clamp(20px, 1.25vw, 24px);
+    font-weight: 800;
+    letter-spacing: -0.07em;
+    line-height: 1;
+    text-align: center;
+    text-wrap: balance;
+}
+
+.hint {
+    position: absolute;
+    top: 92.3%;
+    left: 20.9%;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.hint img {
+    width: 30px;
+    height: 30px;
+    flex: 0 0 auto;
+}
+
+.hint p {
+    width: max-content;
+    max-width: 235px;
+    margin: 0;
+    color: rgb(157 157 157 / 71%);
+    font-size: clamp(12px, 0.8333vw, 16px);
+    font-weight: 600;
+    line-height: 1;
+    text-align: center;
+}
+
+@media (min-width: 768px) {
+    .gate {
+        display: flex;
+    }
+}

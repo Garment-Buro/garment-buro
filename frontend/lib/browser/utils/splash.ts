@@ -8,6 +8,7 @@ export const SPLASH_HIDDEN_ROUTES = new Set([
     '/unfinished',
     '/lk',
     '/offer',
+    '/nikitamoiseev',
 ]);
 
 export const isSplashHiddenRoute = (pathname: string) => SPLASH_HIDDEN_ROUTES.has(pathname);
