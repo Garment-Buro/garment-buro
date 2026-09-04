@@ -41,7 +41,7 @@ upsert PARTNER_COMMISSION_HOLD_DAYS 14
 upsert PARTNER_ATTRIBUTION_COOKIE_NAME gb_partner
 upsert PARTNER_VISITOR_COOKIE_NAME gb_partner_visitor
 upsert PARTNER_COOKIE_DOMAIN ""
-upsert CORS_ORIGINS '["https://dev.garment-buro.ru","https://partner.garment-buro.ru"]'
+upsert CORS_ORIGINS 'https://dev.garment-buro.ru,https://partner.garment-buro.ru'
 
 chmod 0600 "$env_file"
 echo "Development partner settings enabled. Backup: $backup_file"
