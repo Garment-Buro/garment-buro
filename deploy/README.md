@@ -33,8 +33,9 @@ sudo bash deploy/scripts/enable-public-hosts.sh "$(pwd)"
 The current server still runs the public Nginx and widget in the legacy root
 Compose project. The script backs up that Nginx configuration, expands the
 existing `garment-buro.ru` certificate to all four hosts, rebuilds the existing
-widget at the domain root, validates Nginx, and recreates only the Nginx
-container. It does not copy secrets into the repository.
+widget at the domain root through a Compose override, validates Nginx, and
+recreates only the Nginx container. It does not copy secrets into the
+repository.
 
 Only Nginx exposes ports 80 and 443 publicly. Application and storage ports
 listen on loopback by default; the development deployment binds to the Docker

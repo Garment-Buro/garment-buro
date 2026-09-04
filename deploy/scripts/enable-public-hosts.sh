@@ -12,12 +12,14 @@ widget_root=/home/garment-widget
 nginx_source="$repo_root/nginx.conf"
 nginx_target="$legacy_root/nginx.conf"
 override_source="$repo_root/deploy/docker-compose.legacy-nginx.override.yml"
+widget_override_source="$repo_root/deploy/docker-compose.widget-root.override.yml"
 override_target="$legacy_root/docker-compose.override.yml"
 backup_dir="/root/garment-buro-nginx-backup-$(date -u +%Y%m%dT%H%M%SZ)"
 had_override=false
 
 test -f "$nginx_source"
 test -f "$override_source"
+test -f "$widget_override_source"
 test -f "$legacy_root/docker-compose.yml"
 test -f "$widget_root/docker-compose.server.yml"
 command -v docker >/dev/null
@@ -70,7 +72,10 @@ install -m 0644 "$override_source" "$override_target"
 rollback_required=true
 
 cd "$widget_root"
-NEXT_PUBLIC_BASE_PATH= docker compose -f docker-compose.server.yml up -d --build
+docker compose \
+  -f docker-compose.server.yml \
+  -f "$widget_override_source" \
+  up -d --build
 
 cd "$legacy_root"
 docker compose up -d --force-recreate nginx
