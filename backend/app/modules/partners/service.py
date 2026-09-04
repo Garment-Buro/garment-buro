@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hmac
+import json
 from datetime import datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
 
@@ -17,16 +19,24 @@ from app.modules.partners.models import (
     PartnerPayoutRequest,
     PartnerPayoutStatus,
     PartnerProfile,
+    PartnerRequisites,
     PartnerStatus,
     PartnerVisit,
 )
 from app.modules.partners.repository import PartnerRepository
+from app.modules.partners.requisites_crypto import (
+    EncryptedPartnerRequisites,
+    PartnerRequisitesCodec,
+    PartnerRequisitesDecryptionError,
+)
 from app.modules.partners.schemas import (
     PartnerCreateRequest,
     PartnerDashboardResponse,
     PartnerLandingCreateRequest,
     PartnerLandingUpdateRequest,
     PartnerProfileResponse,
+    PartnerRequisitesRequest,
+    PartnerRequisitesResponse,
     PartnerUpdateRequest,
     PublicPartnerLandingResponse,
 )
@@ -60,6 +70,10 @@ class PartnerPayoutStateError(ValueError):
     pass
 
 
+class PartnerPayoutRequisitesError(ValueError):
+    pass
+
+
 class PartnerProgramService:
     def __init__(
         self,
@@ -78,6 +92,29 @@ class PartnerProgramService:
                 secret,
                 lifetime=timedelta(days=self.settings.partner_attribution_days),
             )
+        self.requisites_codec = self._build_requisites_codec()
+
+    def _build_requisites_codec(self) -> PartnerRequisitesCodec | None:
+        current_key = self.settings.secret_value(self.settings.notification_encryption_key)
+        if not current_key:
+            return None
+        encoded_previous = self.settings.secret_value(
+            self.settings.notification_previous_encryption_keys
+        )
+        try:
+            previous_payload = json.loads(encoded_previous or "{}")
+            if not isinstance(previous_payload, dict):
+                raise ValueError
+            encoded_keys = {int(version): str(value) for version, value in previous_payload.items()}
+        except (TypeError, ValueError, json.JSONDecodeError) as error:
+            raise ValueError(
+                "NOTIFICATION_PREVIOUS_ENCRYPTION_KEYS must be a JSON object"
+            ) from error
+        encoded_keys[self.settings.notification_encryption_key_version] = current_key
+        return PartnerRequisitesCodec.from_base64_keys(
+            encoded_keys,
+            current_version=self.settings.notification_encryption_key_version,
+        )
 
     def require_enabled(self) -> None:
         if not self.settings.partner_program_enabled or self.security is None:
@@ -260,6 +297,88 @@ class PartnerProgramService:
             paid=Decimal(totals["paid"]),
         )
 
+    async def get_requisites(
+        self,
+        session: AsyncSession,
+        *,
+        user_id: int,
+    ) -> PartnerRequisitesResponse | None:
+        profile = await self.get_partner_for_user(session, user_id=user_id)
+        stored = await self.repository.get_partner_requisites(
+            session,
+            partner_id=profile.id,
+        )
+        if stored is None:
+            return None
+        payload = self._decrypt_requisites(stored)
+        return PartnerRequisitesResponse(
+            **payload,
+            updated_at=stored.updated_at,
+        )
+
+    async def save_requisites(
+        self,
+        session: AsyncSession,
+        *,
+        user_id: int,
+        payload: PartnerRequisitesRequest,
+    ) -> PartnerRequisitesResponse:
+        profile = await self.get_partner_for_user(session, user_id=user_id)
+        if self.requisites_codec is None:
+            raise PartnerProgramDisabledError("Partner requisites encryption is unavailable")
+        clear_payload = payload.model_dump(mode="json")
+        encrypted = self.requisites_codec.encrypt(clear_payload, partner_id=profile.id)
+        stored = await self.repository.get_partner_requisites(
+            session,
+            partner_id=profile.id,
+            for_update=True,
+        )
+        if stored is None:
+            stored = PartnerRequisites(
+                partner_id=profile.id,
+                ciphertext=encrypted.ciphertext,
+                nonce=encrypted.nonce,
+                tag=encrypted.tag,
+                key_version=encrypted.key_version,
+                schema_version=encrypted.schema_version,
+                payload_sha256=self.requisites_codec.digest(clear_payload),
+            )
+            await self.repository.add_partner_requisites(session, stored)
+        else:
+            stored.ciphertext = encrypted.ciphertext
+            stored.nonce = encrypted.nonce
+            stored.tag = encrypted.tag
+            stored.key_version = encrypted.key_version
+            stored.schema_version = encrypted.schema_version
+            stored.payload_sha256 = self.requisites_codec.digest(clear_payload)
+            await session.flush()
+        return PartnerRequisitesResponse(
+            **clear_payload,
+            updated_at=stored.updated_at,
+        )
+
+    def _decrypt_requisites(self, stored: PartnerRequisites) -> dict[str, object]:
+        if self.requisites_codec is None:
+            raise PartnerProgramDisabledError("Partner requisites encryption is unavailable")
+        payload = self.requisites_codec.decrypt(
+            EncryptedPartnerRequisites(
+                ciphertext=stored.ciphertext,
+                nonce=stored.nonce,
+                tag=stored.tag,
+                key_version=stored.key_version,
+                schema_version=stored.schema_version,
+            ),
+            partner_id=stored.partner_id,
+        )
+        if not hmac.compare_digest(
+            self.requisites_codec.digest(payload),
+            stored.payload_sha256,
+        ):
+            raise PartnerRequisitesDecryptionError(
+                "Partner requisites digest does not match plaintext"
+            )
+        return payload
+
     async def create_partner(
         self,
         session: AsyncSession,
@@ -389,6 +508,8 @@ class PartnerProgramService:
         )
         if profile is None or profile.status != PartnerStatus.ACTIVE.value:
             raise PartnerNotFoundError("Active partner profile was not found")
+        if await self.repository.get_partner_requisites(session, partner_id=profile.id) is None:
+            raise PartnerPayoutRequisitesError("Partner requisites are required")
         normalized_amount = amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         totals = await self.repository.dashboard_totals(
             session,

@@ -82,6 +82,23 @@ export type PartnerPayout = {
     created_at: string;
 };
 
+export type PartnerEntityType = 'self_employed' | 'sole_proprietor' | 'legal_entity';
+
+export type PartnerRequisitesPayload = {
+    entity_type: PartnerEntityType;
+    recipient_name: string;
+    tax_id: string;
+    kpp?: string | null;
+    bank_name: string;
+    bic: string;
+    correspondent_account: string;
+    settlement_account: string;
+};
+
+export type PartnerRequisites = PartnerRequisitesPayload & {
+    updated_at: string;
+};
+
 export type PartnerCreatePayload = {
     email: string;
     code: string;

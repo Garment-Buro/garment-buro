@@ -64,6 +64,7 @@ from app.modules.partners.models import (
     PartnerOrderAttribution,
     PartnerPayoutRequest,
     PartnerProfile,
+    PartnerRequisites,
     PartnerVisit,
 )
 from app.modules.payments.models import (
@@ -133,6 +134,7 @@ __all__ = [
     "PartnerOrderAttribution",
     "PartnerPayoutRequest",
     "PartnerProfile",
+    "PartnerRequisites",
     "PartnerVisit",
     "Product",
     "ProductMedia",

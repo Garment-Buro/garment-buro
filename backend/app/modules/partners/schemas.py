@@ -5,12 +5,13 @@ from decimal import Decimal
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 PartnerState = Literal["invited", "active", "suspended"]
 LandingState = Literal["draft", "published", "archived"]
 PayoutState = Literal["requested", "approved", "paid", "rejected", "canceled"]
 LandingTemplate = Literal["light-running"]
+PartnerEntityType = Literal["self_employed", "sole_proprietor", "legal_entity"]
 
 
 def validate_media_url(value: str | None) -> str | None:
@@ -285,6 +286,46 @@ class PartnerPayoutCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     amount: Decimal = Field(gt=0, max_digits=12, decimal_places=2)
+
+
+class PartnerRequisitesRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    entity_type: PartnerEntityType
+    recipient_name: str = Field(min_length=2, max_length=255)
+    tax_id: str = Field(pattern=r"^(?:\d{10}|\d{12})$")
+    kpp: str | None = Field(default=None, pattern=r"^\d{9}$")
+    bank_name: str = Field(min_length=2, max_length=255)
+    bic: str = Field(pattern=r"^\d{9}$")
+    correspondent_account: str = Field(pattern=r"^\d{20}$")
+    settlement_account: str = Field(pattern=r"^\d{20}$")
+
+    @field_validator("recipient_name", "bank_name")
+    @classmethod
+    def normalize_text(cls, value: str) -> str:
+        return " ".join(value.split())
+
+    @field_validator("tax_id", "kpp", "bic", "correspondent_account", "settlement_account")
+    @classmethod
+    def normalize_digits(cls, value: str | None) -> str | None:
+        return "".join(value.split()) if value is not None else None
+
+    @model_validator(mode="after")
+    def validate_entity_fields(self) -> PartnerRequisitesRequest:
+        if self.entity_type == "legal_entity":
+            if len(self.tax_id) != 10:
+                raise ValueError("A legal entity tax ID must contain 10 digits")
+            if self.kpp is None:
+                raise ValueError("KPP is required for a legal entity")
+        elif len(self.tax_id) != 12:
+            raise ValueError(
+                "A self-employed person or sole proprietor tax ID must contain 12 digits"
+            )
+        return self
+
+
+class PartnerRequisitesResponse(PartnerRequisitesRequest):
+    updated_at: datetime
 
 
 class PartnerPayoutReviewRequest(BaseModel):

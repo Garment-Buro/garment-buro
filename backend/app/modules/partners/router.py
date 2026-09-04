@@ -14,6 +14,7 @@ from app.modules.identity.exceptions import PermissionDeniedError
 from app.modules.identity.models import PermissionCode, User
 from app.modules.identity.router import get_current_identity_user, get_identity_service
 from app.modules.identity.service import IdentityService
+from app.modules.partners.requisites_crypto import PartnerRequisitesDecryptionError
 from app.modules.partners.schemas import (
     PartnerCommissionResponse,
     PartnerCreateRequest,
@@ -25,6 +26,8 @@ from app.modules.partners.schemas import (
     PartnerPayoutResponse,
     PartnerPayoutReviewRequest,
     PartnerProfileResponse,
+    PartnerRequisitesRequest,
+    PartnerRequisitesResponse,
     PartnerUpdateRequest,
     PartnerVisitResponse,
     PublicPartnerLandingResponse,
@@ -34,6 +37,7 @@ from app.modules.partners.service import (
     PartnerLandingNotFoundError,
     PartnerNotFoundError,
     PartnerPayoutBalanceError,
+    PartnerPayoutRequisitesError,
     PartnerPayoutStateError,
     PartnerProgramDisabledError,
     PartnerProgramService,
@@ -165,6 +169,55 @@ async def list_partner_landings(
     return [PartnerLandingResponse.model_validate(landing) for landing in landings]
 
 
+@partner_router.get(
+    "/requisites",
+    response_model=PartnerRequisitesResponse | None,
+)
+async def get_partner_requisites(
+    response: Response,
+    user: Annotated[User, Depends(get_current_identity_user)],
+    session: Annotated[AsyncSession, Depends(get_database_session)],
+    identity: Annotated[IdentityService, Depends(get_identity_service)],
+    service: Annotated[PartnerProgramService, Depends(get_partner_service)],
+) -> PartnerRequisitesResponse | None:
+    await _require_permission(identity, session, user.id, PermissionCode.PARTNERS_READ_OWN)
+    try:
+        requisites = await service.get_requisites(session, user_id=user.id)
+    except (PartnerProgramDisabledError, PartnerNotFoundError) as error:
+        raise HTTPException(status_code=404, detail="Partner profile was not found") from error
+    except PartnerRequisitesDecryptionError as error:
+        raise HTTPException(status_code=503, detail="Partner requisites are unavailable") from error
+    response.headers["Cache-Control"] = "no-store"
+    return requisites
+
+
+@partner_router.put("/requisites", response_model=PartnerRequisitesResponse)
+async def save_partner_requisites(
+    payload: PartnerRequisitesRequest,
+    response: Response,
+    user: Annotated[User, Depends(get_current_identity_user)],
+    session: Annotated[AsyncSession, Depends(get_database_session)],
+    identity: Annotated[IdentityService, Depends(get_identity_service)],
+    service: Annotated[PartnerProgramService, Depends(get_partner_service)],
+) -> PartnerRequisitesResponse:
+    await _require_permission(identity, session, user.id, PermissionCode.PARTNERS_READ_OWN)
+    try:
+        requisites = await service.save_requisites(
+            session,
+            user_id=user.id,
+            payload=payload,
+        )
+        await session.commit()
+    except (PartnerProgramDisabledError, PartnerNotFoundError) as error:
+        await session.rollback()
+        raise HTTPException(status_code=404, detail="Partner profile was not found") from error
+    except SQLAlchemyError as error:
+        await session.rollback()
+        raise HTTPException(status_code=503, detail="Partner requisites are unavailable") from error
+    response.headers["Cache-Control"] = "no-store"
+    return requisites
+
+
 @partner_router.get("/commissions", response_model=list[PartnerCommissionResponse])
 async def list_partner_commissions(
     user: Annotated[User, Depends(get_current_identity_user)],
@@ -217,6 +270,9 @@ async def request_partner_payout(
     except PartnerPayoutBalanceError as error:
         await session.rollback()
         raise HTTPException(status_code=409, detail="Insufficient available balance") from error
+    except PartnerPayoutRequisitesError as error:
+        await session.rollback()
+        raise HTTPException(status_code=409, detail="Partner requisites are required") from error
     except (PartnerProgramDisabledError, PartnerNotFoundError) as error:
         await session.rollback()
         raise HTTPException(status_code=404, detail="Partner profile was not found") from error

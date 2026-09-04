@@ -1162,6 +1162,20 @@ import and worker are ready. Enabling only one side creates an intentionally
 unsupported mixed mode. Real PostgreSQL, SMTP, web, and installed-PWA rehearsal
 is the next gate.
 
+## Partner cabinet finances and requisites
+
+The partner cabinet reads its real dashboard, attributed commissions, landing links,
+and payout request history from `/api/partner/*`. Payout requests remain an internal
+review workflow and cannot exceed the matured, unreserved balance.
+
+Before the first payout request, a partner must save bank requisites through
+`GET` and `PUT /api/partner/requisites`. Revision `20260904_0031` stores one
+requisites record per partner. Recipient and bank fields are serialized and encrypted
+with AES-256-GCM, bound to the partner ID, and never stored in plaintext. The codec uses
+the configured notification encryption key ring so existing key rotation continues to
+decrypt older records. Only a user with `partners.read_own` can read or replace their
+own details.
+
 ## Verification gate
 
 ```bash

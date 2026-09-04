@@ -3,6 +3,8 @@ import type {
     PartnerDashboard,
     PartnerLanding,
     PartnerPayout,
+    PartnerRequisites,
+    PartnerRequisitesPayload,
     PartnerCreatePayload,
     PartnerLandingCreatePayload,
     PartnerLandingUpdatePayload,
@@ -43,6 +45,22 @@ export const getPartnerPayouts = (token: string, signal?: AbortSignal) => (
         signal,
     })
 );
+
+export const getPartnerRequisites = (token: string, signal?: AbortSignal) => (
+    requestJson<PartnerRequisites | null>('/partner/requisites', {
+        headers: authorizedHeaders(token),
+        signal,
+    })
+);
+
+export const updatePartnerRequisites = (
+    token: string,
+    payload: PartnerRequisitesPayload,
+) => requestJson<PartnerRequisites>('/partner/requisites', {
+    method: 'PUT',
+    headers: authorizedHeaders(token, true),
+    body: JSON.stringify(payload),
+});
 
 export const createPartnerPayout = (token: string, amount: string) => (
     requestJson<PartnerPayout>('/partner/payouts', {

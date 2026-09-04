@@ -58,6 +58,13 @@ export const PAGE_CHROME: PageChromeConfig[] = [
         bottomOffset: "0px",
         otherBottomOffset: "0px",
     },
+    {
+        page: "partner",
+        topColor: "#E7EEF1",
+        pageColor: "#E7EEF1",
+        bottomOffset: "0px",
+        otherBottomOffset: "0px",
+    },
 ];
 
 const SITE_CHROME_HIDDEN_ROUTES = new Set([
@@ -88,5 +95,6 @@ export const getPageChrome = (pathname: string | null): PageChromeConfig => {
     if (pathname === '/lk' || pathname === '/mycollection' || pathname === '/profile') return PAGE_CHROME[4];
     if (pathname === '/light-running') return PAGE_CHROME[5];
     if (pathname === '/nikitamoiseev') return PAGE_CHROME[6];
+    if (pathname?.startsWith('/partner')) return PAGE_CHROME[7];
     return DEFAULT_PAGE_CHROME;
 };
