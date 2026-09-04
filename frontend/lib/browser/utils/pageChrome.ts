@@ -65,6 +65,13 @@ export const PAGE_CHROME: PageChromeConfig[] = [
         bottomOffset: "0px",
         otherBottomOffset: "0px",
     },
+    {
+        page: "presentation",
+        topColor: "#172024",
+        pageColor: "#FFFFFF",
+        bottomOffset: "0px",
+        otherBottomOffset: "0px",
+    },
 ];
 
 const SITE_CHROME_HIDDEN_ROUTES = new Set([
@@ -88,7 +95,7 @@ export const isSiteChromeHidden = (pathname: string | null) => (
 );
 
 export const getPageChrome = (pathname: string | null): PageChromeConfig => {
-    if (pathname === '/') return PAGE_CHROME[0];
+    if (pathname === '/' || pathname === '/presentation') return PAGE_CHROME[8];
     if (pathname?.startsWith('/constructor')) return PAGE_CHROME[1];
     if (pathname?.startsWith('/product')) return PAGE_CHROME[2];
     if (pathname?.startsWith('/unfinished')) return PAGE_CHROME[3];

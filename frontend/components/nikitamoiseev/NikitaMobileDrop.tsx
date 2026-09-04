@@ -3,6 +3,7 @@ import Link from 'next/link';
 
 import { NikitaCartAction } from './NikitaCartAction';
 import { NikitaHoodieCarousel } from './NikitaHoodieCarousel';
+import { NikitaStoryReveal } from './NikitaStoryReveal';
 import styles from './NikitaMoiseevLanding.module.css';
 
 export const NikitaMobileDrop = () => (
@@ -48,10 +49,7 @@ export const NikitaMobileDrop = () => (
                 <Image src="/nikitamoiseev/arrow.svg" alt="" width={22} height={17} />
             </Link>
 
-            <div className={styles.collectionNames} aria-hidden="true">
-                <p>NIKITA<br />MOISEEV</p>
-                <p>GARMENT<br />BURO</p>
-            </div>
+            <NikitaStoryReveal />
 
             <div className={styles.storyImage}>
                 <Image
