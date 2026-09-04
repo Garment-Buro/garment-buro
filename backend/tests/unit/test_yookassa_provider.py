@@ -71,6 +71,31 @@ class FakeCreateTransport:
         raise AssertionError(f"Unexpected GET for {provider_payment_id}")
 
 
+@dataclass
+class FakeMutationTransport:
+    response: YooKassaHttpResponse
+    calls: list[tuple[str, str, str, bytes | None]]
+
+    async def capture_payment(
+        self,
+        provider_payment_id: str,
+        *,
+        idempotence_key: str,
+        request_body: bytes,
+    ) -> YooKassaHttpResponse:
+        self.calls.append(("capture", provider_payment_id, idempotence_key, request_body))
+        return self.response
+
+    async def cancel_payment(
+        self,
+        provider_payment_id: str,
+        *,
+        idempotence_key: str,
+    ) -> YooKassaHttpResponse:
+        self.calls.append(("cancel", provider_payment_id, idempotence_key, None))
+        return self.response
+
+
 class FakeResponseContent:
     def __init__(self, body: bytes) -> None:
         self.body = body
@@ -269,6 +294,72 @@ def test_aiohttp_creation_transport_sends_safe_headers_and_no_redirects() -> Non
             )
         assert empty_body.value.code == "invalid_request_size"
         assert len(session.calls) == 1
+
+    asyncio.run(scenario())
+
+
+def test_provider_client_capture_and_cancel_use_typed_mutations() -> None:
+    async def scenario() -> None:
+        key = "00000000-0000-4000-8000-000000000001"
+        provider_id = "2c111111-000f-5000-a000-111111111111"
+        capture_transport = FakeMutationTransport(
+            YooKassaHttpResponse(status=200, body=_payment_body(status="succeeded")),
+            [],
+        )
+        captured = await YooKassaProviderClient(capture_transport).capture_payment(
+            provider_id,
+            idempotence_key=key,
+            request_body=b"{}",
+        )
+        assert captured.status == "succeeded"
+        assert capture_transport.calls == [("capture", provider_id, key, b"{}")]
+
+        cancel_transport = FakeMutationTransport(
+            YooKassaHttpResponse(status=200, body=_payment_body(status="canceled")),
+            [],
+        )
+        canceled = await YooKassaProviderClient(cancel_transport).cancel_payment(
+            provider_id,
+            idempotence_key=key,
+        )
+        assert canceled.status == "canceled"
+        assert cancel_transport.calls == [("cancel", provider_id, key, None)]
+
+    asyncio.run(scenario())
+
+
+def test_aiohttp_mutation_transport_matches_yookassa_paths_and_bodies() -> None:
+    async def scenario() -> None:
+        session = FakeAiohttpSession()
+        transport = AiohttpYooKassaTransport(
+            Settings(
+                _env_file=None,
+                yookassa_shop_id="shop",
+                yookassa_api_key="secret",
+            ),
+            session=session,
+        )
+        key = "00000000-0000-4000-8000-000000000001"
+        provider_id = "2c111111-000f-5000-a000-111111111111"
+
+        await transport.capture_payment(
+            provider_id,
+            idempotence_key=key,
+            request_body=b"{}",
+        )
+        await transport.cancel_payment(provider_id, idempotence_key=key)
+
+        capture_url, capture_kwargs = session.calls[0]
+        assert capture_url.endswith(f"/payments/{provider_id}/capture")
+        assert capture_kwargs["data"] == b"{}"
+        assert capture_kwargs["headers"] == {
+            "Idempotence-Key": key,
+            "Content-Type": "application/json",
+        }
+        cancel_url, cancel_kwargs = session.calls[1]
+        assert cancel_url.endswith(f"/payments/{provider_id}/cancel")
+        assert cancel_kwargs["data"] is None
+        assert cancel_kwargs["headers"] == {"Idempotence-Key": key}
 
     asyncio.run(scenario())
 

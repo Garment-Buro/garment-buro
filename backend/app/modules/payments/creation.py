@@ -19,7 +19,7 @@ from app.modules.orders.service import (
     OrderLifecycleService,
     OrderNotFoundError,
 )
-from app.modules.payments.models import PaymentAttempt, PaymentAttemptStatus
+from app.modules.payments.models import PaymentAttempt, PaymentAttemptStatus, PaymentCaptureMode
 from app.modules.payments.provider import YooKassaProvider, YooKassaProviderError
 from app.modules.payments.repository import PaymentRepository
 from app.modules.payments.schemas import (
@@ -341,6 +341,7 @@ class PaymentCreationService:
             )
         return YooKassaCreatePaymentRequest(
             amount=YooKassaCreateAmount(value=order.total_price, currency=order.currency),
+            capture=attempt.capture_mode == PaymentCaptureMode.AUTOMATIC.value,
             payment_method_data=YooKassaCreatePaymentMethod(type=attempt.payment_method),
             confirmation=YooKassaCreateConfirmation(
                 return_url=f"{self.settings.public_base_url.rstrip('/')}/order/{order.id}"

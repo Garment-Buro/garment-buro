@@ -86,6 +86,51 @@ def test_factory_keeps_crm_file_routes_off_when_other_crm_writes_are_enabled() -
     assert "/api/crm/files/{attachment_id}/download" not in registered_paths
 
 
+def test_factory_registers_guarded_payment_management_and_payout_routes() -> None:
+    settings = Settings(
+        _env_file=None,
+        app_env=AppEnvironment.TEST,
+        public_base_url="https://shop.example.test",
+        database_enabled=True,
+        database_url="sqlite+aiosqlite:///:memory:",
+        identity_api_enabled=True,
+        identity_migration_fingerprint="a" * 64,
+        jwt_secret="j" * 32,
+        identity_otp_pepper="p" * 32,
+        notification_encryption_key="bm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm4=",
+        yookassa_shop_id="shop-id",
+        yookassa_api_key="payment-secret",
+        payment_creation_enabled=True,
+        payment_management_enabled=True,
+        payment_webhook_v2_enabled=True,
+        yookassa_receipt_tax_system_code=1,
+        yookassa_receipt_product_vat_code=1,
+        yookassa_receipt_delivery_vat_code=1,
+        yookassa_receipt_product_payment_mode="full_payment",
+        yookassa_receipt_delivery_payment_mode="full_payment",
+        yookassa_receipt_product_subject="non_marked",
+        yookassa_receipt_delivery_subject="service",
+        yookassa_payout_agent_id="agent-id",
+        yookassa_payout_api_key="payout-secret",
+        yookassa_payouts_enabled=True,
+    )
+    application = create_app(settings=settings)
+    registered = {
+        (method, route.path)
+        for route in application.routes
+        for method in getattr(route, "methods", set())
+    }
+
+    assert {
+        ("GET", "/api/payments/orders/{order_id}"),
+        ("POST", "/api/payments/orders/{order_id}/capture"),
+        ("POST", "/api/payments/orders/{order_id}/cancel"),
+        ("POST", "/api/payouts"),
+        ("GET", "/api/payouts/{payout_id}"),
+        ("POST", "/api/payouts/{payout_id}/refresh"),
+    } <= registered
+
+
 def test_factory_registers_catalog_mutations_only_for_guarded_cutover() -> None:
     settings = Settings(
         _env_file=None,

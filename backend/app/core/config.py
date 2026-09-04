@@ -146,7 +146,14 @@ class Settings(BaseSettings):
     payment_creation_enabled: bool = False
     payment_creation_retry_window_seconds: int = 82_800
     payment_creation_processing_timeout_seconds: int = 60
+    payment_management_enabled: bool = False
+    payment_operation_processing_timeout_seconds: int = 60
     payment_max_attempts_per_order: int = 3
+    yookassa_payout_agent_id: SecretStr | None = None
+    yookassa_payout_api_key: SecretStr | None = None
+    yookassa_payouts_enabled: bool = False
+    payout_retry_window_seconds: int = 82_800
+    payout_processing_timeout_seconds: int = 60
     fulfillment_outbox_enabled: bool = False
     fulfillment_email_enabled: bool = False
     fulfillment_crm_enabled: bool = False
@@ -557,6 +564,68 @@ class Settings(BaseSettings):
             raise ValueError(
                 "PAYMENT_CREATION_PROCESSING_TIMEOUT_SECONDS must exceed YOOKASSA_TIMEOUT_SECONDS"
             )
+        if not 1 <= self.payment_operation_processing_timeout_seconds <= 3_600:
+            raise ValueError(
+                "PAYMENT_OPERATION_PROCESSING_TIMEOUT_SECONDS must be between 1 and 3600"
+            )
+        if self.payment_operation_processing_timeout_seconds <= self.yookassa_timeout_seconds:
+            raise ValueError(
+                "PAYMENT_OPERATION_PROCESSING_TIMEOUT_SECONDS must exceed YOOKASSA_TIMEOUT_SECONDS"
+            )
+        if self.payment_management_enabled:
+            required_payment_management = {
+                "DATABASE_ENABLED": self.database_enabled,
+                "IDENTITY_API_ENABLED": self.identity_api_enabled,
+                "PAYMENT_CREATION_ENABLED": self.payment_creation_enabled,
+            }
+            missing_payment_management = [
+                name for name, enabled in required_payment_management.items() if not enabled
+            ]
+            if missing_payment_management:
+                raise ValueError(
+                    "Payment management requires enabled dependencies: "
+                    + ", ".join(missing_payment_management)
+                )
+            if not (self.payment_webhook_v2_enabled or self.payment_reconciliation_enabled):
+                raise ValueError(
+                    "Payment management requires PAYMENT_WEBHOOK_V2_ENABLED or "
+                    "PAYMENT_RECONCILIATION_ENABLED"
+                )
+        if not 60 <= self.payout_retry_window_seconds <= 86_400:
+            raise ValueError("PAYOUT_RETRY_WINDOW_SECONDS must be between 60 and 86400")
+        if not 1 <= self.payout_processing_timeout_seconds <= 3_600:
+            raise ValueError("PAYOUT_PROCESSING_TIMEOUT_SECONDS must be between 1 and 3600")
+        if self.payout_processing_timeout_seconds <= self.yookassa_timeout_seconds:
+            raise ValueError(
+                "PAYOUT_PROCESSING_TIMEOUT_SECONDS must exceed YOOKASSA_TIMEOUT_SECONDS"
+            )
+        if self.yookassa_payouts_enabled:
+            required_payout_flags = {
+                "DATABASE_ENABLED": self.database_enabled,
+                "IDENTITY_API_ENABLED": self.identity_api_enabled,
+            }
+            missing_payout_flags = [
+                name for name, enabled in required_payout_flags.items() if not enabled
+            ]
+            if missing_payout_flags:
+                raise ValueError(
+                    "YooKassa payouts require enabled dependencies: "
+                    + ", ".join(missing_payout_flags)
+                )
+            required_payout_secrets = {
+                "YOOKASSA_PAYOUT_AGENT_ID": self.yookassa_payout_agent_id,
+                "YOOKASSA_PAYOUT_API_KEY": self.yookassa_payout_api_key,
+            }
+            missing_payout_secrets = [
+                name
+                for name, value in required_payout_secrets.items()
+                if not self.secret_value(value)
+            ]
+            if missing_payout_secrets:
+                raise ValueError(
+                    "Missing required YooKassa payout settings: "
+                    + ", ".join(missing_payout_secrets)
+                )
         if not 1 <= self.payment_max_attempts_per_order <= 10:
             raise ValueError("PAYMENT_MAX_ATTEMPTS_PER_ORDER must be between 1 and 10")
         if not 1 <= self.fulfillment_max_attempts <= 20:

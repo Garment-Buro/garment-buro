@@ -100,6 +100,7 @@ class OrderCreationCommand(BaseModel):
     delivery_address: str = Field(min_length=1, max_length=4096)
     cdek_point_code: str | None = Field(default=None, max_length=64)
     payment_method: str = Field(min_length=1, max_length=64)
+    payment_capture_mode: Literal["automatic", "manual"] = "automatic"
     items: list[OrderLineCreate] = Field(min_length=1, max_length=MAX_ORDER_ITEMS)
     claimed_total_price: Decimal = Field(ge=0, max_digits=12, decimal_places=2)
     delivery_price: Decimal = Field(ge=0, max_digits=12, decimal_places=2)

@@ -19,6 +19,7 @@ from app.modules.payments.models import (
     Payment,
     PaymentAttempt,
     PaymentAttemptStatus,
+    PaymentCaptureMode,
     PaymentEvent,
     PaymentProvider,
     PaymentStatus,
@@ -75,6 +76,7 @@ class PreparedPaymentAttempt:
     attempt_number: int
     provider_idempotence_key: str
     payment_method: str
+    capture_mode: str
     amount: Decimal
     currency: str
     status: str
@@ -106,7 +108,12 @@ class PaymentService:
         *,
         order_id: int,
         client_attempt_key: str,
+        capture_mode: str = PaymentCaptureMode.AUTOMATIC.value,
     ) -> PreparedPaymentAttempt:
+        try:
+            normalized_capture_mode = PaymentCaptureMode(capture_mode).value
+        except ValueError as error:
+            raise PaymentStateError("Payment capture mode is not supported") from error
         client_key_digest = digest_payment_attempt_key(client_attempt_key)
         existing = await self.repository.get_attempt_by_client_digest(
             session,
@@ -121,7 +128,11 @@ class PaymentService:
         payment_method = PAYMENT_METHOD_MAP.get(order.payment_method or "")
         if payment_method is None:
             raise PaymentStateError("Order payment method is not supported by YooKassa")
-        fingerprint = self._attempt_fingerprint(order, payment_method=payment_method)
+        fingerprint = self._attempt_fingerprint(
+            order,
+            payment_method=payment_method,
+            capture_mode=normalized_capture_mode,
+        )
 
         if existing is not None:
             return self._replay(existing, order=order, fingerprint=fingerprint)
@@ -166,6 +177,7 @@ class PaymentService:
             provider_idempotence_key=self._provider_key(),
             request_fingerprint_sha256=fingerprint,
             payment_method=payment_method,
+            capture_mode=normalized_capture_mode,
             status=PaymentAttemptStatus.PREPARED.value,
         )
         stored, inserted = await self.repository.add_attempt(session, attempt)
@@ -282,6 +294,7 @@ class PaymentService:
             snapshot.provider_created_at
         )
         attempt.captured_at = attempt.captured_at or self._optional_utc(snapshot.captured_at)
+        attempt.expires_at = attempt.expires_at or self._optional_utc(snapshot.expires_at)
         attempt.cancellation_party = snapshot.cancellation_party
         attempt.cancellation_reason = snapshot.cancellation_reason
         attempt.last_error_code = None
@@ -484,12 +497,18 @@ class PaymentService:
                 )
 
     @staticmethod
-    def _attempt_fingerprint(order: Order, *, payment_method: str) -> str:
+    def _attempt_fingerprint(
+        order: Order,
+        *,
+        payment_method: str,
+        capture_mode: str,
+    ) -> str:
         canonical = {
             "order_id": order.id,
             "amount": format(order.total_price, ".2f"),
             "currency": order.currency,
             "payment_method": payment_method,
+            "capture_mode": capture_mode,
         }
         return hashlib.sha256(
             json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -547,6 +566,7 @@ class PaymentService:
             attempt_number=attempt.attempt_number,
             provider_idempotence_key=attempt.provider_idempotence_key,
             payment_method=attempt.payment_method,
+            capture_mode=attempt.capture_mode,
             amount=payment.amount,
             currency=payment.currency,
             status=attempt.status,

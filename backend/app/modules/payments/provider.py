@@ -47,6 +47,21 @@ class YooKassaHttpTransport(Protocol):
         request_body: bytes,
     ) -> YooKassaHttpResponse: ...
 
+    async def capture_payment(
+        self,
+        provider_payment_id: str,
+        *,
+        idempotence_key: str,
+        request_body: bytes,
+    ) -> YooKassaHttpResponse: ...
+
+    async def cancel_payment(
+        self,
+        provider_payment_id: str,
+        *,
+        idempotence_key: str,
+    ) -> YooKassaHttpResponse: ...
+
 
 class YooKassaProvider(Protocol):
     async def get_payment(self, provider_payment_id: str) -> ProviderPaymentSnapshot: ...
@@ -56,6 +71,21 @@ class YooKassaProvider(Protocol):
         *,
         idempotence_key: str,
         request_body: bytes,
+    ) -> ProviderPaymentSnapshot: ...
+
+    async def capture_payment(
+        self,
+        provider_payment_id: str,
+        *,
+        idempotence_key: str,
+        request_body: bytes,
+    ) -> ProviderPaymentSnapshot: ...
+
+    async def cancel_payment(
+        self,
+        provider_payment_id: str,
+        *,
+        idempotence_key: str,
     ) -> ProviderPaymentSnapshot: ...
 
 
@@ -145,38 +175,63 @@ class AiohttpYooKassaTransport:
         idempotence_key: str,
         request_body: bytes,
     ) -> YooKassaHttpResponse:
-        try:
-            parsed_key = uuid.UUID(idempotence_key)
-        except (AttributeError, TypeError, ValueError) as error:
-            raise YooKassaProviderError(
-                "invalid_idempotence_key",
-                retryable=False,
-                rejected=True,
-            ) from error
-        if parsed_key.version != 4 or str(parsed_key) != idempotence_key:
-            raise YooKassaProviderError(
-                "invalid_idempotence_key",
-                retryable=False,
-                rejected=True,
-            )
-        if not 1 <= len(request_body) <= MAX_YOOKASSA_RESPONSE_BYTES:
-            raise YooKassaProviderError(
-                "invalid_request_size",
-                retryable=False,
-                rejected=True,
-            )
+        self._validate_idempotence_key(idempotence_key)
+        self._validate_request_body(request_body)
+        return await self._post(
+            "/payments",
+            idempotence_key=idempotence_key,
+            request_body=request_body,
+        )
+
+    async def capture_payment(
+        self,
+        provider_payment_id: str,
+        *,
+        idempotence_key: str,
+        request_body: bytes,
+    ) -> YooKassaHttpResponse:
+        normalized = self._validate_payment_id(provider_payment_id)
+        self._validate_idempotence_key(idempotence_key)
+        self._validate_request_body(request_body)
+        return await self._post(
+            f"/payments/{normalized}/capture",
+            idempotence_key=idempotence_key,
+            request_body=request_body,
+        )
+
+    async def cancel_payment(
+        self,
+        provider_payment_id: str,
+        *,
+        idempotence_key: str,
+    ) -> YooKassaHttpResponse:
+        normalized = self._validate_payment_id(provider_payment_id)
+        self._validate_idempotence_key(idempotence_key)
+        return await self._post(
+            f"/payments/{normalized}/cancel",
+            idempotence_key=idempotence_key,
+            request_body=None,
+        )
+
+    async def _post(
+        self,
+        path: str,
+        *,
+        idempotence_key: str,
+        request_body: bytes | None,
+    ) -> YooKassaHttpResponse:
         if self._session is None:
             await self.startup()
         if self._session is None:
             raise YooKassaProviderError("not_configured", retryable=False)
         try:
+            headers = {"Idempotence-Key": idempotence_key}
+            if request_body is not None:
+                headers["Content-Type"] = "application/json"
             async with self._session.post(
-                f"{self.base_url}/payments",
+                f"{self.base_url}{path}",
                 data=request_body,
-                headers={
-                    "Content-Type": "application/json",
-                    "Idempotence-Key": idempotence_key,
-                },
+                headers=headers,
                 allow_redirects=False,
             ) as response:
                 body = bytearray()
@@ -203,6 +258,43 @@ class AiohttpYooKassaTransport:
                 retryable=True,
                 outcome_unknown=True,
             ) from error
+
+    @staticmethod
+    def _validate_payment_id(provider_payment_id: str) -> str:
+        normalized = provider_payment_id.strip()
+        if not PROVIDER_PAYMENT_ID_PATTERN.fullmatch(normalized):
+            raise YooKassaProviderError(
+                "invalid_payment_id",
+                retryable=False,
+                rejected=True,
+            )
+        return normalized
+
+    @staticmethod
+    def _validate_idempotence_key(idempotence_key: str) -> None:
+        try:
+            parsed_key = uuid.UUID(idempotence_key)
+        except (AttributeError, TypeError, ValueError) as error:
+            raise YooKassaProviderError(
+                "invalid_idempotence_key",
+                retryable=False,
+                rejected=True,
+            ) from error
+        if parsed_key.version != 4 or str(parsed_key) != idempotence_key:
+            raise YooKassaProviderError(
+                "invalid_idempotence_key",
+                retryable=False,
+                rejected=True,
+            )
+
+    @staticmethod
+    def _validate_request_body(request_body: bytes) -> None:
+        if not 1 <= len(request_body) <= MAX_YOOKASSA_RESPONSE_BYTES:
+            raise YooKassaProviderError(
+                "invalid_request_size",
+                retryable=False,
+                rejected=True,
+            )
 
 
 class YooKassaProviderClient:
@@ -242,6 +334,65 @@ class YooKassaProviderClient:
             idempotence_key=idempotence_key,
             request_body=request_body,
         )
+        if response.status == 200:
+            try:
+                return YooKassaWebhookPayment.model_validate_json(response.body).to_snapshot()
+            except (ValidationError, ValueError) as error:
+                raise YooKassaProviderError(
+                    "invalid_response",
+                    retryable=True,
+                    outcome_unknown=True,
+                ) from error
+        if response.status in {401, 403}:
+            raise YooKassaProviderError("authentication", retryable=False)
+        if response.status == 429:
+            raise YooKassaProviderError(
+                "rate_limited",
+                retryable=True,
+                outcome_unknown=True,
+            )
+        if 500 <= response.status <= 599:
+            raise YooKassaProviderError(
+                "unavailable",
+                retryable=True,
+                outcome_unknown=True,
+            )
+        if 400 <= response.status <= 499:
+            raise YooKassaProviderError("request_rejected", retryable=False)
+        raise YooKassaProviderError(
+            "unexpected_status",
+            retryable=True,
+            outcome_unknown=True,
+        )
+
+    async def capture_payment(
+        self,
+        provider_payment_id: str,
+        *,
+        idempotence_key: str,
+        request_body: bytes,
+    ) -> ProviderPaymentSnapshot:
+        response = await self.transport.capture_payment(
+            provider_payment_id,
+            idempotence_key=idempotence_key,
+            request_body=request_body,
+        )
+        return self._parse_mutation_response(response)
+
+    async def cancel_payment(
+        self,
+        provider_payment_id: str,
+        *,
+        idempotence_key: str,
+    ) -> ProviderPaymentSnapshot:
+        response = await self.transport.cancel_payment(
+            provider_payment_id,
+            idempotence_key=idempotence_key,
+        )
+        return self._parse_mutation_response(response)
+
+    @staticmethod
+    def _parse_mutation_response(response: YooKassaHttpResponse) -> ProviderPaymentSnapshot:
         if response.status == 200:
             try:
                 return YooKassaWebhookPayment.model_validate_json(response.body).to_snapshot()

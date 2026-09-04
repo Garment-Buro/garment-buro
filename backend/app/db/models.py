@@ -62,8 +62,10 @@ from app.modules.payments.models import (
     Payment,
     PaymentAttempt,
     PaymentEvent,
+    PaymentOperation,
     PaymentReconciliationJob,
 )
+from app.modules.payouts.models import Payout
 
 __all__ = [
     "CrmOrderProject",
@@ -115,7 +117,9 @@ __all__ = [
     "Payment",
     "PaymentAttempt",
     "PaymentEvent",
+    "PaymentOperation",
     "PaymentReconciliationJob",
+    "Payout",
     "Product",
     "ProductMedia",
     "ProductVariant",
