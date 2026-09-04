@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 
-import { PlatformHome } from '@/components/platform/PlatformHome';
+import { PlatformEntry } from '@/components/platform/PlatformEntry';
 
 export const metadata: Metadata = {
   title: 'Совместные коллекции',
@@ -8,5 +8,5 @@ export const metadata: Metadata = {
 };
 
 export default function Home() {
-  return <PlatformHome />;
+  return <PlatformEntry />;
 }

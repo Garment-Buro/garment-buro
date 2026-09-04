@@ -83,7 +83,7 @@ test("legacy catalog stays reusable internally while the public home is platform
     assert.doesNotMatch(landingSource, /phantom-ui|LandingSkeleton/);
     assert.match(landingSource, /initialProducts/);
     assert.match(landingSource, /initialSettings/);
-    assert.match(homeSource, /PlatformHome/);
+    assert.match(homeSource, /PlatformEntry/);
     assert.doesNotMatch(homeSource, /<LandingPage initialProducts=\{products\}/);
     assert.match(publicCatalogSource, /PUBLIC_CATALOG_ENABLED = false/);
     assert.match(phantomBootstrapSource, /if \(pathname === "\/"\) return/);
