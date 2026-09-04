@@ -59,6 +59,22 @@ The parent OpenAPI document only lists refactored routes. Mounted legacy routes
 remain available at their current URLs and retain their own schema until each
 module is moved.
 
+## Page QR codes
+
+`GET /api/qr-code` generates a PNG for a root-relative page on one of the
+configured Garment Buro origins. It never accepts an arbitrary absolute URL.
+
+```text
+/api/qr-code?path=/nikitamoiseev&size=512
+/api/qr-code?path=/partner&surface=partner&size=512
+/api/qr-code?path=/workspace&surface=widget&size=512
+```
+
+The `site` surface uses `PUBLIC_BASE_URL`; `partner` and `widget` use
+`PARTNER_PUBLIC_BASE_URL` and `WIDGET_PUBLIC_BASE_URL`. Keep those values as
+bare trusted origins without credentials, a path, query, or fragment. Supported
+PNG sizes are 128–1024 pixels.
+
 ## Database migrations
 
 Run migrations from `backend/` with an explicit `DATABASE_URL`:

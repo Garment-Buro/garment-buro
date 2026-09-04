@@ -2,11 +2,15 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
     return {
-        name: "Garment Buro",
+        id: "/constructor",
+        name: "Garment Buro — конструктор",
         short_name: "Garment Buro",
         description: "Когда вещь почти подходит — можно её доработать.",
-        start_url: "/",
+        start_url: "/constructor?source=pwa",
+        scope: "/",
         display: "standalone",
+        orientation: "portrait-primary",
+        lang: "ru",
         background_color: "#F2F2F2",
         theme_color: "#F2F2F2",
         icons: [

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import ConstructorPage from "@/components/constructor/ConstructorPage";
+import { PwaInstallGate } from "@/components/pwa/PwaInstallGate";
 import Home from "../page";
 
 type ConstructorRoutePageProps = {
@@ -43,12 +44,20 @@ export default async function ConstructorRoutePage({ params, searchParams }: Con
     }
 
     const resolvedSearchParams = searchParams ? await searchParams : {};
+    const landing = getSearchParam(resolvedSearchParams, "landing");
+    const returnHref = landing === "nikitamoiseev"
+        ? "/nikitamoiseev"
+        : landing
+            ? `/p/${encodeURIComponent(landing)}`
+            : "/";
 
     return (
-        <ConstructorPage
-            productId={getSearchParam(resolvedSearchParams, "productId", "product", "id")}
-            editCartItemId={getSearchParam(resolvedSearchParams, "editCartItemId")}
-            draftId={getSearchParam(resolvedSearchParams, "draftId")}
-        />
+        <PwaInstallGate returnHref={returnHref}>
+            <ConstructorPage
+                productId={getSearchParam(resolvedSearchParams, "productId", "product", "id")}
+                editCartItemId={getSearchParam(resolvedSearchParams, "editCartItemId")}
+                draftId={getSearchParam(resolvedSearchParams, "draftId")}
+            />
+        </PwaInstallGate>
     );
 }

@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     app_env: AppEnvironment = AppEnvironment.LOCAL
     app_name: str = "Garment Buro API"
     public_base_url: str = "https://garment-buro.ru"
+    partner_public_base_url: str = "https://partner.garment-buro.ru"
+    widget_public_base_url: str = "https://widget.garment-buro.ru"
 
     legacy_database_url: str = "sqlite:///./ecommerce.db"
     database_enabled: bool = False

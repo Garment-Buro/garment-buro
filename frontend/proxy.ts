@@ -5,11 +5,30 @@ import { NextResponse } from 'next/server';
  * Set this to false to re-enable all frontend pages.
  */
 const ADMIN_ONLY_MODE = false;
+const PARTNER_PUBLIC_FILES = new Set([
+    '/sw.js',
+    '/offline.html',
+    '/pwa-icon-192.png',
+    '/pwa-icon-512.png',
+    '/apple-touch-icon.png',
+]);
 
 export function proxy(request: NextRequest) {
     const hostname = request.headers.get('host')?.split(':')[0].toLowerCase();
     const { pathname } = request.nextUrl;
     if (hostname === 'partner.garment-buro.ru') {
+        if (pathname === '/manifest.webmanifest') {
+            const url = request.nextUrl.clone();
+            url.pathname = '/partner/manifest.webmanifest';
+            const response = NextResponse.rewrite(url);
+            response.headers.set('X-Robots-Tag', 'noindex, nofollow');
+            return response;
+        }
+        if (PARTNER_PUBLIC_FILES.has(pathname)) {
+            const response = NextResponse.next();
+            response.headers.set('X-Robots-Tag', 'noindex, nofollow');
+            return response;
+        }
         if (pathname === '/' || (!pathname.startsWith('/partner') && !pathname.startsWith('/api'))) {
             const url = request.nextUrl.clone();
             url.pathname = '/partner';

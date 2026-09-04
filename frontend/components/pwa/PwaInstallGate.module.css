@@ -1,0 +1,114 @@
+.screen {
+    min-height: 100vh;
+    min-height: 100dvh;
+    display: grid;
+    place-items: center;
+    padding: max(24px, env(safe-area-inset-top)) 20px max(24px, env(safe-area-inset-bottom));
+    background: #f2f2f2;
+    color: #181818;
+    font-family: var(--font-manrope), Manrope, sans-serif;
+}
+
+.card {
+    width: min(100%, 480px);
+    padding: 32px 24px 28px;
+    border: 1px solid rgb(24 24 24 / 10%);
+    border-radius: 24px;
+    background: #fff;
+    box-shadow: 0 20px 60px rgb(24 24 24 / 8%);
+}
+
+.logo {
+    display: block;
+    width: 72px;
+    height: 72px;
+    margin-bottom: 28px;
+    border-radius: 18px;
+}
+
+.eyebrow {
+    margin: 0 0 10px;
+    color: #666;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.card h1 {
+    max-width: 390px;
+    margin: 0;
+    font-size: clamp(30px, 8vw, 44px);
+    font-weight: 650;
+    letter-spacing: -0.05em;
+    line-height: 0.98;
+    text-wrap: balance;
+}
+
+.copy {
+    margin: 22px 0 0;
+    color: #555;
+    font-size: 16px;
+    line-height: 1.5;
+}
+
+.steps {
+    display: grid;
+    gap: 12px;
+    margin: 24px 0 0;
+    padding-left: 24px;
+    color: #333;
+    font-size: 15px;
+    line-height: 1.4;
+}
+
+.installButton {
+    width: 100%;
+    min-height: 52px;
+    margin-top: 28px;
+    border: 0;
+    border-radius: 14px;
+    background: #181818;
+    color: #fff;
+    font: inherit;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background-color 160ms ease, transform 160ms ease;
+}
+
+.installButton:hover {
+    background: #303030;
+}
+
+.installButton:active {
+    transform: scale(0.985);
+}
+
+.installButton:focus-visible,
+.returnLink:focus-visible {
+    outline: 3px solid #5086ff;
+    outline-offset: 3px;
+}
+
+.returnLink {
+    display: inline-flex;
+    margin-top: 24px;
+    color: #181818;
+    font-size: 14px;
+    font-weight: 650;
+    text-decoration: underline;
+    text-underline-offset: 4px;
+}
+
+@media (min-width: 768px) {
+    .card {
+        padding: 42px 40px 36px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .installButton {
+        transition: none;
+    }
+}

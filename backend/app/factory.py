@@ -68,6 +68,8 @@ from app.modules.payouts.provider import (
 )
 from app.modules.payouts.router import router as payout_router
 from app.modules.payouts.service import PayoutService
+from app.modules.qr_codes.router import router as qr_code_router
+from app.modules.qr_codes.service import QrCodeService
 
 
 def create_app(
@@ -92,6 +94,7 @@ def create_app(
     crm_file_service: CrmFileService | None = None,
     cdek_quote_service: CdekQuoteService | None = None,
     partner_program_service: PartnerProgramService | None = None,
+    qr_code_service: QrCodeService | None = None,
 ) -> FastAPI:
     runtime_settings = settings or get_settings()
     database_manager = database or DatabaseManager(runtime_settings)
@@ -112,6 +115,7 @@ def create_app(
     crm_file_manager = crm_file_service
     cdek_quote_manager = cdek_quote_service
     partner_program_manager = partner_program_service
+    qr_code_manager = qr_code_service or QrCodeService(runtime_settings)
     payment_transport: AiohttpYooKassaTransport | None = None
     payout_transport: AiohttpYooKassaPayoutTransport | None = None
     cdek_quote_transport: AiohttpCdekTransport | None = None
@@ -294,6 +298,7 @@ def create_app(
     application.state.crm_file_service = crm_file_manager
     application.state.cdek_quote_service = cdek_quote_manager
     application.state.partner_program_service = partner_program_manager
+    application.state.qr_code_service = qr_code_manager
 
     application.add_middleware(
         CORSMiddleware,
@@ -303,6 +308,7 @@ def create_app(
         allow_headers=["*"],
     )
     application.include_router(system_router)
+    application.include_router(qr_code_router)
     if runtime_settings.catalog_reads_enabled:
         application.include_router(catalog_router)
         application.include_router(media_router)
