@@ -175,7 +175,8 @@ garment-buro/
 - `CATALOG_READS_ENABLED` и `CATALOG_WRITES_ENABLED`;
 - `IDENTITY_API_ENABLED` и `NEXT_PUBLIC_IDENTITY_SESSION_V2_ENABLED`;
 - `CARTS_V2_ENABLED`, `ORDER_READS_ENABLED`, `CHECKOUT_V2_ENABLED`;
-- `PAYMENT_CREATION_ENABLED`, `PAYMENT_WEBHOOK_V2_ENABLED`;
+- `PAYMENT_CREATION_ENABLED`, `PAYMENT_WEBHOOK_V2_ENABLED`,
+  `PAYMENT_MANAGEMENT_ENABLED`, `YOOKASSA_PAYOUTS_ENABLED`;
 - `CRM_API_ENABLED`, `CRM_WRITES_ENABLED`, `CRM_FILES_ENABLED`;
 - `FULFILLMENT_*_ENABLED` и `CDEK_*_ENABLED`.
 
@@ -193,7 +194,7 @@ garment-buro/
 ```bash
 git switch main
 git pull --ff-only
-git switch -c feature/short-description
+git switch -c features/short-description
 ```
 
 ## Ветки и окружения
@@ -202,7 +203,7 @@ git switch -c feature/short-description
 | --- | --- | --- |
 | `main` | production | https://garment-buro.ru |
 | `develop` | development | https://dev.garment-buro.ru |
-| feature / `codex/*` | только CI | без автоматического deploy |
+| `features/*` | только CI | без автоматического deploy |
 
 После успешных тестов GitHub Actions собирает отдельные backend/frontend образы,
 публикует их в GHCR и передаёт серверу только ссылки на образы и deployment
