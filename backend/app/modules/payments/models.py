@@ -41,6 +41,23 @@ class PaymentAttemptStatus(str, Enum):
     CANCELED = "canceled"
 
 
+class PaymentCaptureMode(str, Enum):
+    AUTOMATIC = "automatic"
+    MANUAL = "manual"
+
+
+class PaymentOperationType(str, Enum):
+    CAPTURE = "capture"
+    CANCEL = "cancel"
+
+
+class PaymentOperationStatus(str, Enum):
+    PREPARED = "prepared"
+    UNKNOWN = "unknown"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
 class PaymentEventStatus(str, Enum):
     RECEIVED = "received"
     PROCESSING = "processing"
@@ -146,6 +163,10 @@ class PaymentAttempt(Base, IntegerIdMixin, TimestampMixin):
             name="payment_attempt_method_valid",
         ),
         CheckConstraint(
+            "capture_mode IN ('automatic', 'manual')",
+            name="payment_attempt_capture_mode_valid",
+        ),
+        CheckConstraint(
             "length(client_key_digest_sha256) = 64",
             name="payment_attempt_client_digest_length",
         ),
@@ -194,6 +215,12 @@ class PaymentAttempt(Base, IntegerIdMixin, TimestampMixin):
     provider_idempotence_key: Mapped[str] = mapped_column(String(36), nullable=False)
     request_fingerprint_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     payment_method: Mapped[str] = mapped_column(String(32), nullable=False)
+    capture_mode: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default=PaymentCaptureMode.AUTOMATIC.value,
+        server_default=PaymentCaptureMode.AUTOMATIC.value,
+    )
     status: Mapped[str] = mapped_column(
         String(32),
         nullable=False,
@@ -223,6 +250,7 @@ class PaymentAttempt(Base, IntegerIdMixin, TimestampMixin):
         nullable=True,
     )
     captured_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     cancellation_party: Mapped[str | None] = mapped_column(String(64), nullable=True)
     cancellation_reason: Mapped[str | None] = mapped_column(String(128), nullable=True)
@@ -240,6 +268,92 @@ class PaymentAttempt(Base, IntegerIdMixin, TimestampMixin):
         passive_deletes=True,
         uselist=False,
     )
+    operations: Mapped[list[PaymentOperation]] = relationship(
+        back_populates="attempt",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="PaymentOperation.id",
+    )
+
+
+class PaymentOperation(Base, IntegerIdMixin, TimestampMixin):
+    __tablename__ = "payment_operations"
+    __table_args__ = (
+        UniqueConstraint(
+            "payment_attempt_id",
+            name="uq_payment_operation_attempt",
+        ),
+        UniqueConstraint(
+            "client_key_digest_sha256",
+            name="uq_payment_operation_client_key_digest",
+        ),
+        UniqueConstraint(
+            "provider_idempotence_key",
+            name="uq_payment_operation_provider_idempotence_key",
+        ),
+        CheckConstraint(
+            "operation_type IN ('capture', 'cancel')",
+            name="payment_operation_type_valid",
+        ),
+        CheckConstraint(
+            "status IN ('prepared', 'unknown', 'succeeded', 'failed')",
+            name="payment_operation_status_valid",
+        ),
+        CheckConstraint(
+            "length(client_key_digest_sha256) = 64",
+            name="payment_operation_client_digest_length",
+        ),
+        CheckConstraint(
+            "length(provider_idempotence_key) = 36",
+            name="payment_operation_provider_key_length",
+        ),
+        CheckConstraint(
+            "length(request_sha256) = 64",
+            name="payment_operation_request_digest_length",
+        ),
+        CheckConstraint(
+            "attempts_count > 0",
+            name="payment_operation_attempts_positive",
+        ),
+        CheckConstraint(
+            "last_attempt_at >= started_at",
+            name="payment_operation_attempt_time_valid",
+        ),
+        CheckConstraint(
+            "(status IN ('succeeded', 'failed') AND resolved_at IS NOT NULL) OR "
+            "(status NOT IN ('succeeded', 'failed') AND resolved_at IS NULL)",
+            name="payment_operation_resolution_consistent",
+        ),
+    )
+
+    payment_attempt_id: Mapped[int] = mapped_column(
+        ForeignKey("payment_attempts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    actor_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    operation_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default=PaymentOperationStatus.PREPARED.value,
+        server_default=PaymentOperationStatus.PREPARED.value,
+        index=True,
+    )
+    client_key_digest_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    provider_idempotence_key: Mapped[str] = mapped_column(String(36), nullable=False)
+    request_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    attempts_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_attempt_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    attempt: Mapped[PaymentAttempt] = relationship(back_populates="operations")
 
 
 class PaymentEvent(Base, IntegerIdMixin, TimestampMixin):

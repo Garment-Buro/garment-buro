@@ -43,6 +43,11 @@ def test_local_settings_keep_current_runtime_defaults() -> None:
     assert settings.yookassa_api_url == "https://api.yookassa.ru/v3"
     assert settings.yookassa_timeout_seconds == 10
     assert not settings.payment_creation_enabled
+    assert not settings.payment_management_enabled
+    assert not settings.yookassa_payouts_enabled
+    assert settings.payment_operation_processing_timeout_seconds == 60
+    assert settings.payout_retry_window_seconds == 82_800
+    assert settings.payout_processing_timeout_seconds == 60
     assert not settings.checkout_v2_enabled
     assert not settings.crm_api_enabled
     assert not settings.crm_writes_enabled
@@ -121,6 +126,54 @@ def test_crm_api_requires_target_database_and_identity() -> None:
             database_enabled=True,
             database_url="sqlite+aiosqlite:///:memory:",
             crm_api_enabled=True,
+        )
+
+
+def test_payment_management_requires_payment_and_identity_dependencies() -> None:
+    with pytest.raises(ValidationError, match="Payment management requires"):
+        Settings(_env_file=None, payment_management_enabled=True)
+
+
+def test_payment_management_requires_provider_status_observations() -> None:
+    with pytest.raises(ValidationError, match="PAYMENT_WEBHOOK_V2_ENABLED"):
+        Settings(
+            _env_file=None,
+            public_base_url="https://shop.example.test",
+            database_enabled=True,
+            database_url="sqlite+aiosqlite:///:memory:",
+            identity_api_enabled=True,
+            identity_migration_fingerprint="a" * 64,
+            jwt_secret="j" * 32,
+            identity_otp_pepper="p" * 32,
+            notification_encryption_key=("bm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm4="),
+            yookassa_shop_id="shop-id",
+            yookassa_api_key="payment-secret",
+            payment_creation_enabled=True,
+            payment_management_enabled=True,
+            yookassa_receipt_tax_system_code=1,
+            yookassa_receipt_product_vat_code=1,
+            yookassa_receipt_delivery_vat_code=1,
+            yookassa_receipt_product_payment_mode="full_payment",
+            yookassa_receipt_delivery_payment_mode="full_payment",
+            yookassa_receipt_product_subject="non_marked",
+            yookassa_receipt_delivery_subject="service",
+        )
+
+
+def test_payouts_require_database_identity_and_separate_gateway_credentials() -> None:
+    with pytest.raises(ValidationError, match="YooKassa payouts require"):
+        Settings(_env_file=None, yookassa_payouts_enabled=True)
+    with pytest.raises(ValidationError, match="YOOKASSA_PAYOUT_AGENT_ID"):
+        Settings(
+            _env_file=None,
+            database_enabled=True,
+            database_url="sqlite+aiosqlite:///:memory:",
+            identity_api_enabled=True,
+            identity_migration_fingerprint="a" * 64,
+            jwt_secret="j" * 32,
+            identity_otp_pepper="p" * 32,
+            notification_encryption_key="bm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm4=",
+            yookassa_payouts_enabled=True,
         )
     with pytest.raises(ValidationError, match="CRM_API_ENABLED"):
         Settings(_env_file=None, crm_writes_enabled=True)

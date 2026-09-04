@@ -53,6 +53,8 @@ class PermissionCode(str, Enum):
     USERS_MANAGE = "users.manage"
     ROLES_MANAGE = "roles.manage"
     ADMIN_ACCESS = "admin.access"
+    PAYMENTS_MANAGE = "payments.manage"
+    PAYOUTS_MANAGE = "payouts.manage"
 
 
 class OtpPurpose(str, Enum):
@@ -403,6 +405,7 @@ SYSTEM_ROLE_PERMISSIONS: dict[RoleName, Sequence[PermissionCode]] = {
         PermissionCode.ORDERS_WRITE,
         PermissionCode.CRM_ACCESS,
         PermissionCode.ADMIN_ACCESS,
+        PermissionCode.PAYMENTS_MANAGE,
     ),
     RoleName.ADMIN: tuple(PermissionCode),
 }

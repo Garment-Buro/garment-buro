@@ -133,7 +133,7 @@ def test_identity_migration_applies_once_with_customer_role(tmp_path: Path) -> N
         assert counts == {
             "users": 1,
             "roles": 3,
-            "permissions": 10,
+            "permissions": 12,
             "user_roles": 1,
             "otp": 0,
             "runs": 1,

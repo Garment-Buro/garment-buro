@@ -201,8 +201,15 @@ class ObservingProvider:
 
 
 class FailingPaymentPreparation:
-    async def prepare_attempt(self, session, *, order_id: int, client_attempt_key: str):
-        del session, order_id, client_attempt_key
+    async def prepare_attempt(
+        self,
+        session,
+        *,
+        order_id: int,
+        client_attempt_key: str,
+        capture_mode: str = "automatic",
+    ):
+        del session, order_id, client_attempt_key, capture_mode
         raise RuntimeError("synthetic payment preparation failure")
 
 

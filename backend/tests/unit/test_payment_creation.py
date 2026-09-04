@@ -127,12 +127,14 @@ async def _prepare(
     *,
     client_key: str,
     order_id: int,
+    capture_mode: str = "automatic",
 ) -> int:
     async with database.session() as session:
         prepared = await service.prepare_attempt(
             session,
             order_id=order_id,
             client_attempt_key=client_key,
+            capture_mode=capture_mode,
         )
         await session.commit()
         return prepared.attempt_id
@@ -292,6 +294,46 @@ def test_creation_commits_before_network_and_builds_exact_receipt(tmp_path: Path
                 persisted = repr(attempt.__dict__)
                 assert "customer@example.test" not in persisted
                 assert "Платье летнее" not in persisted
+        finally:
+            await database.shutdown()
+
+    asyncio.run(scenario())
+
+
+def test_manual_capture_creation_sends_capture_false(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        database = DatabaseManager(_settings(tmp_path / "manual-capture.db"))
+        await database.startup()
+        try:
+            await _create_schema(database)
+            async with database.session() as session:
+                order = _order()
+                session.add(order)
+                await session.commit()
+                order_id = order.id
+            payment_service = PaymentService(
+                database.settings,
+                provider_key_factory=lambda: PROVIDER_KEY_1,
+            )
+            attempt_id = await _prepare(
+                database,
+                payment_service,
+                client_key="manual_capture_client_key_0001",
+                order_id=order_id,
+                capture_mode="manual",
+            )
+            provider = FakeCreationProvider([_snapshot(order_id)])
+            creator = PaymentCreationService(
+                database.settings,
+                provider,
+                payment_service=payment_service,
+            )
+            async with database.session() as session:
+                await creator.create_attempt(session, attempt_id=attempt_id, now=NOW)
+            assert json.loads(provider.calls[0][1])["capture"] is False
+            async with database.session() as session:
+                attempt = await session.get(PaymentAttempt, attempt_id)
+            assert attempt is not None and attempt.capture_mode == "manual"
         finally:
             await database.shutdown()
 

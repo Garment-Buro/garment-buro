@@ -1,0 +1,1 @@
+"""YooKassa payout domain."""

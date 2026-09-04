@@ -50,11 +50,19 @@ from app.modules.orders.service import (
     TargetOrderReadService,
 )
 from app.modules.payments.creation import PaymentCreationService
+from app.modules.payments.operation_router import router as payment_operation_router
+from app.modules.payments.operation_service import PaymentOperationService
 from app.modules.payments.provider import AiohttpYooKassaTransport, YooKassaProviderClient
 from app.modules.payments.retry import PaymentRetryService
 from app.modules.payments.retry_router import router as payment_retry_router
 from app.modules.payments.router import router as payment_webhook_router
 from app.modules.payments.service import PaymentService
+from app.modules.payouts.provider import (
+    AiohttpYooKassaPayoutTransport,
+    YooKassaPayoutProviderClient,
+)
+from app.modules.payouts.router import router as payout_router
+from app.modules.payouts.service import PayoutService
 
 
 def create_app(
@@ -71,6 +79,8 @@ def create_app(
     payment_service: PaymentService | None = None,
     checkout_service: CheckoutService | None = None,
     payment_retry_service: PaymentRetryService | None = None,
+    payment_operation_service: PaymentOperationService | None = None,
+    payout_service: PayoutService | None = None,
     crm_read_service: CrmReadService | None = None,
     crm_command_service: CrmStaffCommandService | None = None,
     crm_material_service: CrmMaterialService | None = None,
@@ -88,20 +98,30 @@ def create_app(
     payment_manager = payment_service
     checkout_manager = checkout_service
     payment_retry_manager = payment_retry_service
+    payment_operation_manager = payment_operation_service
+    payout_manager = payout_service
     crm_read_manager = crm_read_service
     crm_command_manager = crm_command_service
     crm_material_manager = crm_material_service
     crm_file_manager = crm_file_service
     cdek_quote_manager = cdek_quote_service
-    checkout_transport: AiohttpYooKassaTransport | None = None
+    payment_transport: AiohttpYooKassaTransport | None = None
+    payout_transport: AiohttpYooKassaPayoutTransport | None = None
     cdek_quote_transport: AiohttpCdekTransport | None = None
-    if runtime_settings.payment_webhook_v2_enabled or runtime_settings.checkout_v2_enabled:
+    if (
+        runtime_settings.payment_webhook_v2_enabled
+        or runtime_settings.checkout_v2_enabled
+        or runtime_settings.payment_management_enabled
+    ):
         payment_manager = payment_manager or PaymentService(runtime_settings)
+    if runtime_settings.checkout_v2_enabled or runtime_settings.payment_management_enabled:
+        payment_transport = AiohttpYooKassaTransport(runtime_settings)
     if runtime_settings.checkout_v2_enabled and checkout_manager is None:
         if payment_manager is None:
             raise RuntimeError("Payment service was not initialized")
-        checkout_transport = AiohttpYooKassaTransport(runtime_settings)
-        provider = YooKassaProviderClient(checkout_transport)
+        if payment_transport is None:
+            raise RuntimeError("YooKassa payment transport was not initialized")
+        provider = YooKassaProviderClient(payment_transport)
         payment_creation = PaymentCreationService(
             runtime_settings,
             provider,
@@ -119,6 +139,20 @@ def create_app(
             runtime_settings,
             checkout_manager.payment_creation_service,
             payment_service=checkout_manager.payment_service,
+        )
+    if runtime_settings.payment_management_enabled and payment_operation_manager is None:
+        if payment_manager is None or payment_transport is None:
+            raise RuntimeError("Payment management dependencies were not initialized")
+        payment_operation_manager = PaymentOperationService(
+            runtime_settings,
+            YooKassaProviderClient(payment_transport),
+            payment_service=payment_manager,
+        )
+    if runtime_settings.yookassa_payouts_enabled and payout_manager is None:
+        payout_transport = AiohttpYooKassaPayoutTransport(runtime_settings)
+        payout_manager = PayoutService(
+            runtime_settings,
+            YooKassaPayoutProviderClient(payout_transport),
         )
     if runtime_settings.identity_api_enabled:
         identity_manager = identity_manager or build_identity_service(runtime_settings)
@@ -192,8 +226,10 @@ def create_app(
             await storage_manager.startup()
             try:
                 try:
-                    if checkout_transport is not None:
-                        await checkout_transport.startup()
+                    if payment_transport is not None:
+                        await payment_transport.startup()
+                    if payout_transport is not None:
+                        await payout_transport.startup()
                     if cdek_quote_transport is not None:
                         await cdek_quote_transport.startup()
                     if legacy_app is None:
@@ -202,8 +238,10 @@ def create_app(
                         async with legacy_app.router.lifespan_context(legacy_app):
                             yield
                 finally:
-                    if checkout_transport is not None:
-                        await checkout_transport.shutdown()
+                    if payment_transport is not None:
+                        await payment_transport.shutdown()
+                    if payout_transport is not None:
+                        await payout_transport.shutdown()
                     if cdek_quote_transport is not None:
                         await cdek_quote_transport.shutdown()
             finally:
@@ -229,6 +267,8 @@ def create_app(
     application.state.payment_service = payment_manager
     application.state.checkout_service = checkout_manager
     application.state.payment_retry_service = payment_retry_manager
+    application.state.payment_operation_service = payment_operation_manager
+    application.state.payout_service = payout_manager
     application.state.crm_read_service = crm_read_manager
     application.state.crm_command_service = crm_command_manager
     application.state.crm_material_service = crm_material_manager
@@ -264,6 +304,10 @@ def create_app(
         application.include_router(payment_retry_router)
     if runtime_settings.payment_webhook_v2_enabled:
         application.include_router(payment_webhook_router)
+    if runtime_settings.payment_management_enabled:
+        application.include_router(payment_operation_router)
+    if runtime_settings.yookassa_payouts_enabled:
+        application.include_router(payout_router)
     if runtime_settings.crm_api_enabled:
         application.include_router(crm_router)
     if runtime_settings.crm_writes_enabled:

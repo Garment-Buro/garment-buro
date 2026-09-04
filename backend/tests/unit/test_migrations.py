@@ -9,15 +9,15 @@ from app.db import models as database_models  # noqa: F401
 from app.db.base import Base
 
 
-def test_alembic_has_one_linear_crm_staff_commands_head() -> None:
+def test_alembic_has_one_linear_yookassa_operations_head() -> None:
     backend_dir = Path(__file__).resolve().parents[2]
     config = Config(str(backend_dir / "alembic.ini"))
     scripts = ScriptDirectory.from_config(config)
 
-    assert scripts.get_heads() == ["20260812_0027"]
-    revision = scripts.get_revision("20260812_0027")
+    assert scripts.get_heads() == ["20260904_0028"]
+    revision = scripts.get_revision("20260904_0028")
     assert revision is not None
-    assert revision.down_revision == "20260812_0026"
+    assert revision.down_revision == "20260812_0027"
 
 
 def test_metadata_has_deterministic_constraint_names() -> None:
@@ -109,6 +109,7 @@ def test_payment_persistence_tables_share_the_target_metadata() -> None:
         "payments",
         "payment_attempts",
         "payment_events",
+        "payment_operations",
     } <= set(Base.metadata.tables)
     attempt_columns = Base.metadata.tables["payment_attempts"].c
     assert {
@@ -116,7 +117,13 @@ def test_payment_persistence_tables_share_the_target_metadata() -> None:
         "creation_started_at",
         "creation_last_attempt_at",
         "creation_attempts_count",
+        "capture_mode",
+        "expires_at",
     } <= set(attempt_columns.keys())
+
+
+def test_payout_table_shares_the_target_metadata() -> None:
+    assert "payouts" in Base.metadata.tables
 
 
 def test_fulfillment_outbox_shares_the_target_metadata() -> None:

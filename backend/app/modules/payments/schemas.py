@@ -116,7 +116,7 @@ class YooKassaCreatePaymentRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     amount: YooKassaCreateAmount
-    capture: Literal[True] = True
+    capture: bool = True
     payment_method_data: YooKassaCreatePaymentMethod
     confirmation: YooKassaCreateConfirmation
     description: str = Field(min_length=1, max_length=128)
@@ -164,6 +164,7 @@ class ProviderPaymentSnapshot(BaseModel):
     confirmation_url: str | None = Field(default=None, max_length=4096)
     provider_created_at: datetime | None = None
     captured_at: datetime | None = None
+    expires_at: datetime | None = None
     cancellation_party: str | None = Field(default=None, max_length=64)
     cancellation_reason: str | None = Field(default=None, max_length=128)
 
@@ -183,7 +184,7 @@ class ProviderPaymentSnapshot(BaseModel):
         normalized = value.strip()
         return normalized or None
 
-    @field_validator("provider_created_at", "captured_at")
+    @field_validator("provider_created_at", "captured_at", "expires_at")
     @classmethod
     def require_timezone(cls, value: datetime | None) -> datetime | None:
         if value is not None and value.tzinfo is None:
@@ -279,6 +280,7 @@ class YooKassaWebhookPayment(BaseModel):
     confirmation: YooKassaConfirmation | None = None
     created_at: datetime
     captured_at: datetime | None = None
+    expires_at: datetime | None = None
     cancellation_details: YooKassaCancellationDetails | None = None
 
     @field_validator("id")
@@ -289,7 +291,7 @@ class YooKassaWebhookPayment(BaseModel):
             raise ValueError("Provider payment ID must not be blank")
         return normalized
 
-    @field_validator("created_at", "captured_at")
+    @field_validator("created_at", "captured_at", "expires_at")
     @classmethod
     def require_timezone(cls, value: datetime | None) -> datetime | None:
         if value is not None and value.tzinfo is None:
@@ -312,6 +314,7 @@ class YooKassaWebhookPayment(BaseModel):
             ),
             provider_created_at=self.created_at,
             captured_at=self.captured_at,
+            expires_at=self.expires_at,
             cancellation_party=cancellation.party if cancellation is not None else None,
             cancellation_reason=cancellation.reason if cancellation is not None else None,
         )

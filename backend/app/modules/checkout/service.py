@@ -28,6 +28,7 @@ class PaymentAttemptPreparer(Protocol):
         *,
         order_id: int,
         client_attempt_key: str,
+        capture_mode: str = "automatic",
     ) -> PreparedPaymentAttempt: ...
 
 
@@ -117,6 +118,7 @@ class CheckoutService:
                 session,
                 order_id=order.order_id,
                 client_attempt_key=derive_checkout_payment_attempt_key(normalized_key),
+                capture_mode=command.payment_capture_mode,
             )
             await session.commit()
 
