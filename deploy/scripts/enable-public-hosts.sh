@@ -9,6 +9,7 @@ fi
 repo_root=${1:-/srv/garment-buro/public-hosts}
 legacy_root=/home/plus2opacity
 widget_root=/home/garment-widget
+development_env=/srv/garment-buro/development/.env
 nginx_source="$repo_root/nginx.conf"
 nginx_target="$legacy_root/nginx.conf"
 override_source="$repo_root/deploy/docker-compose.legacy-nginx.override.yml"
@@ -17,6 +18,10 @@ override_target="$legacy_root/docker-compose.override.yml"
 backup_dir="/root/garment-buro-nginx-backup-$(date -u +%Y%m%dT%H%M%SZ)"
 had_override=false
 widget_changed=false
+firewall_rule_added=false
+firewall_source=""
+firewall_destination=""
+firewall_port=""
 
 test -f "$nginx_source"
 test -f "$override_source"
@@ -35,6 +40,12 @@ if [[ -f "$override_target" ]]; then
 fi
 
 restore_previous_nginx() {
+  if [[ "$firewall_rule_added" == true ]]; then
+    ufw --force delete allow proto tcp \
+      from "$firewall_source" \
+      to "$firewall_destination" \
+      port "$firewall_port" >/dev/null || true
+  fi
   if [[ "$widget_changed" == true ]]; then
     cd "$widget_root"
     docker compose -f docker-compose.server.yml up -d --build
@@ -53,6 +64,46 @@ restore_previous_nginx() {
 
 rollback_required=false
 trap 'if [[ "$rollback_required" == true ]]; then restore_previous_nginx; fi' ERR
+
+configure_development_firewall() {
+  if ! command -v ufw >/dev/null || ! ufw status | grep -q '^Status: active'; then
+    return
+  fi
+
+  test -f "$development_env"
+
+  firewall_destination=$(sed -n 's/^HOST_BIND_ADDRESS=//p' "$development_env" | tail -n 1)
+  firewall_port=$(sed -n 's/^FRONTEND_HOST_PORT=//p' "$development_env" | tail -n 1)
+  firewall_source=$(
+    docker network inspect plus2opacity_default \
+      --format '{{(index .IPAM.Config 0).Subnet}}'
+  )
+
+  if [[ ! "$firewall_destination" =~ ^[0-9]+(\.[0-9]+){3}$ ]]; then
+    echo "Invalid HOST_BIND_ADDRESS in $development_env" >&2
+    return 1
+  fi
+  if [[ ! "$firewall_port" =~ ^[0-9]+$ ]]; then
+    echo "Invalid FRONTEND_HOST_PORT in $development_env" >&2
+    return 1
+  fi
+  if [[ ! "$firewall_source" =~ ^[0-9]+(\.[0-9]+){3}/[0-9]+$ ]]; then
+    echo "Invalid plus2opacity_default subnet: $firewall_source" >&2
+    return 1
+  fi
+
+  if ufw status | grep -F "$firewall_destination $firewall_port/tcp" \
+    | grep -Fq "$firewall_source"; then
+    return
+  fi
+
+  ufw allow proto tcp \
+    from "$firewall_source" \
+    to "$firewall_destination" \
+    port "$firewall_port" \
+    comment 'Garment Buro nginx to development frontend'
+  firewall_rule_added=true
+}
 
 cd "$legacy_root"
 docker compose run --rm --entrypoint certbot certbot certonly \
@@ -75,6 +126,7 @@ docker run --rm \
 install -m 0644 "$nginx_source" "$nginx_target"
 install -m 0644 "$override_source" "$override_target"
 rollback_required=true
+configure_development_firewall
 
 cd "$widget_root"
 widget_changed=true

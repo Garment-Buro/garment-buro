@@ -37,6 +37,11 @@ widget at the domain root through a Compose override, validates Nginx, and
 recreates only the Nginx container. It does not copy secrets into the
 repository.
 
+When UFW is active, the script also allows only the legacy Docker subnet to
+reach the development frontend bind address and port from the development
+`.env`. The development port remains unavailable from the public network. The
+rule is removed automatically if the host switch rolls back.
+
 Only Nginx exposes ports 80 and 443 publicly. Application and storage ports
 listen on loopback by default; the development deployment binds to the Docker
 bridge address so the legacy Nginx container can reach it without opening the
