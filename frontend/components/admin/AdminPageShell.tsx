@@ -7,7 +7,7 @@ import { Container } from '@/components/shared/Container';
 import { Text } from '@/components/shared/Text';
 import { useIdentityAccess } from '@/hooks/auth/useIdentityAccess';
 
-export type AdminSection = 'products' | 'orders' | 'crm';
+export type AdminSection = 'products' | 'orders' | 'crm' | 'partners';
 
 type AdminPageShellProps = {
     activeSection: AdminSection;
@@ -19,6 +19,7 @@ type AdminPageShellProps = {
 const SECTIONS: Array<{ href: string; label: string; value: AdminSection }> = [
     { href: '/admin', label: 'Товары', value: 'products' },
     { href: '/admin/orders', label: 'Заказы', value: 'orders' },
+    { href: '/admin/partners', label: 'Партнёры', value: 'partners' },
     { href: '/admin/crm', label: 'Производство', value: 'crm' },
 ];
 

@@ -58,6 +58,14 @@ from app.modules.orders.models import (
     OrderMigrationRun,
     OrderStatusHistory,
 )
+from app.modules.partners.models import (
+    PartnerCommission,
+    PartnerLanding,
+    PartnerOrderAttribution,
+    PartnerPayoutRequest,
+    PartnerProfile,
+    PartnerVisit,
+)
 from app.modules.payments.models import (
     Payment,
     PaymentAttempt,
@@ -120,6 +128,12 @@ __all__ = [
     "PaymentOperation",
     "PaymentReconciliationJob",
     "Payout",
+    "PartnerCommission",
+    "PartnerLanding",
+    "PartnerOrderAttribution",
+    "PartnerPayoutRequest",
+    "PartnerProfile",
+    "PartnerVisit",
     "Product",
     "ProductMedia",
     "ProductVariant",

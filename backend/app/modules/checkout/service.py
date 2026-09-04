@@ -12,6 +12,7 @@ from app.modules.orders.models import Order
 from app.modules.orders.schemas import OrderCreationCommand
 from app.modules.orders.security import normalize_order_idempotency_key
 from app.modules.orders.service import OrderCreationService
+from app.modules.partners.service import PartnerProgramService
 from app.modules.payments.creation import (
     PaymentCreationFailedError,
     PaymentCreationService,
@@ -74,11 +75,13 @@ class CheckoutService:
         *,
         order_creation_service: OrderCreationService | None = None,
         payment_service: PaymentAttemptPreparer | None = None,
+        partner_program_service: PartnerProgramService | None = None,
     ) -> None:
         self.settings = settings
         self.order_creation_service = order_creation_service or OrderCreationService(settings)
         self.payment_service = payment_service or PaymentService(settings)
         self.payment_creation_service = payment_creation_service
+        self.partner_program_service = partner_program_service or PartnerProgramService(settings)
 
     async def checkout(
         self,
@@ -88,6 +91,7 @@ class CheckoutService:
         command: OrderCreationCommand,
         user_id: int | None = None,
         guest_access_token: str | None = None,
+        partner_attribution_token: str | None = None,
         now: datetime | None = None,
     ) -> CheckoutResult:
         if not self.settings.checkout_v2_enabled:
@@ -112,6 +116,12 @@ class CheckoutService:
             )
             if stored_order is None:
                 raise RuntimeError("Prepared checkout order disappeared")
+            await self.partner_program_service.attribute_order(
+                session,
+                order_id=order.order_id,
+                token=partner_attribution_token,
+                now=now,
+            )
             self._validate_receipt_snapshot(stored_order)
 
             prepared = await self.payment_service.prepare_attempt(

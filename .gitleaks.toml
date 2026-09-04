@@ -12,6 +12,8 @@ regexes = [
   '''same-key retry''',
   '''material-invalid-precision-0001''',
   '''reconciliation_order_0001''',
+  '''cancel_operation_key_0001''',
+  '''PARTNER_ATTRIBUTION_SECRET=replace-with-partner-attribution-secret''',
   '''plus2opacity-my-collection''',
   '''__p2oSplashHandledThisAppRun''',
   '''p2o_skip_splash_once''',

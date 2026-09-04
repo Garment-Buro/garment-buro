@@ -8,8 +8,38 @@ projects, databases, Redis data, MinIO data and host ports.
 | production | `main` | `garment-buro.ru` | 3000 | 8000 | 9000 |
 | development | `develop` | `dev.garment-buro.ru` | 3100 | 8100 | 9100 |
 
-Only Nginx exposes ports 80 and 443. Application and storage ports listen on
-`127.0.0.1`.
+`partner.garment-buro.ru` uses the development frontend and backend until the
+partner program is promoted separately. `widget.garment-buro.ru` is served by
+the standalone widget deployment in the legacy Docker network.
+
+Before the first development deployment, enable the partner feature and expose
+the rootless development ports only on the Docker bridge address:
+
+```bash
+bash deploy/scripts/enable-partner-development.sh
+```
+
+The script preserves existing secrets, creates the attribution secret when it
+is absent, writes a timestamped mode-preserving backup, and never prints the
+secret value.
+
+The first public-host setup is intentionally a root-only operation because it
+expands the trusted certificate and reloads Nginx. From a reviewed checkout run:
+
+```bash
+sudo bash deploy/scripts/enable-public-hosts.sh "$(pwd)"
+```
+
+The current server still runs the public Nginx and widget in the legacy root
+Compose project. The script backs up that Nginx configuration, expands the
+existing `garment-buro.ru` certificate to all four hosts, rebuilds the existing
+widget at the domain root, validates Nginx, and recreates only the Nginx
+container. It does not copy secrets into the repository.
+
+Only Nginx exposes ports 80 and 443 publicly. Application and storage ports
+listen on loopback by default; the development deployment binds to the Docker
+bridge address so the legacy Nginx container can reach it without opening the
+ports on public interfaces.
 
 ## What is deployed
 
@@ -23,6 +53,9 @@ Only Nginx exposes ports 80 and 443. Application and storage ports listen on
 - Alembic uses the PostgreSQL owner role only during deployment; the API and
   workers use a separate non-superuser role without schema-creation rights.
 - Optional workers are activated only through reviewed Compose profiles.
+- Deployment enables each worker profile automatically when its owning feature
+  flag is enabled (identity notifications, payments, reconciliation,
+  fulfillment, or CDEK creation).
 
 ## One-time host bootstrap
 

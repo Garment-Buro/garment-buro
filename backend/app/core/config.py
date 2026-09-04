@@ -61,6 +61,13 @@ class Settings(BaseSettings):
     order_reads_enabled: bool = False
     order_migration_fingerprint: str | None = None
     checkout_v2_enabled: bool = False
+    partner_program_enabled: bool = False
+    partner_attribution_secret: SecretStr | None = None
+    partner_attribution_days: int = 30
+    partner_commission_hold_days: int = 14
+    partner_attribution_cookie_name: str = "gb_partner"
+    partner_visitor_cookie_name: str = "gb_partner_visitor"
+    partner_cookie_domain: str | None = None
     crm_api_enabled: bool = False
     crm_writes_enabled: bool = False
     crm_files_enabled: bool = False
@@ -195,6 +202,11 @@ class Settings(BaseSettings):
     def empty_datetime_to_none(cls, value: object) -> object:
         return None if value == "" else value
 
+    @field_validator("partner_cookie_domain", mode="before")
+    @classmethod
+    def empty_partner_cookie_domain_to_none(cls, value: object) -> object:
+        return None if value == "" else value
+
     @field_validator(
         "yookassa_receipt_tax_system_code",
         "yookassa_receipt_product_vat_code",
@@ -282,6 +294,34 @@ class Settings(BaseSettings):
                     "Target checkout requires enabled dependencies: "
                     + ", ".join(missing_checkout_flags)
                 )
+        if self.partner_program_enabled:
+            if not self.database_enabled:
+                raise ValueError(
+                    "DATABASE_ENABLED must be true when PARTNER_PROGRAM_ENABLED is true"
+                )
+            if not self.identity_api_enabled:
+                raise ValueError(
+                    "IDENTITY_API_ENABLED must be true when PARTNER_PROGRAM_ENABLED is true"
+                )
+            if not self.secret_value(self.partner_attribution_secret):
+                raise ValueError(
+                    "PARTNER_ATTRIBUTION_SECRET is required when PARTNER_PROGRAM_ENABLED is true"
+                )
+        if not 1 <= self.partner_attribution_days <= 365:
+            raise ValueError("PARTNER_ATTRIBUTION_DAYS must be between 1 and 365")
+        if not 0 <= self.partner_commission_hold_days <= 365:
+            raise ValueError("PARTNER_COMMISSION_HOLD_DAYS must be between 0 and 365")
+        for cookie_name in (
+            self.partner_attribution_cookie_name,
+            self.partner_visitor_cookie_name,
+        ):
+            if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", cookie_name):
+                raise ValueError("Partner cookie name contains unsupported characters")
+        if self.partner_cookie_domain is not None:
+            domain = self.partner_cookie_domain.strip().lower().lstrip(".")
+            if not re.fullmatch(r"[a-z0-9.-]+", domain) or ".." in domain:
+                raise ValueError("PARTNER_COOKIE_DOMAIN is invalid")
+            self.partner_cookie_domain = f".{domain}"
         if self.crm_api_enabled and not self.database_enabled:
             raise ValueError("DATABASE_ENABLED must be true when CRM_API_ENABLED is true")
         if self.crm_api_enabled and not self.identity_api_enabled:

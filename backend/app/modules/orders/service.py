@@ -42,6 +42,7 @@ from app.modules.orders.security import (
     digest_order_guest_access_token,
     digest_order_idempotency_key,
 )
+from app.modules.partners.service import PartnerProgramService
 
 MONEY_QUANTUM = Decimal("0.01")
 
@@ -396,6 +397,7 @@ class OrderLifecycleService:
         inventory_service: InventoryReservationService | None = None,
         inventory_repository: InventoryRepository | None = None,
         fulfillment_service: FulfillmentOutboxService | None = None,
+        partner_program_service: PartnerProgramService | None = None,
     ) -> None:
         self.settings = settings or get_settings()
         self.repository = repository or OrderRepository()
@@ -405,6 +407,9 @@ class OrderLifecycleService:
             self.inventory_repository,
         )
         self.fulfillment_service = fulfillment_service or FulfillmentOutboxService(self.settings)
+        self.partner_program_service = partner_program_service or PartnerProgramService(
+            self.settings
+        )
 
     async def confirm_payment(
         self,
@@ -427,6 +432,11 @@ class OrderLifecycleService:
                 payment_attempt_id=payment_attempt_id,
                 now=now,
             )
+            await self.partner_program_service.accrue_commission(
+                session,
+                order_id=order.id,
+                now=now,
+            )
             return order
         self._require_state(
             order,
@@ -445,6 +455,11 @@ class OrderLifecycleService:
             session,
             order=order,
             payment_attempt_id=payment_attempt_id,
+            now=now,
+        )
+        await self.partner_program_service.accrue_commission(
+            session,
+            order_id=order.id,
             now=now,
         )
         await session.flush()

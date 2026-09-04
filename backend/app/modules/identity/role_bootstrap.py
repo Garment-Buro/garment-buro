@@ -32,8 +32,8 @@ class RoleBootstrapService:
         email: str,
         role: RoleName,
     ) -> RoleBootstrapPlan:
-        if role not in {RoleName.MANAGER, RoleName.ADMIN}:
-            raise RoleBootstrapError("Only manager or admin can be bootstrapped")
+        if role not in {RoleName.PARTNER, RoleName.MANAGER, RoleName.ADMIN}:
+            raise RoleBootstrapError("Only partner, manager, or admin can be bootstrapped")
         try:
             _, normalized_email = normalize_email(email)
         except InvalidEmailError as error:

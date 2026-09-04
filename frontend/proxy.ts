@@ -7,11 +7,25 @@ import { NextResponse } from 'next/server';
 const ADMIN_ONLY_MODE = false;
 
 export function proxy(request: NextRequest) {
+    const hostname = request.headers.get('host')?.split(':')[0].toLowerCase();
+    const { pathname } = request.nextUrl;
+    if (hostname === 'partner.garment-buro.ru') {
+        if (pathname === '/' || (!pathname.startsWith('/partner') && !pathname.startsWith('/api'))) {
+            const url = request.nextUrl.clone();
+            url.pathname = '/partner';
+            const response = NextResponse.rewrite(url);
+            response.headers.set('X-Robots-Tag', 'noindex, nofollow');
+            return response;
+        }
+        const response = NextResponse.next();
+        response.headers.set('X-Robots-Tag', 'noindex, nofollow');
+        return response;
+    }
+
     if (!ADMIN_ONLY_MODE) {
         return NextResponse.next();
     }
 
-    const { pathname } = request.nextUrl;
     const isAllowed =
         pathname.startsWith('/admin') ||
         pathname.startsWith('/api') ||
