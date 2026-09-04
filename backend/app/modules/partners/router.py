@@ -20,6 +20,7 @@ from app.modules.partners.schemas import (
     PartnerDashboardResponse,
     PartnerLandingCreateRequest,
     PartnerLandingResponse,
+    PartnerLandingUpdateRequest,
     PartnerPayoutCreateRequest,
     PartnerPayoutResponse,
     PartnerPayoutReviewRequest,
@@ -310,6 +311,45 @@ async def create_partner_landing(
     except (PartnerConflictError, IntegrityError) as error:
         await session.rollback()
         raise HTTPException(status_code=409, detail="Landing slug is already used") from error
+    return PartnerLandingResponse.model_validate(landing)
+
+
+@admin_router.get("/landings", response_model=list[PartnerLandingResponse])
+async def list_admin_landings(
+    user: Annotated[User, Depends(get_current_identity_user)],
+    session: Annotated[AsyncSession, Depends(get_database_session)],
+    identity: Annotated[IdentityService, Depends(get_identity_service)],
+    service: Annotated[PartnerProgramService, Depends(get_partner_service)],
+) -> list[PartnerLandingResponse]:
+    await _require_permission(identity, session, user.id, PermissionCode.PARTNERS_MANAGE)
+    try:
+        service.require_enabled()
+    except PartnerProgramDisabledError as error:
+        raise HTTPException(status_code=404, detail="Partner program is disabled") from error
+    landings = await service.repository.list_all_landings(session)
+    return [PartnerLandingResponse.model_validate(landing) for landing in landings]
+
+
+@admin_router.patch("/landings/{landing_id}", response_model=PartnerLandingResponse)
+async def update_partner_landing(
+    landing_id: int,
+    payload: PartnerLandingUpdateRequest,
+    user: Annotated[User, Depends(get_current_identity_user)],
+    session: Annotated[AsyncSession, Depends(get_database_session)],
+    identity: Annotated[IdentityService, Depends(get_identity_service)],
+    service: Annotated[PartnerProgramService, Depends(get_partner_service)],
+) -> PartnerLandingResponse:
+    await _require_permission(identity, session, user.id, PermissionCode.PARTNERS_MANAGE)
+    try:
+        landing = await service.update_landing(
+            session,
+            landing_id=landing_id,
+            payload=payload,
+        )
+        await session.commit()
+    except PartnerLandingNotFoundError as error:
+        await session.rollback()
+        raise HTTPException(status_code=404, detail="Partner landing was not found") from error
     return PartnerLandingResponse.model_validate(landing)
 
 

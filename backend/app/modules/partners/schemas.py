@@ -10,6 +10,57 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 PartnerState = Literal["invited", "active", "suspended"]
 LandingState = Literal["draft", "published", "archived"]
 PayoutState = Literal["requested", "approved", "paid", "rejected", "canceled"]
+LandingTemplate = Literal["light-running"]
+
+
+def validate_media_url(value: str | None) -> str | None:
+    if value is None or (value.startswith("/") and not value.startswith("//")):
+        return value
+    parsed = urlsplit(value)
+    if parsed.scheme == "https" and parsed.hostname:
+        return value
+    raise ValueError("Media URL must be a relative path or an HTTPS URL")
+
+
+class PartnerLandingFaqItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    question: str = Field(min_length=1, max_length=255)
+    answer: str = Field(min_length=1, max_length=1000)
+
+    @field_validator("question", "answer")
+    @classmethod
+    def normalize_text(cls, value: str) -> str:
+        return value.strip()
+
+
+class PartnerLandingContent(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    logo_url: str | None = Field(default=None, max_length=4096)
+    secondary_image_url: str | None = Field(default=None, max_length=4096)
+    story_title: str | None = Field(default=None, max_length=255)
+    story_body: str | None = Field(default=None, max_length=2000)
+    model_heading: str | None = Field(default=None, max_length=255)
+    proof_line: str | None = Field(default=None, max_length=255)
+    final_heading: str | None = Field(default=None, max_length=255)
+    faq: list[PartnerLandingFaqItem] = Field(default_factory=list, max_length=12)
+
+    @field_validator(
+        "story_title",
+        "story_body",
+        "model_heading",
+        "proof_line",
+        "final_heading",
+    )
+    @classmethod
+    def normalize_optional_text(cls, value: str | None) -> str | None:
+        return value.strip() or None if value is not None else None
+
+    @field_validator("logo_url", "secondary_image_url")
+    @classmethod
+    def validate_media(cls, value: str | None) -> str | None:
+        return validate_media_url(value.strip() or None if value is not None else None)
 
 
 class PartnerProfileResponse(BaseModel):
@@ -66,6 +117,7 @@ class PartnerLandingResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    partner_id: int
     slug: str
     title: str
     eyebrow: str | None
@@ -74,6 +126,8 @@ class PartnerLandingResponse(BaseModel):
     cta_label: str
     cta_href: str
     image_url: str | None
+    template_key: LandingTemplate
+    content: PartnerLandingContent
     product_ids: list[int]
     status: LandingState
     published_at: datetime | None
@@ -91,6 +145,8 @@ class PublicPartnerLandingResponse(BaseModel):
     cta_label: str
     cta_href: str
     image_url: str | None
+    template_key: LandingTemplate
+    content: PartnerLandingContent
     product_ids: list[int]
 
 
@@ -105,6 +161,8 @@ class PartnerLandingCreateRequest(BaseModel):
     cta_label: str = Field(min_length=1, max_length=80)
     cta_href: str = Field(min_length=1, max_length=2048)
     image_url: str | None = Field(default=None, max_length=4096)
+    template_key: LandingTemplate = "light-running"
+    content: PartnerLandingContent = Field(default_factory=PartnerLandingContent)
     product_ids: list[int] = Field(default_factory=list, max_length=50)
     status: LandingState = "draft"
 
@@ -139,12 +197,7 @@ class PartnerLandingCreateRequest(BaseModel):
     @field_validator("image_url")
     @classmethod
     def validate_image_url(cls, value: str | None) -> str | None:
-        if value is None or (value.startswith("/") and not value.startswith("//")):
-            return value
-        parsed = urlsplit(value)
-        if parsed.scheme == "https" and parsed.hostname:
-            return value
-        raise ValueError("Image URL must be a relative path or an HTTPS URL")
+        return validate_media_url(value)
 
     @field_validator("product_ids")
     @classmethod
@@ -154,6 +207,51 @@ class PartnerLandingCreateRequest(BaseModel):
         if len(value) != len(set(value)):
             raise ValueError("Product IDs must be unique")
         return value
+
+
+class PartnerLandingUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    eyebrow: str | None = Field(default=None, max_length=120)
+    headline: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = Field(default=None, min_length=1, max_length=4000)
+    cta_label: str | None = Field(default=None, min_length=1, max_length=80)
+    cta_href: str | None = Field(default=None, min_length=1, max_length=2048)
+    image_url: str | None = Field(default=None, max_length=4096)
+    template_key: LandingTemplate | None = None
+    content: PartnerLandingContent | None = None
+    product_ids: list[int] | None = Field(default=None, max_length=50)
+    status: LandingState | None = None
+
+    @field_validator("title", "headline", "description", "cta_label")
+    @classmethod
+    def normalize_required_text(cls, value: str | None) -> str | None:
+        return value.strip() if value is not None else None
+
+    @field_validator("eyebrow")
+    @classmethod
+    def normalize_optional_text(cls, value: str | None) -> str | None:
+        return value.strip() or None if value is not None else None
+
+    @field_validator("cta_href")
+    @classmethod
+    def validate_cta_href(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return PartnerLandingCreateRequest.validate_cta_href(value.strip())
+
+    @field_validator("image_url")
+    @classmethod
+    def validate_image_url(cls, value: str | None) -> str | None:
+        return validate_media_url(value.strip() or None if value is not None else None)
+
+    @field_validator("product_ids")
+    @classmethod
+    def validate_product_ids(cls, value: list[int] | None) -> list[int] | None:
+        if value is None:
+            return None
+        return PartnerLandingCreateRequest.validate_product_ids(value)
 
 
 class PartnerVisitResponse(BaseModel):

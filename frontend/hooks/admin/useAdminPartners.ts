@@ -6,10 +6,14 @@ import {
     createAdminPartner,
     createAdminPartnerLanding,
     getAdminPartners,
+    getAdminPartnerLandings,
+    updateAdminPartnerLanding,
 } from '@/lib/api/partners';
 import type {
     PartnerCreatePayload,
     PartnerLandingCreatePayload,
+    PartnerLandingUpdatePayload,
+    PartnerLanding,
     PartnerProfile,
 } from '@/lib/partners/types';
 import { useAuthStore } from '@/store/authStore';
@@ -17,6 +21,7 @@ import { useAuthStore } from '@/store/authStore';
 export const useAdminPartners = () => {
     const runAuthenticated = useAuthStore(state => state.runAuthenticated);
     const [partners, setPartners] = useState<PartnerProfile[]>([]);
+    const [landings, setLandings] = useState<PartnerLanding[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
 
@@ -24,8 +29,12 @@ export const useAdminPartners = () => {
         setLoading(true);
         setError('');
         try {
-            const result = await runAuthenticated(token => getAdminPartners(token));
-            setPartners(result);
+            const [partnerResult, landingResult] = await runAuthenticated(token => Promise.all([
+                getAdminPartners(token),
+                getAdminPartnerLandings(token),
+            ]));
+            setPartners(partnerResult);
+            setLandings(landingResult);
         } catch {
             setError('Не удалось загрузить партнёров. Проверьте доступ администратора.');
         } finally {
@@ -46,7 +55,17 @@ export const useAdminPartners = () => {
     const addLanding = async (
         partnerId: number,
         payload: PartnerLandingCreatePayload,
-    ) => runAuthenticated(token => createAdminPartnerLanding(token, partnerId, payload));
+    ) => {
+        const landing = await runAuthenticated(token => createAdminPartnerLanding(token, partnerId, payload));
+        setLandings(current => [landing, ...current]);
+        return landing;
+    };
 
-    return { partners, loading, error, setError, addPartner, addLanding };
+    const updateLanding = async (landingId: number, payload: PartnerLandingUpdatePayload) => {
+        const landing = await runAuthenticated(token => updateAdminPartnerLanding(token, landingId, payload));
+        setLandings(current => current.map(item => item.id === landing.id ? landing : item));
+        return landing;
+    };
+
+    return { partners, landings, loading, error, setError, addPartner, addLanding, updateLanding };
 };

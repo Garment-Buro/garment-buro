@@ -24,6 +24,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, IntegerIdMixin, TimestampMixin
 
 PARTNER_PRODUCT_IDS_TYPE = JSON().with_variant(JSONB, "postgresql")
+PARTNER_LANDING_CONTENT_TYPE = JSON().with_variant(JSONB, "postgresql")
 
 
 class PartnerStatus(str, Enum):
@@ -108,6 +109,17 @@ class PartnerLanding(Base, IntegerIdMixin, TimestampMixin):
     cta_label: Mapped[str] = mapped_column(String(80), nullable=False)
     cta_href: Mapped[str] = mapped_column(String(2048), nullable=False)
     image_url: Mapped[str | None] = mapped_column(String(4096), nullable=True)
+    template_key: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="light-running",
+        server_default="light-running",
+    )
+    content: Mapped[dict[str, object]] = mapped_column(
+        PARTNER_LANDING_CONTENT_TYPE,
+        nullable=False,
+        default=dict,
+    )
     product_ids: Mapped[list[int]] = mapped_column(
         PARTNER_PRODUCT_IDS_TYPE,
         nullable=False,

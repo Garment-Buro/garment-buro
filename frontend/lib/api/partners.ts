@@ -5,6 +5,7 @@ import type {
     PartnerPayout,
     PartnerCreatePayload,
     PartnerLandingCreatePayload,
+    PartnerLandingUpdatePayload,
     PartnerProfile,
 } from '@/lib/partners/types';
 
@@ -75,6 +76,21 @@ export const createAdminPartnerLanding = (
     payload: PartnerLandingCreatePayload,
 ) => requestJson<PartnerLanding>(`/admin/partners/${partnerId}/landings`, {
     method: 'POST',
+    headers: authorizedHeaders(token, true),
+    body: JSON.stringify(payload),
+});
+
+export const getAdminPartnerLandings = (token: string) => requestJson<PartnerLanding[]>(
+    '/admin/partners/landings',
+    { headers: authorizedHeaders(token) },
+);
+
+export const updateAdminPartnerLanding = (
+    token: string,
+    landingId: number,
+    payload: PartnerLandingUpdatePayload,
+) => requestJson<PartnerLanding>(`/admin/partners/landings/${landingId}`, {
+    method: 'PATCH',
     headers: authorizedHeaders(token, true),
     body: JSON.stringify(payload),
 });
