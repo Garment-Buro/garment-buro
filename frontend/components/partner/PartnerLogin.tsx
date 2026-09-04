@@ -3,13 +3,17 @@
 import { useEmailAuthentication } from '@/hooks/auth/useEmailAuthentication';
 import { useAuthStore } from '@/store/authStore';
 
+import styles from './PartnerLogin.module.css';
+
 export const PartnerLogin = () => {
     const setAuth = useAuthStore(state => state.setAuth);
     const auth = useEmailAuthentication(setAuth);
 
     return (
-        <div className="mx-auto grid min-h-dvh max-w-[1200px] items-center px-6 py-16 lg:grid-cols-2 lg:px-8">
-            <section className="max-w-xl py-12">
+        <main className={styles.page}>
+            <section className={styles.hero}>
+                <div className={styles.heroBackdrop} aria-hidden="true" />
+                <div className={styles.heroCopy}>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-black/50">
                     GARMENT BURO · Партнёры
                 </p>
@@ -19,9 +23,11 @@ export const PartnerLogin = () => {
                 <p className="mt-6 max-w-md text-base leading-7 text-black/60">
                     Статистика переходов, подтверждённые заказы, начисления и заявки на выплату.
                 </p>
+                </div>
             </section>
 
-            <section className="rounded-3xl border border-black/10 bg-white p-6 shadow-sm sm:p-10">
+            <section className={styles.authSheet}>
+                <div className={styles.authCard}>
                 {auth.step === 'input' ? (
                     <form
                         className="space-y-6"
@@ -108,7 +114,8 @@ export const PartnerLogin = () => {
                         </div>
                     </div>
                 )}
+                </div>
             </section>
-        </div>
+        </main>
     );
 };

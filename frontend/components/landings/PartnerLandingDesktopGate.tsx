@@ -9,7 +9,7 @@ type PartnerLandingDesktopGateProps = {
     brandName: string;
     backgroundSrc: string;
     qrSrc: string;
-    logoSrc: string;
+    logoSrc?: string;
     qrAlt: string;
     prompt?: string;
     hint?: ReactNode;
@@ -21,7 +21,6 @@ export const PartnerLandingDesktopGate = ({
     brandName,
     backgroundSrc,
     qrSrc,
-    logoSrc,
     qrAlt,
     prompt = 'Откройте дроп на телефоне',
     hint = <>Отсканируйте QR-код,<br />чтобы открыть коллекцию</>,
@@ -57,7 +56,15 @@ export const PartnerLandingDesktopGate = ({
 
             <p className={styles.prompt}>{prompt}</p>
             <div className={styles.hint}>
-                <Image src={logoSrc} alt={brandName} width={30} height={30} />
+                <video
+                    className={styles.hintLogo}
+                    src="/logo_anim.mp4"
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
+                    aria-label={brandName}
+                />
                 <p>{hint}</p>
             </div>
         </div>

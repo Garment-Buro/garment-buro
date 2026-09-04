@@ -318,3 +318,8 @@ body::-webkit-scrollbar,
 .splash-hint-pulse {
   animation: p2o-hint-pulse 1.8s ease-in-out infinite;
 }
+@media (min-width: 768px) {
+  .partnerLandingMobilePresentation {
+    display: none;
+  }
+}

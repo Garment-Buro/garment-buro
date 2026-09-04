@@ -26,21 +26,19 @@
 .card {
     position: relative;
     z-index: 2;
-    width: clamp(360px, 22.9167vw, 440px);
-    aspect-ratio: 440 / 677;
-    transform: translateY(-3.3%);
+    display: flex;
+    width: min(calc(100vw - 48px), 440px);
+    padding: 45px 20px 32px;
+    flex-direction: column;
+    align-items: center;
     border-radius: 27px;
     background: #fff;
     box-shadow: 0 24px 80px rgb(3 61 100 / 13%);
 }
 
 .brand {
-    position: absolute;
-    top: 6.65%;
-    left: 50%;
     width: max-content;
     margin: 0;
-    transform: translateX(-50%);
     color: #033d64;
     font-weight: 800;
     letter-spacing: -0.07em;
@@ -61,28 +59,20 @@
 }
 
 .qrFrame {
-    position: absolute;
-    top: 25.85%;
-    left: 2.27%;
-    width: 95.68%;
-    height: 53.77%;
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1;
+    margin-top: 45px;
     overflow: hidden;
 }
 
 .qrImage {
-    top: -7.97% !important;
-    height: auto !important;
-    aspect-ratio: 1;
     object-fit: contain;
 }
 
 .prompt {
-    position: absolute;
-    top: 80.94%;
-    left: 50%;
     width: 100%;
-    margin: 0;
-    transform: translateX(-50%);
+    margin: 25px 0 0;
     color: #033d64;
     font-size: clamp(20px, 1.25vw, 24px);
     font-weight: 800;
@@ -93,18 +83,20 @@
 }
 
 .hint {
-    position: absolute;
-    top: 92.3%;
-    left: 20.9%;
     display: flex;
+    margin-top: 15px;
     align-items: center;
-    gap: 16px;
+    justify-content: center;
+    gap: 15px;
+    animation: hintPulse 1800ms cubic-bezier(0.32, 0.72, 0, 1) infinite alternate;
 }
 
-.hint img {
+.hintLogo {
     width: 30px;
     height: 30px;
     flex: 0 0 auto;
+    border-radius: 999px;
+    object-fit: cover;
 }
 
 .hint p {
@@ -118,8 +110,17 @@
     text-align: center;
 }
 
+@keyframes hintPulse {
+    from { opacity: 0.35; }
+    to { opacity: 1; }
+}
+
 @media (min-width: 768px) {
     .gate {
         display: flex;
     }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .hint { animation: none; }
 }

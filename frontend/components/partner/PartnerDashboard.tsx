@@ -52,7 +52,10 @@ export const PartnerDashboard = () => {
             <a className={styles.skipLink} href="#partner-cabinet-content">
                 К содержимому
             </a>
-            <PartnerCabinetHeader partner={cabinet.dashboard.partner} />
+            <PartnerCabinetHeader
+                partner={cabinet.dashboard.partner}
+                backgroundSrc={cabinet.landings.find(landing => landing.image_url)?.image_url}
+            />
 
             <section className={styles.sheet} id="partner-cabinet-content">
                 <div className={styles.sheetHeading}>

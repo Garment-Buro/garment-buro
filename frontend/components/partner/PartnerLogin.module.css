@@ -1,0 +1,65 @@
+.page {
+    min-height: 100dvh;
+    overflow: hidden;
+    background: #e7eef1;
+    color: #171717;
+}
+
+.hero {
+    position: relative;
+    min-height: 360px;
+    padding: 48px 24px 112px;
+    overflow: hidden;
+    background: #dfe7ea;
+}
+
+.heroBackdrop {
+    position: absolute;
+    inset: 0;
+    background: rgb(255 255 255 / 18%);
+}
+
+.heroCopy {
+    position: relative;
+    z-index: 1;
+    width: min(100%, 1184px);
+    margin: 0 auto;
+}
+
+.authSheet {
+    position: relative;
+    z-index: 2;
+    width: min(100%, 1184px);
+    min-height: calc(100dvh - 296px);
+    margin: -64px auto 0;
+    padding: 24px;
+    border: 1px solid rgb(255 255 255 / 86%);
+    border-radius: 32px 32px 0 0;
+    background: #f7f5f2;
+    box-shadow: 0 -8px 32px rgb(25 35 40 / 6%);
+    animation: loginSheetIn 800ms cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+.authCard {
+    width: min(100%, 520px);
+    margin: 0 auto;
+    padding: 24px;
+    border: 1px solid #e3dfda;
+    border-radius: 24px;
+    background: #fff;
+}
+
+@keyframes loginSheetIn {
+    from { opacity: 0; transform: translateY(40px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@media (min-width: 768px) {
+    .hero { padding: 64px 40px 128px; }
+    .authSheet { padding: 40px; }
+    .authCard { padding: 40px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .authSheet { animation: none; }
+}
