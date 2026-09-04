@@ -16,6 +16,7 @@ widget_override_source="$repo_root/deploy/docker-compose.widget-root.override.ym
 override_target="$legacy_root/docker-compose.override.yml"
 backup_dir="/root/garment-buro-nginx-backup-$(date -u +%Y%m%dT%H%M%SZ)"
 had_override=false
+widget_changed=false
 
 test -f "$nginx_source"
 test -f "$override_source"
@@ -34,6 +35,10 @@ if [[ -f "$override_target" ]]; then
 fi
 
 restore_previous_nginx() {
+  if [[ "$widget_changed" == true ]]; then
+    cd "$widget_root"
+    docker compose -f docker-compose.server.yml up -d --build
+  fi
   if [[ -f "$backup_dir/garment-buro.conf" ]]; then
     cp -a "$backup_dir/garment-buro.conf" "$nginx_target"
   fi
@@ -72,6 +77,7 @@ install -m 0644 "$override_source" "$override_target"
 rollback_required=true
 
 cd "$widget_root"
+widget_changed=true
 docker compose \
   -f docker-compose.server.yml \
   -f "$widget_override_source" \
