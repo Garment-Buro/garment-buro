@@ -108,6 +108,14 @@ class Settings(BaseSettings):
     identity_migration_fingerprint: str | None = None
     identity_legacy_token_grace_until: datetime | None = None
     identity_refresh_cookie_name: str = "gb_refresh"
+    identity_password_auth_enabled: bool = True
+    identity_password_max_attempts: int = 5
+    identity_password_lockout_minutes: int = 15
+    identity_phone_auth_enabled: bool = False
+    identity_telegram_auth_enabled: bool = False
+    telegram_bot_token: SecretStr | None = None
+    telegram_auth_max_age_seconds: int = 86_400
+    telegram_api_url: str = "https://api.telegram.org"
 
     notification_encryption_key: SecretStr | None = None
     notification_previous_encryption_keys: SecretStr | None = None
@@ -117,6 +125,8 @@ class Settings(BaseSettings):
     notification_retry_cap_seconds: int = 3_600
     notification_processing_timeout_seconds: int = 300
     notification_poll_seconds: int = 5
+    notification_telegram_enabled: bool = False
+    notification_phone_enabled: bool = False
 
     cors_origins: str = (
         "https://garment-buro.ru,"
@@ -391,6 +401,32 @@ class Settings(BaseSettings):
             raise ValueError("IDENTITY_OTP_DIGITS must be between 4 and 8")
         if not 1 <= self.identity_otp_max_attempts <= 10:
             raise ValueError("IDENTITY_OTP_MAX_ATTEMPTS must be between 1 and 10")
+        if not 1 <= self.identity_password_max_attempts <= 20:
+            raise ValueError("IDENTITY_PASSWORD_MAX_ATTEMPTS must be between 1 and 20")
+        if self.identity_phone_auth_enabled or self.notification_phone_enabled:
+            raise ValueError(
+                "Phone auth and notifications must stay disabled until a provider is configured"
+            )
+        if (
+            self.identity_telegram_auth_enabled or self.notification_telegram_enabled
+        ) and not self.secret_value(self.telegram_bot_token):
+            raise ValueError("TELEGRAM_BOT_TOKEN is required when Telegram features are enabled")
+        telegram_url = urlsplit(self.telegram_api_url)
+        if (
+            telegram_url.scheme != "https"
+            or not telegram_url.netloc
+            or telegram_url.username
+            or telegram_url.password
+            or telegram_url.query
+            or telegram_url.fragment
+        ):
+            raise ValueError("TELEGRAM_API_URL must be an absolute HTTPS URL without credentials")
+        if self.app_env in {AppEnvironment.STAGING, AppEnvironment.PRODUCTION} and (
+            telegram_url.hostname != "api.telegram.org" or telegram_url.path.rstrip("/")
+        ):
+            raise ValueError(
+                "TELEGRAM_API_URL must use https://api.telegram.org outside local/test"
+            )
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", self.identity_refresh_cookie_name):
             raise ValueError("IDENTITY_REFRESH_COOKIE_NAME contains unsupported characters")
         if (
@@ -411,6 +447,8 @@ class Settings(BaseSettings):
             "IDENTITY_ACCESS_EXPIRE_MINUTES": self.identity_access_expire_minutes,
             "IDENTITY_REFRESH_EXPIRE_DAYS": self.identity_refresh_expire_days,
             "IDENTITY_MAX_ACTIVE_SESSIONS": self.identity_max_active_sessions,
+            "IDENTITY_PASSWORD_LOCKOUT_MINUTES": self.identity_password_lockout_minutes,
+            "TELEGRAM_AUTH_MAX_AGE_SECONDS": self.telegram_auth_max_age_seconds,
         }
         invalid_identity_fields = [
             name for name, value in identity_positive_fields.items() if value <= 0

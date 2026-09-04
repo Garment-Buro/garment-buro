@@ -4,7 +4,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
 
 class AuthEmailRequest(BaseModel):
@@ -15,6 +15,42 @@ class AuthEmailRequest(BaseModel):
 
 class AuthVerifyRequest(AuthEmailRequest):
     code: str = Field(pattern=r"^\d{4}$")
+
+
+class AuthPhoneRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    phone: str = Field(min_length=8, max_length=64)
+
+
+class AuthPhoneVerifyRequest(AuthPhoneRequest):
+    code: str = Field(pattern=r"^\d{4}$")
+
+
+class PasswordLoginRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    identifier: str = Field(min_length=3, max_length=320)
+    password: SecretStr = Field(min_length=10, max_length=128)
+
+
+class SetPasswordRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    new_password: SecretStr = Field(min_length=10, max_length=128)
+    current_password: SecretStr | None = Field(default=None, min_length=10, max_length=128)
+
+
+class TelegramLoginRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: int = Field(gt=0)
+    auth_date: int = Field(gt=0)
+    hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    first_name: str | None = Field(default=None, max_length=255)
+    last_name: str | None = Field(default=None, max_length=255)
+    username: str | None = Field(default=None, max_length=255)
+    photo_url: str | None = Field(default=None, max_length=2048)
 
 
 class ProfileUpdateRequest(BaseModel):
@@ -71,6 +107,17 @@ class AuthAccessResponse(BaseModel):
     permissions: list[str]
 
 
+class AuthMethodResponse(BaseModel):
+    code: str
+    kind: str
+    enabled: bool
+    reason: str | None
+
+
+class AuthMethodsResponse(BaseModel):
+    methods: list[AuthMethodResponse]
+
+
 class EmailCodeRequestResponse(BaseModel):
     status: Literal["sent"] = "sent"
 
@@ -81,3 +128,7 @@ class DeletedResponse(BaseModel):
 
 class LoggedOutResponse(BaseModel):
     status: Literal["logged_out"] = "logged_out"
+
+
+class PasswordUpdatedResponse(BaseModel):
+    status: Literal["password_updated"] = "password_updated"

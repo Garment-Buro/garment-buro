@@ -9,15 +9,15 @@ from app.db import models as database_models  # noqa: F401
 from app.db.base import Base
 
 
-def test_alembic_has_one_linear_partner_cabinet_head() -> None:
+def test_alembic_has_one_linear_multi_channel_auth_head() -> None:
     backend_dir = Path(__file__).resolve().parents[2]
     config = Config(str(backend_dir / "alembic.ini"))
     scripts = ScriptDirectory.from_config(config)
 
-    assert scripts.get_heads() == ["20260904_0031"]
-    revision = scripts.get_revision("20260904_0031")
+    assert scripts.get_heads() == ["20260904_0032"]
+    revision = scripts.get_revision("20260904_0032")
     assert revision is not None
-    assert revision.down_revision == "20260904_0030"
+    assert revision.down_revision == "20260904_0031"
 
 
 def test_metadata_has_deterministic_constraint_names() -> None:
@@ -49,6 +49,8 @@ def test_identity_security_tables_share_the_target_metadata() -> None:
         "refresh_sessions",
         "security_audit_events",
         "identity_migration_runs",
+        "password_credentials",
+        "external_auth_identities",
     } <= set(Base.metadata.tables)
 
 

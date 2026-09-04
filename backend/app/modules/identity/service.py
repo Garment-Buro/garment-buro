@@ -12,22 +12,36 @@ from app.modules.identity.exceptions import (
     EmailAlreadyUsedError,
     ExpiredOtpError,
     InactiveUserError,
+    InvalidCredentialsError,
+    InvalidEmailError,
     InvalidOtpError,
+    InvalidPhoneError,
     InvalidSessionError,
     OtpRateLimitError,
     PermissionDeniedError,
+    PhoneAlreadyUsedError,
     RefreshTokenReuseError,
 )
 from app.modules.identity.models import (
+    ExternalAuthProvider,
     OtpChallenge,
+    OtpMethod,
     OtpPurpose,
+    PasswordCredential,
     PermissionCode,
     RefreshSession,
     User,
     UserStatus,
 )
+from app.modules.identity.passwords import PasswordSecurity
 from app.modules.identity.repository import IdentityRepository
-from app.modules.identity.security import OtpSecurity, TokenSecurity, ensure_utc, normalize_email
+from app.modules.identity.security import (
+    OtpSecurity,
+    TokenSecurity,
+    ensure_utc,
+    normalize_email,
+    normalize_phone,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,6 +53,8 @@ class IdentityPolicy:
     otp_max_attempts: int = 5
     refresh_lifetime: timedelta = timedelta(days=30)
     max_active_sessions: int = 10
+    password_max_attempts: int = 5
+    password_lockout: timedelta = timedelta(minutes=15)
 
     def __post_init__(self) -> None:
         positive_durations = (
@@ -46,6 +62,7 @@ class IdentityPolicy:
             self.otp_resend_interval,
             self.otp_window,
             self.refresh_lifetime,
+            self.password_lockout,
         )
         if any(duration <= timedelta(0) for duration in positive_durations):
             raise ValueError("Identity policy durations must be positive")
@@ -53,6 +70,8 @@ class IdentityPolicy:
             raise ValueError("OTP max attempts must be between 1 and 10")
         if self.otp_window_limit <= 0 or self.max_active_sessions <= 0:
             raise ValueError("Identity policy limits must be positive")
+        if not 1 <= self.password_max_attempts <= 20:
+            raise ValueError("Password max attempts must be between 1 and 20")
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,6 +82,10 @@ class IssuedOtp:
     code: str
     expires_at: datetime
     invalidated_challenge_ids: tuple[int, ...] = ()
+
+    @property
+    def target(self) -> str:
+        return self.target_email
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,6 +136,15 @@ class ProfileChanges:
             raise ValueError("Unsupported profile fields")
 
 
+@dataclass(frozen=True, slots=True)
+class ExternalAuthPrincipal:
+    provider: str
+    subject: str
+    first_name: str | None = None
+    last_name: str | None = None
+    username: str | None = None
+
+
 class IdentityService:
     def __init__(
         self,
@@ -121,11 +153,188 @@ class IdentityService:
         *,
         repository: IdentityRepository | None = None,
         policy: IdentityPolicy | None = None,
+        password_security: PasswordSecurity | None = None,
     ) -> None:
         self.otp_security = otp_security
         self.token_security = token_security
         self.repository = repository or IdentityRepository()
         self.policy = policy or IdentityPolicy()
+        self.password_security = password_security or PasswordSecurity()
+
+    async def authenticate_password(
+        self,
+        session: AsyncSession,
+        *,
+        identifier: str,
+        password: str,
+        now: datetime,
+        client_ip: str | None = None,
+        user_agent: str | None = None,
+    ) -> AuthSessionTokens:
+        now = ensure_utc(now)
+        user: User | None
+        if "@" in identifier:
+            try:
+                _, normalized = normalize_email(identifier)
+            except InvalidEmailError:
+                normalized = ""
+            user = await self.repository.get_user_by_email(session, normalized, for_update=True)
+        else:
+            try:
+                _, normalized = normalize_phone(identifier)
+            except InvalidPhoneError:
+                normalized = ""
+            user = await self.repository.get_user_by_phone(session, normalized, for_update=True)
+            if user is not None and user.phone_verified_at is None:
+                user = None
+
+        if user is None or user.status != UserStatus.ACTIVE.value:
+            self.password_security.verify_missing_user(password)
+            raise InvalidCredentialsError("Invalid identifier or password")
+        credential = await self.repository.get_password_credential(
+            session,
+            user_id=user.id,
+            for_update=True,
+        )
+        if credential is None:
+            self.password_security.verify_missing_user(password)
+            raise InvalidCredentialsError("Invalid identifier or password")
+        if credential.locked_until is not None and ensure_utc(credential.locked_until) > now:
+            self.password_security.verify_missing_user(password)
+            raise InvalidCredentialsError("Invalid identifier or password")
+
+        ip_digest = self.otp_security.digest_client_value(client_ip)
+        if not self.password_security.verify(credential.password_hash, password):
+            credential.failed_attempts += 1
+            if credential.failed_attempts >= self.policy.password_max_attempts:
+                credential.failed_attempts = 0
+                credential.locked_until = now + self.policy.password_lockout
+            await self.repository.add_audit_event(
+                session,
+                event_type="auth.password_failed",
+                subject_user_id=user.id,
+                ip_digest=ip_digest,
+                user_agent=user_agent,
+            )
+            await session.commit()
+            raise InvalidCredentialsError("Invalid identifier or password")
+
+        credential.failed_attempts = 0
+        credential.locked_until = None
+        credential.last_used_at = now
+        if self.password_security.needs_rehash(credential.password_hash):
+            credential.password_hash = self.password_security.hash(password)
+        tokens, _ = await self._new_session(
+            session,
+            user=user,
+            now=now,
+            ip_digest=ip_digest,
+            user_agent=user_agent,
+        )
+        await self.repository.add_audit_event(
+            session,
+            event_type="auth.password_succeeded",
+            actor_user_id=user.id,
+            subject_user_id=user.id,
+            session_id=tokens.session_id,
+            ip_digest=ip_digest,
+            user_agent=user_agent,
+        )
+        await session.flush()
+        return tokens
+
+    async def set_password(
+        self,
+        session: AsyncSession,
+        *,
+        user_id: int,
+        new_password: str,
+        current_password: str | None,
+        now: datetime,
+    ) -> None:
+        if not 10 <= len(new_password) <= 128:
+            raise ValueError("Password must contain between 10 and 128 characters")
+        user = await self.repository.get_user(session, user_id, for_update=True)
+        if user is None or user.status != UserStatus.ACTIVE.value:
+            raise InactiveUserError("User is not active")
+        credential = await self.repository.get_password_credential(
+            session,
+            user_id=user.id,
+            for_update=True,
+        )
+        if credential is not None:
+            if current_password is None or not self.password_security.verify(
+                credential.password_hash,
+                current_password,
+            ):
+                raise InvalidCredentialsError("Current password is invalid")
+            credential.password_hash = self.password_security.hash(new_password)
+            credential.password_changed_at = ensure_utc(now)
+            credential.failed_attempts = 0
+            credential.locked_until = None
+        else:
+            session.add(
+                PasswordCredential(
+                    user_id=user.id,
+                    password_hash=self.password_security.hash(new_password),
+                    password_changed_at=ensure_utc(now),
+                )
+            )
+        await self.repository.add_audit_event(
+            session,
+            event_type="auth.password_changed",
+            actor_user_id=user.id,
+            subject_user_id=user.id,
+        )
+        await session.flush()
+
+    async def authenticate_external(
+        self,
+        session: AsyncSession,
+        *,
+        principal: ExternalAuthPrincipal,
+        now: datetime,
+        client_ip: str | None = None,
+        user_agent: str | None = None,
+    ) -> AuthSessionTokens:
+        now = ensure_utc(now)
+        if principal.provider not in {provider.value for provider in ExternalAuthProvider}:
+            raise ValueError("Unsupported external authentication provider")
+        if not principal.subject or len(principal.subject) > 255:
+            raise ValueError("Invalid external authentication subject")
+        user = await self.repository.get_or_create_external_customer(
+            session,
+            provider=principal.provider,
+            subject=principal.subject,
+            first_name=principal.first_name,
+            last_name=principal.last_name,
+            username=principal.username,
+            verified_at=now,
+        )
+        if user.status != UserStatus.ACTIVE.value:
+            raise InactiveUserError("User is not active")
+        user.first_name = user.first_name or principal.first_name
+        user.last_name = user.last_name or principal.last_name
+        user.username = principal.username or user.username
+        ip_digest = self.otp_security.digest_client_value(client_ip)
+        tokens, _ = await self._new_session(
+            session,
+            user=user,
+            now=now,
+            ip_digest=ip_digest,
+            user_agent=user_agent,
+        )
+        await self.repository.add_audit_event(
+            session,
+            event_type=f"auth.{principal.provider}.succeeded",
+            actor_user_id=user.id,
+            subject_user_id=user.id,
+            session_id=tokens.session_id,
+            ip_digest=ip_digest,
+            user_agent=user_agent,
+        )
+        await session.flush()
+        return tokens
 
     async def request_login_otp(
         self,
@@ -168,6 +377,9 @@ class IdentityService:
         challenge = OtpChallenge(
             user_id=user.id,
             purpose=OtpPurpose.LOGIN.value,
+            method=OtpMethod.EMAIL.value,
+            target_value=display_email,
+            target_normalized=normalized_email,
             target_email=display_email,
             target_email_normalized=normalized_email,
             code_digest=self.otp_security.digest(
@@ -200,6 +412,93 @@ class IdentityService:
             challenge_id=challenge.id,
             user_id=user.id,
             target_email=display_email,
+            code=code,
+            expires_at=expires_at,
+            invalidated_challenge_ids=tuple(invalidated_challenge_ids),
+        )
+
+    async def request_login_phone_otp(
+        self,
+        session: AsyncSession,
+        *,
+        phone: str,
+        now: datetime,
+        client_ip: str | None = None,
+        user_agent: str | None = None,
+    ) -> IssuedOtp:
+        now = ensure_utc(now)
+        display_phone, normalized_phone = normalize_phone(phone)
+        ip_digest = self.otp_security.digest_client_value(client_ip)
+        await self._enforce_otp_request_limits(
+            session,
+            target_email_normalized=normalized_phone,
+            purpose=OtpPurpose.LOGIN,
+            method=OtpMethod.PHONE,
+            ip_digest=ip_digest,
+            now=now,
+        )
+        user = await self.repository.get_or_create_phone_customer(
+            session,
+            phone=display_phone,
+            phone_normalized=normalized_phone,
+        )
+        await self._enforce_otp_request_limits(
+            session,
+            target_email_normalized=normalized_phone,
+            purpose=OtpPurpose.LOGIN,
+            method=OtpMethod.PHONE,
+            ip_digest=ip_digest,
+            now=now,
+        )
+        if user.status != UserStatus.ACTIVE.value:
+            raise InactiveUserError("User is not active")
+
+        code = self.otp_security.generate_code()
+        salt = self.otp_security.generate_salt()
+        expires_at = now + self.policy.otp_lifetime
+        challenge = OtpChallenge(
+            user_id=user.id,
+            purpose=OtpPurpose.LOGIN.value,
+            method=OtpMethod.PHONE.value,
+            target_value=display_phone,
+            target_normalized=normalized_phone,
+            target_email=display_phone,
+            target_email_normalized=normalized_phone,
+            code_digest=self.otp_security.digest(
+                code=code,
+                salt=salt,
+                purpose=OtpPurpose.LOGIN,
+                target_email_normalized=normalized_phone,
+                method=OtpMethod.PHONE,
+            ),
+            code_salt=salt,
+            expires_at=expires_at,
+            max_attempts=self.policy.otp_max_attempts,
+            active_key=self.repository.active_challenge_key(
+                user.id,
+                OtpPurpose.LOGIN,
+                method=OtpMethod.PHONE,
+            ),
+            requested_ip_digest=ip_digest,
+        )
+        invalidated_challenge_ids = await self.repository.replace_active_challenge(
+            session,
+            challenge,
+            invalidated_at=now,
+        )
+        await self.repository.add_audit_event(
+            session,
+            event_type="auth.phone.otp_requested",
+            subject_user_id=user.id,
+            ip_digest=ip_digest,
+            user_agent=user_agent,
+            details={"purpose": OtpPurpose.LOGIN.value, "method": OtpMethod.PHONE.value},
+        )
+        await session.flush()
+        return IssuedOtp(
+            challenge_id=challenge.id,
+            user_id=user.id,
+            target_email=display_phone,
             code=code,
             expires_at=expires_at,
             invalidated_challenge_ids=tuple(invalidated_challenge_ids),
@@ -238,6 +537,9 @@ class IdentityService:
         challenge = OtpChallenge(
             user_id=user.id,
             purpose=OtpPurpose.EMAIL_CHANGE.value,
+            method=OtpMethod.EMAIL.value,
+            target_value=display_email,
+            target_normalized=normalized_email,
             target_email=display_email,
             target_email_normalized=normalized_email,
             code_digest=self.otp_security.digest(
@@ -325,6 +627,61 @@ class IdentityService:
         await self.repository.add_audit_event(
             session,
             event_type="auth.login_succeeded",
+            actor_user_id=user.id,
+            subject_user_id=user.id,
+            session_id=tokens.session_id,
+            ip_digest=ip_digest,
+            user_agent=user_agent,
+        )
+        await session.flush()
+        return tokens
+
+    async def verify_login_phone_otp(
+        self,
+        session: AsyncSession,
+        *,
+        phone: str,
+        code: str,
+        now: datetime,
+        client_ip: str | None = None,
+        user_agent: str | None = None,
+    ) -> AuthSessionTokens:
+        now = ensure_utc(now)
+        _, normalized_phone = normalize_phone(phone)
+        ip_digest = self.otp_security.digest_client_value(client_ip)
+        user = await self.repository.get_user_by_phone(
+            session,
+            normalized_phone,
+            for_update=True,
+        )
+        if user is None or user.status != UserStatus.ACTIVE.value:
+            raise InvalidOtpError("Invalid code")
+        challenge = await self._verify_challenge(
+            session,
+            user=user,
+            purpose=OtpPurpose.LOGIN,
+            method=OtpMethod.PHONE,
+            target_email_normalized=normalized_phone,
+            code=code,
+            now=now,
+            ip_digest=ip_digest,
+            user_agent=user_agent,
+            event_prefix="auth.phone",
+        )
+        challenge.consumed_at = now
+        challenge.active_key = None
+        user.phone_verified_at = user.phone_verified_at or now
+        tokens, _ = await self._new_session(
+            session,
+            user=user,
+            now=now,
+            ip_digest=ip_digest,
+            user_agent=user_agent,
+            verified_challenge_id=challenge.id,
+        )
+        await self.repository.add_audit_event(
+            session,
+            event_type="auth.phone.login_succeeded",
             actor_user_id=user.id,
             subject_user_id=user.id,
             session_id=tokens.session_id,
@@ -464,8 +821,26 @@ class IdentityService:
         user = await self.repository.get_user(session, user_id, for_update=True)
         if user is None or user.status != UserStatus.ACTIVE.value:
             raise InactiveUserError("User is not active")
-        for field_name in changes.provided_fields:
-            setattr(user, field_name, getattr(changes, field_name))
+        try:
+            async with session.begin_nested():
+                for field_name in changes.provided_fields:
+                    value = getattr(changes, field_name)
+                    if field_name == "phone":
+                        if value is None:
+                            user.phone = None
+                            user.phone_normalized = None
+                            user.phone_verified_at = None
+                        else:
+                            display_phone, normalized_phone = normalize_phone(value)
+                            user.phone = display_phone
+                            user.phone_normalized = normalized_phone
+                            user.phone_verified_at = None
+                        continue
+                    setattr(user, field_name, value)
+                user.updated_at = ensure_utc(now)
+                await session.flush()
+        except IntegrityError as error:
+            raise PhoneAlreadyUsedError("Phone is already used") from error
         await self.repository.add_audit_event(
             session,
             event_type="profile.updated",
@@ -473,7 +848,6 @@ class IdentityService:
             subject_user_id=user.id,
             details={"fields": sorted(changes.provided_fields)},
         )
-        user.updated_at = ensure_utc(now)
         await session.flush()
         return user
 
@@ -498,9 +872,13 @@ class IdentityService:
             user_id=user.id,
             invalidated_at=now,
         )
+        await self.repository.delete_user_auth_credentials(session, user_id=user.id)
         user.email = None
         user.email_normalized = None
         user.telegram_id = None
+        user.phone_normalized = None
+        user.primary_auth_provider = None
+        user.primary_auth_subject = None
         user.first_name = None
         user.last_name = None
         user.username = None
@@ -510,6 +888,7 @@ class IdentityService:
         user.height_cm = None
         user.weight_kg = None
         user.email_verified_at = None
+        user.phone_verified_at = None
         user.status = UserStatus.DELETED.value
         user.updated_at = now
         await self.repository.add_audit_event(
@@ -640,6 +1019,7 @@ class IdentityService:
         *,
         user: User,
         purpose: OtpPurpose,
+        method: OtpMethod = OtpMethod.EMAIL,
         target_email_normalized: str,
         code: str,
         now: datetime,
@@ -651,8 +1031,13 @@ class IdentityService:
             session,
             user_id=user.id,
             purpose=purpose,
+            method=method,
         )
-        if challenge is None or challenge.target_email_normalized != target_email_normalized:
+        if (
+            challenge is None
+            or (challenge.target_normalized or challenge.target_email_normalized)
+            != target_email_normalized
+        ):
             raise InvalidOtpError("Invalid code")
         if ensure_utc(challenge.expires_at) <= now:
             challenge.invalidated_at = now
@@ -673,6 +1058,7 @@ class IdentityService:
             purpose=purpose,
             target_email_normalized=challenge.target_email_normalized,
             expected_digest=challenge.code_digest,
+            method=method,
         )
         if not verified:
             challenge.attempts_count += 1
@@ -757,6 +1143,7 @@ class IdentityService:
         *,
         target_email_normalized: str,
         purpose: OtpPurpose,
+        method: OtpMethod = OtpMethod.EMAIL,
         ip_digest: str | None,
         now: datetime,
     ) -> None:
@@ -764,6 +1151,7 @@ class IdentityService:
             session,
             target_email_normalized=target_email_normalized,
             purpose=purpose,
+            method=method,
         )
         if latest is not None:
             elapsed = now - ensure_utc(latest.created_at)
@@ -775,6 +1163,7 @@ class IdentityService:
             target_email_normalized=target_email_normalized,
             requested_ip_digest=ip_digest,
             since=now - self.policy.otp_window,
+            method=method,
         )
         if recent_count >= self.policy.otp_window_limit:
             raise OtpRateLimitError(int(self.policy.otp_window.total_seconds()))

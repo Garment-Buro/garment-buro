@@ -10,8 +10,10 @@ from app.modules.identity.migration_types import (
     TargetIdentityNotEmptyError,
 )
 from app.modules.identity.models import (
+    ExternalAuthIdentity,
     IdentityMigrationRun,
     OtpChallenge,
+    PasswordCredential,
     RefreshSession,
     Role,
     RoleName,
@@ -51,6 +53,8 @@ class IdentityMigrationService:
                 email=record.email,
                 email_normalized=record.email_normalized,
                 telegram_id=record.telegram_id,
+                primary_auth_provider=("telegram" if record.email is None else None),
+                primary_auth_subject=(record.telegram_id if record.email is None else None),
                 first_name=record.first_name,
                 last_name=record.last_name,
                 username=record.username,
@@ -69,6 +73,14 @@ class IdentityMigrationService:
                 updated_at=record.created_at,
             )
             user.role_links.append(UserRole(role_id=customer_role.id))
+            if record.telegram_id is not None:
+                user.external_identities.append(
+                    ExternalAuthIdentity(
+                        provider="telegram",
+                        subject=record.telegram_id,
+                        verified_at=record.created_at,
+                    )
+                )
             session.add(user)
 
         session.add(
@@ -93,6 +105,12 @@ class IdentityMigrationService:
             "otp_challenges": await session.scalar(select(func.count()).select_from(OtpChallenge)),
             "refresh_sessions": await session.scalar(
                 select(func.count()).select_from(RefreshSession)
+            ),
+            "password_credentials": await session.scalar(
+                select(func.count()).select_from(PasswordCredential)
+            ),
+            "external_auth_identities": await session.scalar(
+                select(func.count()).select_from(ExternalAuthIdentity)
             ),
             "security_audit_events": await session.scalar(
                 select(func.count()).select_from(SecurityAuditEvent)

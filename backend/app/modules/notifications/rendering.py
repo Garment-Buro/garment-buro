@@ -86,6 +86,21 @@ class RenderedEmail:
     html: str
 
 
+@dataclass(frozen=True, slots=True)
+class RenderedTelegram:
+    recipient: str
+    text: str
+
+
+@dataclass(frozen=True, slots=True)
+class RenderedPhone:
+    recipient: str
+    text: str
+
+
+RenderedNotification = RenderedEmail | RenderedTelegram | RenderedPhone
+
+
 class NotificationRenderer:
     def __init__(self) -> None:
         self.environment = Environment(
@@ -108,21 +123,34 @@ class NotificationRenderer:
             return self._render_order_payment_confirmed(payload)
         raise UnsupportedNotificationTemplateError(f"Unsupported notification template: {template}")
 
+    def render(
+        self,
+        channel: str,
+        template: str,
+        payload: dict[str, object],
+    ) -> RenderedNotification:
+        if channel == "email":
+            return self.render_email(template, payload)
+        if template != NotificationTemplate.AUTH_OTP.value:
+            raise UnsupportedNotificationTemplateError(
+                f"Unsupported {channel} notification template: {template}"
+            )
+        recipient, code, purpose, expires_minutes = self._auth_otp_values(payload)
+        action_label = "входа" if purpose == "login" else "изменения контакта"
+        text = f"Код для {action_label} в garment-buro: {code}. Действует {expires_minutes} минут."
+        if channel == "telegram":
+            if not recipient.isdigit() or len(recipient) > 64:
+                raise InvalidNotificationPayloadError("Invalid Telegram recipient")
+            return RenderedTelegram(recipient=recipient, text=text)
+        if channel == "phone":
+            if not recipient.startswith("+") or not recipient[1:].isdigit():
+                raise InvalidNotificationPayloadError("Invalid phone recipient")
+            return RenderedPhone(recipient=recipient, text=text)
+        raise UnsupportedNotificationTemplateError(f"Unsupported notification channel: {channel}")
+
     def _render_auth_otp(self, payload: dict[str, object]) -> RenderedEmail:
-        recipient = payload.get("recipient")
-        code = payload.get("code")
-        purpose = payload.get("purpose")
-        expires_minutes = payload.get("expires_minutes")
-        if (
-            not isinstance(recipient, str)
-            or "@" not in recipient
-            or not isinstance(code, str)
-            or not 4 <= len(code) <= 8
-            or not code.isdigit()
-            or purpose not in {"login", "email_change"}
-            or not isinstance(expires_minutes, int)
-            or not 1 <= expires_minutes <= 60
-        ):
+        recipient, code, purpose, expires_minutes = self._auth_otp_values(payload)
+        if "@" not in recipient or any(character.isspace() for character in recipient):
             raise InvalidNotificationPayloadError("Invalid auth OTP notification payload")
         action_label = "входа" if purpose == "login" else "изменения email"
         return RenderedEmail(
@@ -134,6 +162,27 @@ class NotificationRenderer:
                 expires_minutes=expires_minutes,
             ),
         )
+
+    @staticmethod
+    def _auth_otp_values(
+        payload: dict[str, object],
+    ) -> tuple[str, str, str, int]:
+        recipient = payload.get("recipient")
+        code = payload.get("code")
+        purpose = payload.get("purpose")
+        expires_minutes = payload.get("expires_minutes")
+        if (
+            not isinstance(recipient, str)
+            or not 1 <= len(recipient) <= 320
+            or not isinstance(code, str)
+            or not 4 <= len(code) <= 8
+            or not code.isdigit()
+            or purpose not in {"login", "email_change", "phone_change"}
+            or not isinstance(expires_minutes, int)
+            or not 1 <= expires_minutes <= 60
+        ):
+            raise InvalidNotificationPayloadError("Invalid auth OTP notification payload")
+        return recipient, code, purpose, expires_minutes
 
     def _render_order_payment_confirmed(
         self,
