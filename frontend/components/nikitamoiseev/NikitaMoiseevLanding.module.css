@@ -1,0 +1,398 @@
+.page {
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow: hidden;
+    background: #e8f1f8;
+    color: #033d64;
+    font-family: var(--font-manrope), Manrope, sans-serif;
+}
+
+.skipLink {
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    z-index: 1000;
+    padding: 8px 12px;
+    transform: translateY(-160%);
+    border-radius: 8px;
+    background: #fff;
+    color: #033d64;
+    font-size: 14px;
+    font-weight: 700;
+    transition: transform 700ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.skipLink:focus-visible {
+    transform: translateY(0);
+    outline: 2px solid #033d64;
+    outline-offset: 2px;
+}
+
+.mobileDrop {
+    position: relative;
+    width: min(100%, 560px);
+    min-height: 100dvh;
+    margin: 0 auto;
+    overflow: hidden;
+    background: #e8f1f8;
+}
+
+.mobileHero {
+    position: relative;
+    height: clamp(1059px, calc(175.7895vw + 408.579px), 1393px);
+    overflow: hidden;
+}
+
+.mobileHeroImage {
+    position: absolute;
+    top: clamp(-222px, calc(-15.7895vw - 133.579px), -192px);
+    left: 50%;
+    width: clamp(718px, calc(74.7368vw + 441.474px), 860px);
+    aspect-ratio: 1044 / 1506;
+    transform: translateX(calc(-50% + clamp(70px, 18.4211vw, 103px)));
+}
+
+.heroImage {
+    object-fit: cover;
+}
+
+.mobileHeroFade {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(232, 241, 248, 0) 60%, #e8f1f8 100%);
+}
+
+.mobileBrand {
+    margin: 0;
+    font-weight: 800;
+    letter-spacing: -0.07em;
+    line-height: 0.999;
+    text-align: center;
+    text-wrap: balance;
+}
+
+.mobileBrand {
+    position: absolute;
+    top: clamp(140px, calc(10.5263vw + 101.053px), 160px);
+    left: 50%;
+    z-index: 2;
+    width: max-content;
+    transform: translateX(-50%);
+    color: #fff;
+    text-shadow: 0 4px 4px rgb(0 0 0 / 25%);
+}
+
+.mobileBrand > span {
+    display: block;
+    font-size: clamp(49px, calc(7.8947vw + 19.789px), 64px);
+}
+
+.mobileBrand > small {
+    display: block;
+    font-size: clamp(24px, calc(2.1053vw + 16.211px), 28px);
+    line-height: 1;
+}
+
+.dropNumber {
+    position: absolute;
+    top: clamp(282px, calc(11.5789vw + 239.158px), 304px);
+    left: 50%;
+    z-index: 2;
+    margin: 0;
+    transform: translateX(-50%);
+    color: rgb(255 255 255 / 39%);
+    font-size: clamp(24px, calc(4.2105vw + 8.421px), 32px);
+    font-weight: 800;
+    letter-spacing: -0.07em;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.movingCastle {
+    position: absolute;
+    top: clamp(534px, calc(53.1579vw + 337.316px), 635px);
+    left: 50%;
+    z-index: 1;
+    display: flex;
+    margin: 0;
+    transform: translateX(-50%);
+    flex-direction: column;
+    color: transparent;
+    font-size: clamp(96px, calc(25.2632vw + 2.526px), 144px);
+    font-weight: 800;
+    letter-spacing: -0.07em;
+    line-height: 0.7;
+    text-align: center;
+    white-space: nowrap;
+    -webkit-text-stroke: 1px rgb(255 255 255 / 54%);
+}
+
+.carousel {
+    position: absolute;
+    top: clamp(629px, calc(68.9474vw + 373.895px), 760px);
+    left: 0;
+    z-index: 2;
+    width: 100%;
+    aspect-ratio: 370 / 430;
+}
+
+.carouselTrack {
+    display: flex;
+    width: 100%;
+    aspect-ratio: 370 / 395;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-behavior: smooth;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+    touch-action: pan-x;
+}
+
+.carouselTrack::-webkit-scrollbar {
+    display: none;
+}
+
+.carouselSlide {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    flex: 0 0 100%;
+    overflow: hidden;
+    scroll-snap-align: start;
+    background: #f8f8f6;
+}
+
+.slideMain,
+.slideDetail,
+.slideModel,
+.slideModelDetail {
+    object-fit: cover;
+    transition: transform 900ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.slideMain {
+    object-position: center 48%;
+}
+
+.slideDetail {
+    transform: scale(1.32);
+    object-position: center 57%;
+}
+
+.slideModel {
+    object-position: center 45%;
+}
+
+.slideModelDetail {
+    transform: scale(1.24);
+    object-position: center 58%;
+}
+
+.carouselDots {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 3;
+    display: flex;
+    height: 35px;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(22px, calc(6.8421vw - 3.316px), 35px);
+}
+
+.carouselDots button {
+    display: grid;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    place-items: center;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    cursor: pointer;
+    opacity: 0.38;
+    transition: opacity 700ms cubic-bezier(0.32, 0.72, 0, 1), transform 700ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.carouselDots button[aria-current="true"],
+.carouselDots button:hover {
+    transform: scale(1.18);
+    opacity: 1;
+}
+
+.carouselDots button:active {
+    transform: scale(0.98);
+}
+
+.carouselDots button:focus-visible {
+    outline: 2px solid #033d64;
+    outline-offset: 2px;
+}
+
+.hoodieShadow {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 50%;
+    z-index: 2;
+    width: min(87%, 420px);
+    height: auto;
+    transform: translateX(-50%);
+}
+
+.mobileStory {
+    position: relative;
+    height: clamp(1015px, calc(118.4211vw + 576.842px), 1240px);
+    background: linear-gradient(180deg, #e8f1f8 38%, #053a62 100%);
+}
+
+.customizeButton {
+    position: absolute;
+    top: clamp(29px, calc(6.8421vw + 3.684px), 42px);
+    left: 50%;
+    z-index: 5;
+    display: flex;
+    width: clamp(313px, calc(56.3158vw + 104.632px), 420px);
+    height: clamp(68px, calc(10.5263vw + 29.053px), 88px);
+    padding: 8px 12px;
+    transform: translateX(-50%);
+    align-items: center;
+    justify-content: center;
+    gap: clamp(48px, calc(12.6316vw + 1.263px), 72px);
+    border-radius: 32px;
+    background: #033d64;
+    box-shadow: 3px 6px 6px rgb(0 0 0 / 9%);
+    color: #fff;
+    font-size: clamp(16px, calc(2.1053vw + 8.211px), 20px);
+    font-weight: 700;
+    transition: transform 700ms cubic-bezier(0.32, 0.72, 0, 1), background 700ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.customizeButton:hover {
+    transform: translateX(-50%) translateY(-2px);
+    background: #07507f;
+}
+
+.customizeButton:active {
+    transform: translateX(-50%) scale(0.98);
+}
+
+.customizeButton:focus-visible {
+    outline: 3px solid #fff;
+    outline-offset: 3px;
+}
+
+.customizeButton img {
+    filter: brightness(0) invert(1);
+}
+
+.ctaDecor {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 1;
+    width: 100%;
+    height: 128px;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.ctaDecor span,
+.ctaDecor::before,
+.ctaDecor::after {
+    position: absolute;
+    width: 29px;
+    height: 136px;
+    transform: rotate(45deg);
+    background: rgb(232 241 248 / 28%);
+    content: "";
+}
+
+.ctaDecor span:first-child {
+    top: -10px;
+    left: 18px;
+}
+
+.ctaDecor span:last-child {
+    top: 8px;
+    right: 22px;
+    transform: rotate(-45deg);
+}
+
+.ctaDecor::before {
+    top: 6px;
+    left: 70px;
+    width: 5px;
+}
+
+.ctaDecor::after {
+    top: 10px;
+    right: 72px;
+    width: 5px;
+    transform: rotate(-45deg);
+}
+
+.collectionNames {
+    position: absolute;
+    top: clamp(170px, calc(21.5789vw + 90.158px), 211px);
+    left: 50%;
+    z-index: 2;
+    width: 100%;
+    transform: translateX(-50%);
+    color: transparent;
+    font-size: clamp(83px, calc(19.4737vw + 10.947px), 120px);
+    font-weight: 800;
+    letter-spacing: -0.07em;
+    line-height: 0.999;
+    text-align: center;
+    white-space: nowrap;
+    -webkit-text-stroke: 1px rgb(3 61 100 / 42%);
+}
+
+.collectionNames p {
+    margin: 0;
+}
+
+.collectionNames p + p {
+    margin-top: 4px;
+}
+
+.storyImage {
+    position: absolute;
+    top: clamp(261px, calc(37.3684vw + 122.737px), 332px);
+    left: 50%;
+    z-index: 3;
+    width: clamp(423px, calc(72.1053vw + 156.211px), 560px);
+    aspect-ratio: 971 / 1619;
+    transform: translateX(calc(-50% - clamp(0px, calc(22.6316vw - 83.737px), 43px)));
+}
+
+.storyImageAsset {
+    object-fit: contain;
+}
+
+@media (min-width: 768px) {
+    .mobileDrop,
+    .skipLink {
+        display: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .skipLink,
+    .slideMain,
+    .slideDetail,
+    .slideModel,
+    .slideModelDetail,
+    .carouselDots button,
+    .customizeButton {
+        transition-duration: 1ms;
+        scroll-behavior: auto;
+    }
+
+    .carouselTrack {
+        scroll-behavior: auto;
+    }
+}
