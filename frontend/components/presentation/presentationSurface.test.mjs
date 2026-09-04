@@ -45,7 +45,9 @@ test("presentation sheet follows the requested viewport geometry and motion", ()
     assert.match(stylesSource, /height:\s*calc\(100dvh - 95px\)/);
     assert.match(stylesSource, /border-radius:\s*20px 20px 0 0/);
     assert.match(stylesSource, /background:\s*#fff/);
-    assert.match(stylesSource, /background:\s*rgb\(0 0 0 \/ 70%\)/);
+    assert.match(stylesSource, /background-image:\s*url\('\/Шапка\.webp'\)/);
+    assert.match(stylesSource, /background-color:\s*rgb\(3 61 100 \/ 22%\)/);
+    assert.match(stylesSource, /\.standaloneRoot \.sheet\s*\{[\s\S]*?inset:\s*0;[\s\S]*?height:\s*100dvh;[\s\S]*?border-radius:\s*0/);
     assert.match(stylesSource, /@keyframes presentation-sheet-in[\s\S]*?translate3d\(0,\s*100%,\s*0\)[\s\S]*?translate3d\(0,\s*0,\s*0\)/);
 });
 

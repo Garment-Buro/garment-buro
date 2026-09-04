@@ -97,7 +97,10 @@ export function PresentationSurface({ isOverlay = false }: PresentationSurfacePr
     }, []);
 
     return (
-        <div className={styles.overlayRoot} data-presentation-overlay>
+        <div
+            className={`${styles.overlayRoot} ${isOverlay ? styles.modalRoot : styles.standaloneRoot}`}
+            data-presentation-overlay={isOverlay ? 'modal' : 'standalone'}
+        >
             <button
                 type="button"
                 className={styles.backdrop}
