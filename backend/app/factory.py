@@ -117,9 +117,7 @@ def create_app(
     cdek_quote_transport: AiohttpCdekTransport | None = None
 
     if runtime_settings.partner_program_enabled:
-        partner_program_manager = partner_program_manager or PartnerProgramService(
-            runtime_settings
-        )
+        partner_program_manager = partner_program_manager or PartnerProgramService(runtime_settings)
     if (
         runtime_settings.payment_webhook_v2_enabled
         or runtime_settings.checkout_v2_enabled
@@ -205,6 +203,7 @@ def create_app(
             runtime_settings,
             CdekProviderClient(cdek_quote_transport),
         )
+
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         await database_manager.startup()

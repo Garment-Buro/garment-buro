@@ -107,9 +107,7 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id", name=op.f("pk_partner_landings")),
         sa.UniqueConstraint("slug", name=op.f("uq_partner_landings_slug")),
     )
-    op.create_index(
-        op.f("ix_partner_landings_partner_id"), "partner_landings", ["partner_id"]
-    )
+    op.create_index(op.f("ix_partner_landings_partner_id"), "partner_landings", ["partner_id"])
     op.create_index(op.f("ix_partner_landings_slug"), "partner_landings", ["slug"])
     op.create_index(op.f("ix_partner_landings_status"), "partner_landings", ["status"])
 
@@ -172,7 +170,9 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), nullable=False),
         sa.CheckConstraint(
             "commission_base_snapshot >= 0",
-            name=op.f("ck_partner_order_attributions_partner_attribution_commission_base_nonnegative"),
+            name=op.f(
+                "ck_partner_order_attributions_partner_attribution_commission_base_nonnegative"
+            ),
         ),
         sa.CheckConstraint(
             "commission_bps_snapshot >= 0 AND commission_bps_snapshot <= 10000",
@@ -268,9 +268,7 @@ def upgrade() -> None:
             ondelete="RESTRICT",
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_partner_commissions")),
-        sa.UniqueConstraint(
-            "attribution_id", name=op.f("uq_partner_commissions_attribution_id")
-        ),
+        sa.UniqueConstraint("attribution_id", name=op.f("uq_partner_commissions_attribution_id")),
         sa.UniqueConstraint("order_id", name=op.f("uq_partner_commissions_order_id")),
     )
     for column in ("attribution_id", "available_at", "order_id", "partner_id", "status"):
@@ -389,9 +387,7 @@ def downgrade() -> None:
     )
     op.drop_table("partner_payout_requests")
     for column in ("status", "partner_id", "order_id", "available_at", "attribution_id"):
-        op.drop_index(
-            op.f(f"ix_partner_commissions_{column}"), table_name="partner_commissions"
-        )
+        op.drop_index(op.f(f"ix_partner_commissions_{column}"), table_name="partner_commissions")
     op.drop_table("partner_commissions")
     for column in ("partner_id", "order_id", "landing_id"):
         op.drop_index(
@@ -416,6 +412,8 @@ def downgrade() -> None:
         "(SELECT id FROM roles WHERE name = 'partner') OR permission_id IN "
         "(SELECT id FROM permissions WHERE code IN ('partners.read_own', 'partners.manage'))"
     )
-    op.execute("DELETE FROM user_roles WHERE role_id IN (SELECT id FROM roles WHERE name = 'partner')")
+    op.execute(
+        "DELETE FROM user_roles WHERE role_id IN (SELECT id FROM roles WHERE name = 'partner')"
+    )
     op.execute("DELETE FROM roles WHERE name = 'partner'")
     op.execute("DELETE FROM permissions WHERE code IN ('partners.read_own', 'partners.manage')")
