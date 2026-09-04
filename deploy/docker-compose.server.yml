@@ -138,7 +138,7 @@ services:
       timeout: 5s
       retries: 20
     ports:
-      - "127.0.0.1:${MINIO_HOST_PORT:?MINIO_HOST_PORT is required}:9000"
+      - "${HOST_BIND_ADDRESS:-127.0.0.1}:${MINIO_HOST_PORT:?MINIO_HOST_PORT is required}:9000"
     volumes:
       - minio_data:/data
     networks:
@@ -188,7 +188,7 @@ services:
   backend:
     <<: *backend-common
     ports:
-      - "127.0.0.1:${BACKEND_HOST_PORT:?BACKEND_HOST_PORT is required}:8000"
+      - "${HOST_BIND_ADDRESS:-127.0.0.1}:${BACKEND_HOST_PORT:?BACKEND_HOST_PORT is required}:8000"
     depends_on:
       legacy-init:
         condition: service_completed_successfully
@@ -219,7 +219,7 @@ services:
       INTERNAL_API_URL: http://backend:8000
       NEXT_PUBLIC_USE_MOCK_DATA: "false"
     ports:
-      - "127.0.0.1:${FRONTEND_HOST_PORT:?FRONTEND_HOST_PORT is required}:3000"
+      - "${HOST_BIND_ADDRESS:-127.0.0.1}:${FRONTEND_HOST_PORT:?FRONTEND_HOST_PORT is required}:3000"
     depends_on:
       backend:
         condition: service_healthy

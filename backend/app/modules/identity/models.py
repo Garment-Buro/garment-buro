@@ -38,6 +38,7 @@ class UserStatus(str, Enum):
 
 class RoleName(str, Enum):
     CUSTOMER = "customer"
+    PARTNER = "partner"
     MANAGER = "manager"
     ADMIN = "admin"
 
@@ -55,6 +56,8 @@ class PermissionCode(str, Enum):
     ADMIN_ACCESS = "admin.access"
     PAYMENTS_MANAGE = "payments.manage"
     PAYOUTS_MANAGE = "payouts.manage"
+    PARTNERS_READ_OWN = "partners.read_own"
+    PARTNERS_MANAGE = "partners.manage"
 
 
 class OtpPurpose(str, Enum):
@@ -396,6 +399,12 @@ SYSTEM_ROLE_PERMISSIONS: dict[RoleName, Sequence[PermissionCode]] = {
         PermissionCode.PROFILE_WRITE_OWN,
         PermissionCode.ORDERS_READ_OWN,
     ),
+    RoleName.PARTNER: (
+        PermissionCode.PROFILE_READ_OWN,
+        PermissionCode.PROFILE_WRITE_OWN,
+        PermissionCode.ORDERS_READ_OWN,
+        PermissionCode.PARTNERS_READ_OWN,
+    ),
     RoleName.MANAGER: (
         PermissionCode.PROFILE_READ_OWN,
         PermissionCode.PROFILE_WRITE_OWN,
@@ -406,6 +415,7 @@ SYSTEM_ROLE_PERMISSIONS: dict[RoleName, Sequence[PermissionCode]] = {
         PermissionCode.CRM_ACCESS,
         PermissionCode.ADMIN_ACCESS,
         PermissionCode.PAYMENTS_MANAGE,
+        PermissionCode.PARTNERS_MANAGE,
     ),
     RoleName.ADMIN: tuple(PermissionCode),
 }

@@ -9,15 +9,15 @@ from app.db import models as database_models  # noqa: F401
 from app.db.base import Base
 
 
-def test_alembic_has_one_linear_yookassa_operations_head() -> None:
+def test_alembic_has_one_linear_partner_program_head() -> None:
     backend_dir = Path(__file__).resolve().parents[2]
     config = Config(str(backend_dir / "alembic.ini"))
     scripts = ScriptDirectory.from_config(config)
 
-    assert scripts.get_heads() == ["20260904_0028"]
-    revision = scripts.get_revision("20260904_0028")
+    assert scripts.get_heads() == ["20260904_0029"]
+    revision = scripts.get_revision("20260904_0029")
     assert revision is not None
-    assert revision.down_revision == "20260812_0027"
+    assert revision.down_revision == "20260904_0028"
 
 
 def test_metadata_has_deterministic_constraint_names() -> None:
@@ -49,6 +49,17 @@ def test_identity_security_tables_share_the_target_metadata() -> None:
         "refresh_sessions",
         "security_audit_events",
         "identity_migration_runs",
+    } <= set(Base.metadata.tables)
+
+
+def test_partner_program_tables_share_the_target_metadata() -> None:
+    assert {
+        "partner_profiles",
+        "partner_landings",
+        "partner_visits",
+        "partner_order_attributions",
+        "partner_commissions",
+        "partner_payout_requests",
     } <= set(Base.metadata.tables)
 
 

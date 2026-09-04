@@ -62,11 +62,32 @@ export DEPLOY_ENV="$environment_name"
 export BACKEND_IMAGE="$backend_image"
 export FRONTEND_IMAGE="$frontend_image"
 
+profiles=()
+enabled() {
+  grep -Eiq "^${1}=(true|1|yes|on)$" .env
+}
+if enabled IDENTITY_API_ENABLED; then
+  profiles+=(--profile notifications)
+fi
+if enabled PAYMENT_WEBHOOK_V2_ENABLED; then
+  profiles+=(--profile payments)
+fi
+if enabled PAYMENT_RECONCILIATION_ENABLED; then
+  profiles+=(--profile payment-reconciliation)
+fi
+if enabled FULFILLMENT_OUTBOX_ENABLED; then
+  profiles+=(--profile fulfillment)
+fi
+if enabled CDEK_CREATION_ENABLED; then
+  profiles+=(--profile cdek)
+fi
+
 compose=(
   docker compose
   --project-name "garment-buro-$environment_name"
   --env-file .env
   -f docker-compose.yml
+  "${profiles[@]}"
 )
 
 "${compose[@]}" config --quiet
@@ -108,13 +129,19 @@ rollback() {
 
 frontend_port="$(sed -n 's/^FRONTEND_HOST_PORT=//p' .env | tail -n 1)"
 backend_port="$(sed -n 's/^BACKEND_HOST_PORT=//p' .env | tail -n 1)"
+health_address="$(sed -n 's/^HOST_BIND_ADDRESS=//p' .env | tail -n 1)"
+health_address="${health_address:-127.0.0.1}"
 if [[ ! "$frontend_port" =~ ^[0-9]+$ || ! "$backend_port" =~ ^[0-9]+$ ]]; then
   echo "invalid frontend/backend host port in .env" >&2
   exit 78
 fi
+if [[ ! "$health_address" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]]; then
+  echo "invalid host bind address in .env" >&2
+  exit 78
+fi
 
-if ! wait_for_url "backend" "http://127.0.0.1:$backend_port/health/ready" \
-  || ! wait_for_url "frontend" "http://127.0.0.1:$frontend_port/"; then
+if ! wait_for_url "backend" "http://$health_address:$backend_port/health/ready" \
+  || ! wait_for_url "frontend" "http://$health_address:$frontend_port/"; then
   rollback || true
   exit 1
 fi
@@ -129,5 +156,5 @@ chmod 0640 "$release_tmp"
 mv "$release_tmp" .release
 
 "${compose[@]}" ps
-curl --fail --silent --show-error "http://127.0.0.1:$backend_port/health/ready"
+curl --fail --silent --show-error "http://$health_address:$backend_port/health/ready"
 printf '\nDeployed %s\n' "$environment_name"

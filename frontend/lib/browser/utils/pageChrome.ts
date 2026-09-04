@@ -62,7 +62,11 @@ const SITE_CHROME_HIDDEN_ROUTES = new Set([
 ]);
 
 export const isSiteChromeHidden = (pathname: string | null) => (
-    pathname !== null && SITE_CHROME_HIDDEN_ROUTES.has(pathname)
+    pathname !== null && (
+        SITE_CHROME_HIDDEN_ROUTES.has(pathname)
+        || pathname.startsWith('/partner')
+        || pathname.startsWith('/p/')
+    )
 );
 
 export const getPageChrome = (pathname: string | null): PageChromeConfig => {

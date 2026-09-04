@@ -118,6 +118,9 @@ async def create_checkout(
             command=command,
             user_id=user.id if user is not None else None,
             guest_access_token=guest_access_token,
+            partner_attribution_token=request.cookies.get(
+                request.app.state.settings.partner_attribution_cookie_name
+            ),
         )
     except (
         CheckoutActorError,

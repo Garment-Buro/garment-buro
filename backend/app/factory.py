@@ -46,9 +46,14 @@ from app.modules.orders.router import guest_router as order_guest_router
 from app.modules.orders.router import router as order_router
 from app.modules.orders.service import (
     OrderGuestAccessService,
+    OrderLifecycleService,
     OrderOwnershipBridgeService,
     TargetOrderReadService,
 )
+from app.modules.partners.router import admin_router as partner_admin_router
+from app.modules.partners.router import partner_router
+from app.modules.partners.router import public_router as partner_public_router
+from app.modules.partners.service import PartnerProgramService
 from app.modules.payments.creation import PaymentCreationService
 from app.modules.payments.operation_router import router as payment_operation_router
 from app.modules.payments.operation_service import PaymentOperationService
@@ -86,6 +91,7 @@ def create_app(
     crm_material_service: CrmMaterialService | None = None,
     crm_file_service: CrmFileService | None = None,
     cdek_quote_service: CdekQuoteService | None = None,
+    partner_program_service: PartnerProgramService | None = None,
 ) -> FastAPI:
     runtime_settings = settings or get_settings()
     database_manager = database or DatabaseManager(runtime_settings)
@@ -105,9 +111,15 @@ def create_app(
     crm_material_manager = crm_material_service
     crm_file_manager = crm_file_service
     cdek_quote_manager = cdek_quote_service
+    partner_program_manager = partner_program_service
     payment_transport: AiohttpYooKassaTransport | None = None
     payout_transport: AiohttpYooKassaPayoutTransport | None = None
     cdek_quote_transport: AiohttpCdekTransport | None = None
+
+    if runtime_settings.partner_program_enabled:
+        partner_program_manager = partner_program_manager or PartnerProgramService(
+            runtime_settings
+        )
     if (
         runtime_settings.payment_webhook_v2_enabled
         or runtime_settings.checkout_v2_enabled
@@ -126,11 +138,16 @@ def create_app(
             runtime_settings,
             provider,
             payment_service=payment_manager,
+            order_lifecycle=OrderLifecycleService(
+                runtime_settings,
+                partner_program_service=partner_program_manager,
+            ),
         )
         checkout_manager = CheckoutService(
             runtime_settings,
             payment_creation,
             payment_service=payment_manager,
+            partner_program_service=partner_program_manager,
         )
     if runtime_settings.checkout_v2_enabled and payment_retry_manager is None:
         if checkout_manager is None:
@@ -147,6 +164,10 @@ def create_app(
             runtime_settings,
             YooKassaProviderClient(payment_transport),
             payment_service=payment_manager,
+            order_lifecycle=OrderLifecycleService(
+                runtime_settings,
+                partner_program_service=partner_program_manager,
+            ),
         )
     if runtime_settings.yookassa_payouts_enabled and payout_manager is None:
         payout_transport = AiohttpYooKassaPayoutTransport(runtime_settings)
@@ -184,7 +205,6 @@ def create_app(
             runtime_settings,
             CdekProviderClient(cdek_quote_transport),
         )
-
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         await database_manager.startup()
@@ -274,6 +294,7 @@ def create_app(
     application.state.crm_material_service = crm_material_manager
     application.state.crm_file_service = crm_file_manager
     application.state.cdek_quote_service = cdek_quote_manager
+    application.state.partner_program_service = partner_program_manager
 
     application.add_middleware(
         CORSMiddleware,
@@ -316,6 +337,10 @@ def create_app(
         application.include_router(crm_file_router)
     if runtime_settings.cdek_quote_enabled:
         application.include_router(cdek_quote_router)
+    if runtime_settings.partner_program_enabled:
+        application.include_router(partner_public_router)
+        application.include_router(partner_router)
+        application.include_router(partner_admin_router)
 
     if legacy_app is not None:
         application.mount("/", legacy_app, name="legacy")
