@@ -8,7 +8,7 @@ export const PartnerPortal = () => {
     const { isAuthenticated, isSessionReady } = useAuthStore();
 
     if (!isSessionReady) {
-        return <div className="flex min-h-dvh items-center justify-center text-sm text-black/50">Восстанавливаем сессию…</div>;
+        return <div className="min-h-dvh bg-[#e7eef1]" aria-label="Восстанавливаем сессию" aria-busy="true" />;
     }
 
     return isAuthenticated ? <PartnerDashboard /> : <PartnerLogin />;

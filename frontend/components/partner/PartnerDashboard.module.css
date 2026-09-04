@@ -24,15 +24,51 @@
 }
 
 .hero {
+    position: relative;
     min-height: 248px;
     padding: max(24px, env(safe-area-inset-top)) 16px 80px;
     background: #e7eef1;
+    background-position: center;
+    background-size: cover;
+    overflow: hidden;
+}
+
+.heroWithBackground {
+    color: #fff;
+}
+
+.heroBackdrop {
+    position: absolute;
+    inset: -24px;
+    background: rgb(0 0 0 / 38%);
+    backdrop-filter: blur(16px);
 }
 
 .heroInner,
 .sheet {
     width: min(100%, 1184px);
     margin: 0 auto;
+}
+
+.heroInner {
+    position: relative;
+    z-index: 1;
+}
+
+.heroWithBackground .brandContext,
+.heroWithBackground .eyebrow,
+.heroWithBackground .heroMeta {
+    color: rgb(255 255 255 / 72%);
+}
+
+.heroWithBackground .brandMark {
+    border-color: rgb(255 255 255 / 72%);
+}
+
+.heroWithBackground .locationBadge {
+    background: rgb(255 255 255 / 20%);
+    color: #fff;
+    backdrop-filter: blur(16px);
 }
 
 .heroTopline {

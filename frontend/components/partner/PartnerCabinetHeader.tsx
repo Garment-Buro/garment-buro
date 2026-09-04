@@ -3,8 +3,18 @@ import type { PartnerProfile } from '@/lib/partners/types';
 
 import styles from './PartnerDashboard.module.css';
 
-export const PartnerCabinetHeader = ({ partner }: { partner: PartnerProfile }) => (
-    <header className={styles.hero}>
+export const PartnerCabinetHeader = ({
+    partner,
+    backgroundSrc,
+}: {
+    partner: PartnerProfile;
+    backgroundSrc?: string;
+}) => (
+    <header
+        className={`${styles.hero} ${backgroundSrc ? styles.heroWithBackground : ''}`}
+        style={backgroundSrc ? { backgroundImage: `url("${backgroundSrc}")` } : undefined}
+    >
+        {backgroundSrc && <div className={styles.heroBackdrop} aria-hidden="true" />}
         <div className={styles.heroInner}>
             <div className={styles.heroTopline}>
                 <div className={styles.brand} aria-label="Garment Buro">
