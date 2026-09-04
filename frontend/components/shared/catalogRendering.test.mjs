@@ -13,6 +13,7 @@ const homeSource = [
     path.join(root, "app", "page.tsx"),
     path.join(root, "lib", "catalog", "data.ts"),
 ].map(file => fs.readFileSync(file, "utf8")).join("\n");
+const publicCatalogSource = fs.readFileSync(path.join(root, "lib", "catalog", "public.ts"), "utf8");
 const phantomBootstrapSource = fs.readFileSync(path.join(root, "components", "runtime", "PhantomUiBootstrap.tsx"), "utf8");
 const layoutSource = fs.readFileSync(path.join(root, "app", "layout.tsx"), "utf8");
 const globalStylesSource = fs.readFileSync(path.join(root, "app", "globals.css"), "utf8");
@@ -78,12 +79,13 @@ const productPageSource = [
     path.join(root, "lib", "products", "utils", "product.ts"),
 ].map(file => fs.readFileSync(file, "utf8")).join("\n");
 
-test("catalog renders initial products without phantom-ui or a loading skeleton", () => {
+test("legacy catalog stays reusable internally while the public home is platform first", () => {
     assert.doesNotMatch(landingSource, /phantom-ui|LandingSkeleton/);
     assert.match(landingSource, /initialProducts/);
     assert.match(landingSource, /initialSettings/);
-    assert.match(homeSource, /Promise\.all/);
-    assert.match(homeSource, /<LandingPage initialProducts=\{products\} initialSettings=\{settings\}/);
+    assert.match(homeSource, /PlatformHome/);
+    assert.doesNotMatch(homeSource, /<LandingPage initialProducts=\{products\}/);
+    assert.match(publicCatalogSource, /PUBLIC_CATALOG_ENABLED = false/);
     assert.match(phantomBootstrapSource, /if \(pathname === "\/"\) return/);
 });
 

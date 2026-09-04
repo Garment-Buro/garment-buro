@@ -28,8 +28,8 @@ export function LightRunningCartAction() {
         );
     }, [activeItem, router]);
 
-    const goToPresentation = useCallback(() => {
-        router.push("/?presentation=open");
+    const goToProfile = useCallback(() => {
+        router.push("/profile");
     }, [router]);
 
     return (
@@ -39,7 +39,7 @@ export function LightRunningCartAction() {
             price={activeItem?.price || 0}
             cartItemId={activeItem?.id}
             shiftAfterElementId="light-running-run-in-light"
-            onLogin={goToPresentation}
+            onLogin={goToProfile}
             onAdd={goToCheckout}
             onEdit={editActiveItem}
             onBuy={goToCheckout}

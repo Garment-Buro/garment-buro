@@ -96,8 +96,8 @@ test("Light Running uses an always-visible V2 cart action", () => {
     assert.match(cartSource, /getActiveCatalogCartItem\(items,\s*activeItemId\)/);
     assert.match(cartSource, /<CartActionBarV2/);
     assert.match(cartSource, /shiftAfterElementId="light-running-run-in-light"/);
-    assert.match(cartSource, /router\.push\("\/\?presentation=open"\)/);
-    assert.match(cartSource, /onLogin=\{goToPresentation\}/);
+    assert.match(cartSource, /router\.push\("\/profile"\)/);
+    assert.match(cartSource, /onLogin=\{goToProfile\}/);
     assert.doesNotMatch(cartSource, /visible=\{items\.length > 0\}/);
     assert.match(cartSource, /router\.push\("\/checkout"\)/);
     assert.match(cartSource, /\/constructor\?productId=\$\{activeItem\.product_id\}&editCartItemId=/);
