@@ -380,6 +380,69 @@ def test_refresh_rotation_reuse_csrf_and_legacy_token_grace(tmp_path: Path) -> N
         )
 
 
+def test_auth_methods_password_and_disabled_phone_contract(tmp_path: Path) -> None:
+    _create_legacy_orders(tmp_path / "legacy.db")
+    target_path = tmp_path / "target.db"
+    settings = _settings(tmp_path)
+    _seed_target(settings)
+    application = create_app(settings=settings, database=DatabaseManager(settings))
+
+    with TestClient(application) as client:
+        methods = client.get("/api/auth/methods")
+        assert methods.status_code == 200
+        indexed = {item["code"]: item for item in methods.json()["methods"]}
+        assert indexed["email"]["enabled"] is True
+        assert indexed["password"]["enabled"] is True
+        assert indexed["phone"] == {
+            "code": "phone",
+            "kind": "otp",
+            "enabled": False,
+            "reason": "provider_not_configured",
+        }
+        assert indexed["telegram"]["enabled"] is False
+
+        assert (
+            client.post("/api/auth/phone/request", json={"phone": "+79991234567"}).status_code
+            == 503
+        )
+        assert (
+            client.post(
+                "/api/auth/telegram",
+                json={"id": 1, "auth_date": 1, "hash": "a" * 64},
+            ).status_code
+            == 503
+        )
+
+        token, user = _login(client, target_path, "password-contract@example.test")
+        password_set = client.put(
+            "/api/auth/password",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"new_password": "correct horse battery staple"},
+        )
+        assert password_set.status_code == 200
+        assert password_set.json() == {"status": "password_updated"}
+
+        logged_in = client.post(
+            "/api/auth/password/login",
+            json={
+                "identifier": "PASSWORD-CONTRACT@example.test",
+                "password": "correct horse battery staple",
+            },
+        )
+        assert logged_in.status_code == 200
+        assert logged_in.json()["user"]["id"] == user["id"]
+        assert (
+            client.post(
+                "/api/auth/password/login",
+                json={
+                    "identifier": "password-contract@example.test",
+                    "password": "incorrect password value",
+                },
+            ).status_code
+            == 401
+        )
+
+
 def test_identity_cutover_refuses_unreviewed_target(tmp_path: Path) -> None:
     _create_legacy_orders(tmp_path / "legacy.db")
     seeded_settings = _settings(tmp_path)

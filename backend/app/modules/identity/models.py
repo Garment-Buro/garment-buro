@@ -65,16 +65,39 @@ class OtpPurpose(str, Enum):
     EMAIL_CHANGE = "email_change"
 
 
+class OtpMethod(str, Enum):
+    EMAIL = "email"
+    PHONE = "phone"
+
+
+class ExternalAuthProvider(str, Enum):
+    TELEGRAM = "telegram"
+
+
 class User(Base, IntegerIdMixin, TimestampMixin):
     __tablename__ = "users"
     __table_args__ = (
         CheckConstraint(
-            "status = 'deleted' OR email_normalized IS NOT NULL OR telegram_id IS NOT NULL",
+            "status = 'deleted' OR email_normalized IS NOT NULL "
+            "OR phone_normalized IS NOT NULL OR primary_auth_subject IS NOT NULL",
             name="user_identifier_present",
         ),
         CheckConstraint(
             "(email IS NULL) = (email_normalized IS NULL)",
             name="user_email_pair_consistent",
+        ),
+        CheckConstraint(
+            "(phone_normalized IS NULL) OR phone IS NOT NULL",
+            name="user_phone_normalized_requires_phone",
+        ),
+        CheckConstraint(
+            "(primary_auth_provider IS NULL) = (primary_auth_subject IS NULL)",
+            name="user_primary_auth_pair_consistent",
+        ),
+        UniqueConstraint(
+            "primary_auth_provider",
+            "primary_auth_subject",
+            name="uq_users_primary_auth_identity",
         ),
         CheckConstraint(
             "status IN ('active', 'blocked', 'deleted')",
@@ -107,6 +130,14 @@ class User(Base, IntegerIdMixin, TimestampMixin):
     last_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     username: Mapped[str | None] = mapped_column(String(255), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    phone_normalized: Mapped[str | None] = mapped_column(
+        String(32),
+        nullable=True,
+        unique=True,
+        index=True,
+    )
+    primary_auth_provider: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    primary_auth_subject: Mapped[str | None] = mapped_column(String(255), nullable=True)
     gender: Mapped[str | None] = mapped_column(String(32), nullable=True)
     birth_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     height_cm: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), nullable=True)
@@ -119,6 +150,10 @@ class User(Base, IntegerIdMixin, TimestampMixin):
         index=True,
     )
     email_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    phone_verified_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
     )
@@ -137,6 +172,87 @@ class User(Base, IntegerIdMixin, TimestampMixin):
         cascade="all, delete-orphan",
         foreign_keys="RefreshSession.user_id",
     )
+    password_credential: Mapped[PasswordCredential | None] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
+    external_identities: Mapped[list[ExternalAuthIdentity]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
+
+class PasswordCredential(Base, IntegerIdMixin, TimestampMixin):
+    __tablename__ = "password_credentials"
+    __table_args__ = (
+        CheckConstraint("failed_attempts >= 0", name="password_failed_attempts_nonnegative"),
+        CheckConstraint("algorithm = 'argon2id'", name="password_algorithm_valid"),
+    )
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    password_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    algorithm: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="argon2id",
+        server_default="argon2id",
+    )
+    failed_attempts: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
+    locked_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        index=True,
+    )
+    password_changed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    user: Mapped[User] = relationship(back_populates="password_credential")
+
+
+class ExternalAuthIdentity(Base, IntegerIdMixin, TimestampMixin):
+    __tablename__ = "external_auth_identities"
+    __table_args__ = (
+        UniqueConstraint(
+            "provider",
+            "subject",
+            name="uq_external_auth_identity_provider_subject",
+        ),
+        UniqueConstraint(
+            "user_id",
+            "provider",
+            name="uq_external_auth_identity_user_provider",
+        ),
+    )
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    provider: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    subject: Mapped[str] = mapped_column(String(255), nullable=False)
+    verified_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    user: Mapped[User] = relationship(back_populates="external_identities")
 
 
 class Role(Base, IntegerIdMixin, TimestampMixin):
@@ -231,6 +347,10 @@ class OtpChallenge(Base, IntegerIdMixin, TimestampMixin):
             name="otp_challenge_purpose_valid",
         ),
         CheckConstraint(
+            "method IN ('email', 'phone')",
+            name="otp_challenge_method_valid",
+        ),
+        CheckConstraint(
             "length(code_digest) = 64",
             name="otp_challenge_digest_length",
         ),
@@ -254,6 +374,20 @@ class OtpChallenge(Base, IntegerIdMixin, TimestampMixin):
         index=True,
     )
     purpose: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    method: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default="email",
+        server_default="email",
+        index=True,
+    )
+    target_value: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    target_normalized: Mapped[str | None] = mapped_column(
+        String(320),
+        nullable=True,
+        index=True,
+    )
+    # Kept during the compatibility window so the previous release can roll back.
     target_email: Mapped[str] = mapped_column(String(320), nullable=False)
     target_email_normalized: Mapped[str] = mapped_column(
         String(320),

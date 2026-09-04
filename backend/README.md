@@ -1048,10 +1048,8 @@ permissions created by Alembic are allowed and verified.
 `IDENTITY_OTP_PEPPER` must be a unique secret of at least 32 characters and
 must not equal `JWT_SECRET`. The new service uses a 15-minute access token,
 opaque hashed refresh tokens with rotation/reuse detection, peppered OTP
-digests, persisted attempt/rate limits, and security audit events. These
-components are intentionally not routed yet: current `/api/auth/*` traffic
-continues through legacy until the profile/email endpoints and
-`/api/auth/orders` ownership bridge can move together.
+digests, persisted attempt/rate limits, and security audit events. The routes
+are exposed only when the guarded `IDENTITY_API_ENABLED` cutover is active.
 
 ## Encrypted notification outbox
 
@@ -1089,10 +1087,10 @@ them are drained. For example, the shape is `{"1":"<old-base64-key>"}`; never
 commit real values.
 
 The worker claims rows with `FOR UPDATE SKIP LOCKED`, commits the claim before
-the SMTP request, retries transient failures with capped exponential backoff,
+the provider request, retries transient failures with capped exponential backoff,
 and recovers stale processing attempts. Delivery is intentionally at-least-once:
 a process failure after SMTP accepted a message but before the database commit
-can produce a duplicate. Email content must therefore remain safe to repeat.
+can produce a duplicate. Notification content must therefore remain safe to repeat.
 The current auth routes do not enqueue through this outbox yet; that wiring is
 activated only by the guarded auth/profile cutover described below. Replaced,
 consumed, or expired OTP notifications are dead-lettered and their encrypted
@@ -1161,6 +1159,39 @@ with `NEXT_PUBLIC_IDENTITY_SESSION_V2_ENABLED=true` and set
 import and worker are ready. Enabling only one side creates an intentionally
 unsupported mixed mode. Real PostgreSQL, SMTP, web, and installed-PWA rehearsal
 is the next gate.
+
+## Pluggable authentication and notification channels
+
+Revision `20260904_0032` adds independent password credentials and external
+identity links without mixing provider-specific fields into the session code.
+All successful methods issue the same short access token and rotating refresh
+session. Available methods can be discovered through `GET /api/auth/methods`.
+
+- Email OTP remains available at `/api/auth/email/request` and
+  `/api/auth/email/verify`.
+- A signed-in user creates or changes an Argon2id password with
+  `PUT /api/auth/password`; `POST /api/auth/password/login` then accepts an
+  email (or, once verified phone auth exists, a verified E.164 phone number).
+  Repeated failures cause a configurable temporary lockout.
+- `POST /api/auth/telegram` validates the Telegram Login Widget signature and
+  timestamp before resolving a generic external identity. Enable it with
+  `IDENTITY_TELEGRAM_AUTH_ENABLED=true` and a secret `TELEGRAM_BOT_TOKEN`.
+- `/api/auth/phone/request` and `/api/auth/phone/verify` deliberately return
+  `503` until an SMS provider is selected. `IDENTITY_PHONE_AUTH_ENABLED` and
+  `NOTIFICATION_PHONE_ENABLED` must stay `false`.
+
+Authentication implementations live in `app/modules/identity/auth_methods`.
+Adding Yandex later means adding one verifier/strategy and registering it;
+`external_auth_identities` already stores provider/subject pairs independently
+of Telegram.
+
+The notification dispatcher resolves transports by channel. SMTP is the
+default email transport, Telegram Bot API delivery is available when
+`NOTIFICATION_TELEGRAM_ENABLED=true`, and the phone transport is an explicit
+disabled adapter. OTP producers select `email`, `telegram`, or `phone` when
+placing an encrypted outbox message; unavailable channels are dead-lettered
+without futile retries. Bot tokens and provider credentials belong only in the
+deployment environment and must never be committed.
 
 ## Partner cabinet finances and requisites
 

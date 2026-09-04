@@ -32,8 +32,9 @@ from app.modules.crm.router import write_router as crm_write_router
 from app.modules.delivery.provider import AiohttpCdekTransport, CdekProviderClient
 from app.modules.delivery.quote_router import router as cdek_quote_router
 from app.modules.delivery.quote_service import CdekQuoteService
+from app.modules.identity.auth_methods.registry import AuthMethodRegistry
 from app.modules.identity.cutover import verify_identity_cutover
-from app.modules.identity.factory import build_identity_service
+from app.modules.identity.factory import build_auth_method_registry, build_identity_service
 from app.modules.identity.router import router as identity_router
 from app.modules.identity.service import IdentityService
 from app.modules.media.router import router as media_router
@@ -79,6 +80,7 @@ def create_app(
     database: DatabaseManager | None = None,
     storage: MinioStorage | None = None,
     identity_service: IdentityService | None = None,
+    auth_method_registry: AuthMethodRegistry | None = None,
     notification_outbox_service: NotificationOutboxService | None = None,
     order_bridge_service: OrderOwnershipBridgeService | None = None,
     target_order_read_service: TargetOrderReadService | None = None,
@@ -100,6 +102,7 @@ def create_app(
     database_manager = database or DatabaseManager(runtime_settings)
     storage_manager = storage or MinioStorage(runtime_settings)
     identity_manager = identity_service
+    auth_methods = auth_method_registry
     notification_manager = notification_outbox_service
     order_bridge_manager = order_bridge_service
     target_order_read_manager = target_order_read_service
@@ -179,6 +182,7 @@ def create_app(
         )
     if runtime_settings.identity_api_enabled:
         identity_manager = identity_manager or build_identity_service(runtime_settings)
+        auth_methods = auth_methods or build_auth_method_registry(runtime_settings)
         notification_manager = notification_manager or build_notification_outbox_service(
             runtime_settings
         )
@@ -281,6 +285,7 @@ def create_app(
     application.state.database = database_manager
     application.state.storage = storage_manager
     application.state.identity_service = identity_manager
+    application.state.auth_method_registry = auth_methods
     application.state.notification_outbox_service = notification_manager
     application.state.order_bridge_service = (
         target_order_read_manager if runtime_settings.order_reads_enabled else order_bridge_manager

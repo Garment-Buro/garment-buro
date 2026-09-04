@@ -20,28 +20,46 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import AppEnvironment, Settings
 from app.db.session import get_database_session
+from app.modules.identity.auth_methods.email import EmailOtpAuthMethod
+from app.modules.identity.auth_methods.password import PasswordAuthMethod
+from app.modules.identity.auth_methods.phone import PhoneOtpAuthMethod
+from app.modules.identity.auth_methods.registry import AuthMethodRegistry
+from app.modules.identity.auth_methods.telegram import TelegramAuthMethod
 from app.modules.identity.exceptions import (
+    AuthMethodUnavailableError,
     EmailAlreadyUsedError,
     ExpiredOtpError,
     InactiveUserError,
+    InvalidCredentialsError,
     InvalidEmailError,
+    InvalidExternalAuthPayloadError,
     InvalidOtpError,
+    InvalidPhoneError,
     InvalidSessionError,
     OtpRateLimitError,
     PermissionDeniedError,
+    PhoneAlreadyUsedError,
     RefreshTokenReuseError,
 )
 from app.modules.identity.models import PermissionCode, User
 from app.modules.identity.schemas import (
     AuthAccessResponse,
     AuthEmailRequest,
+    AuthMethodResponse,
+    AuthMethodsResponse,
+    AuthPhoneRequest,
+    AuthPhoneVerifyRequest,
     AuthSessionResponse,
     AuthUserResponse,
     AuthVerifyRequest,
     DeletedResponse,
     EmailCodeRequestResponse,
     LoggedOutResponse,
+    PasswordLoginRequest,
+    PasswordUpdatedResponse,
     ProfileUpdateRequest,
+    SetPasswordRequest,
+    TelegramLoginRequest,
 )
 from app.modules.identity.security import ensure_utc
 from app.modules.identity.service import (
@@ -49,6 +67,7 @@ from app.modules.identity.service import (
     IdentityService,
     ProfileChanges,
 )
+from app.modules.notifications.models import NotificationChannel
 from app.modules.notifications.service import NotificationOutboxService
 from app.modules.orders.schemas import LegacyOrderResponse
 from app.modules.orders.service import OwnedOrderService
@@ -59,6 +78,10 @@ bearer = HTTPBearer(auto_error=False)
 
 def get_identity_service(request: Request) -> IdentityService:
     return request.app.state.identity_service
+
+
+def get_auth_method_registry(request: Request) -> AuthMethodRegistry:
+    return request.app.state.auth_method_registry
 
 
 def get_notification_outbox_service(request: Request) -> NotificationOutboxService:
@@ -106,6 +129,217 @@ async def get_current_identity_user(
     return user
 
 
+@router.get("/methods", response_model=AuthMethodsResponse)
+async def get_auth_methods(
+    methods: Annotated[AuthMethodRegistry, Depends(get_auth_method_registry)],
+) -> AuthMethodsResponse:
+    return AuthMethodsResponse(
+        methods=[
+            AuthMethodResponse(
+                code=item.code,
+                kind=item.kind,
+                enabled=item.enabled,
+                reason=item.reason,
+            )
+            for item in methods.descriptors()
+        ]
+    )
+
+
+@router.post("/phone/request", response_model=EmailCodeRequestResponse)
+async def request_login_phone_code(
+    payload: AuthPhoneRequest,
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_database_session)],
+    identity: Annotated[IdentityService, Depends(get_identity_service)],
+    notifications: Annotated[
+        NotificationOutboxService,
+        Depends(get_notification_outbox_service),
+    ],
+    methods: Annotated[AuthMethodRegistry, Depends(get_auth_method_registry)],
+) -> EmailCodeRequestResponse:
+    method = methods.get("phone")
+    if not isinstance(method, PhoneOtpAuthMethod):
+        raise HTTPException(status_code=503, detail="Phone authentication is unavailable")
+    now = _utc_now()
+    try:
+        issued = await method.request_code(
+            identity,
+            session,
+            phone=payload.phone,
+            now=now,
+            client_ip=_client_ip(request),
+            user_agent=request.headers.get("user-agent"),
+        )
+    except AuthMethodUnavailableError as error:
+        raise HTTPException(status_code=503, detail="Phone provider is not configured") from error
+    except OtpRateLimitError as error:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many code requests",
+            headers={"Retry-After": str(error.retry_after_seconds)},
+        ) from error
+    except InvalidPhoneError as error:
+        raise HTTPException(status_code=400, detail="Invalid phone") from error
+    except InactiveUserError:
+        return EmailCodeRequestResponse()
+
+    await notifications.cancel_auth_otp(
+        session,
+        challenge_ids=issued.invalidated_challenge_ids,
+        now=now,
+        reason="challenge_replaced",
+    )
+    await notifications.enqueue_auth_otp(
+        session,
+        recipient=issued.target,
+        code=issued.code,
+        purpose="login",
+        expires_minutes=int(identity.policy.otp_lifetime.total_seconds() // 60),
+        deduplication_key=f"otp:challenge:{issued.challenge_id}",
+        now=now,
+        discard_after=issued.expires_at,
+        channel=NotificationChannel.PHONE,
+    )
+    await session.commit()
+    return EmailCodeRequestResponse()
+
+
+@router.post("/phone/verify", response_model=AuthSessionResponse)
+async def verify_login_phone_code(
+    payload: AuthPhoneVerifyRequest,
+    request: Request,
+    response: Response,
+    session: Annotated[AsyncSession, Depends(get_database_session)],
+    identity: Annotated[IdentityService, Depends(get_identity_service)],
+    notifications: Annotated[
+        NotificationOutboxService,
+        Depends(get_notification_outbox_service),
+    ],
+    methods: Annotated[AuthMethodRegistry, Depends(get_auth_method_registry)],
+) -> AuthSessionResponse:
+    method = methods.get("phone")
+    if not isinstance(method, PhoneOtpAuthMethod):
+        raise HTTPException(status_code=503, detail="Phone authentication is unavailable")
+    try:
+        tokens = await method.verify_code(
+            identity,
+            session,
+            phone=payload.phone,
+            code=payload.code,
+            now=_utc_now(),
+            client_ip=_client_ip(request),
+            user_agent=request.headers.get("user-agent"),
+        )
+    except AuthMethodUnavailableError as error:
+        raise HTTPException(status_code=503, detail="Phone provider is not configured") from error
+    except (ExpiredOtpError, InactiveUserError, InvalidOtpError, InvalidPhoneError) as error:
+        raise HTTPException(status_code=400, detail="Invalid code") from error
+    if tokens.verified_challenge_id is not None:
+        await notifications.cancel_auth_otp(
+            session,
+            challenge_ids=[tokens.verified_challenge_id],
+            now=_utc_now(),
+            reason="challenge_consumed",
+        )
+    await session.commit()
+    _set_refresh_cookie(response, request.app.state.settings, tokens)
+    return _session_response(tokens)
+
+
+@router.post("/password/login", response_model=AuthSessionResponse)
+async def login_with_password(
+    payload: PasswordLoginRequest,
+    request: Request,
+    response: Response,
+    session: Annotated[AsyncSession, Depends(get_database_session)],
+    identity: Annotated[IdentityService, Depends(get_identity_service)],
+    methods: Annotated[AuthMethodRegistry, Depends(get_auth_method_registry)],
+) -> AuthSessionResponse:
+    method = methods.get("password")
+    if not isinstance(method, PasswordAuthMethod):
+        raise HTTPException(status_code=503, detail="Password authentication is unavailable")
+    try:
+        tokens = await method.authenticate(
+            identity,
+            session,
+            identifier=payload.identifier,
+            password=payload.password.get_secret_value(),
+            now=_utc_now(),
+            client_ip=_client_ip(request),
+            user_agent=request.headers.get("user-agent"),
+        )
+    except AuthMethodUnavailableError as error:
+        raise HTTPException(
+            status_code=503, detail="Password authentication is disabled"
+        ) from error
+    except InvalidCredentialsError as error:
+        raise _unauthorized() from error
+    await session.commit()
+    _set_refresh_cookie(response, request.app.state.settings, tokens)
+    return _session_response(tokens)
+
+
+@router.put("/password", response_model=PasswordUpdatedResponse)
+async def update_password(
+    payload: SetPasswordRequest,
+    user: Annotated[User, Depends(get_current_identity_user)],
+    session: Annotated[AsyncSession, Depends(get_database_session)],
+    identity: Annotated[IdentityService, Depends(get_identity_service)],
+    methods: Annotated[AuthMethodRegistry, Depends(get_auth_method_registry)],
+) -> PasswordUpdatedResponse:
+    if not methods.get("password").descriptor.enabled:
+        raise HTTPException(status_code=503, detail="Password authentication is disabled")
+    try:
+        await identity.set_password(
+            session,
+            user_id=user.id,
+            new_password=payload.new_password.get_secret_value(),
+            current_password=(
+                payload.current_password.get_secret_value()
+                if payload.current_password is not None
+                else None
+            ),
+            now=_utc_now(),
+        )
+    except InvalidCredentialsError as error:
+        raise HTTPException(status_code=400, detail="Current password is invalid") from error
+    await session.commit()
+    return PasswordUpdatedResponse()
+
+
+@router.post("/telegram", response_model=AuthSessionResponse)
+async def login_with_telegram(
+    payload: TelegramLoginRequest,
+    request: Request,
+    response: Response,
+    session: Annotated[AsyncSession, Depends(get_database_session)],
+    identity: Annotated[IdentityService, Depends(get_identity_service)],
+    methods: Annotated[AuthMethodRegistry, Depends(get_auth_method_registry)],
+) -> AuthSessionResponse:
+    method = methods.get("telegram")
+    if not isinstance(method, TelegramAuthMethod):
+        raise HTTPException(status_code=503, detail="Telegram authentication is unavailable")
+    try:
+        tokens = await method.authenticate(
+            identity,
+            session,
+            payload=payload.model_dump(),
+            now=_utc_now(),
+            client_ip=_client_ip(request),
+            user_agent=request.headers.get("user-agent"),
+        )
+    except AuthMethodUnavailableError as error:
+        raise HTTPException(
+            status_code=503, detail="Telegram authentication is disabled"
+        ) from error
+    except (InvalidExternalAuthPayloadError, InactiveUserError) as error:
+        raise HTTPException(status_code=400, detail="Invalid Telegram login payload") from error
+    await session.commit()
+    _set_refresh_cookie(response, request.app.state.settings, tokens)
+    return _session_response(tokens)
+
+
 @router.post("/email/request", response_model=EmailCodeRequestResponse)
 async def request_login_email_code(
     payload: AuthEmailRequest,
@@ -116,10 +350,15 @@ async def request_login_email_code(
         NotificationOutboxService,
         Depends(get_notification_outbox_service),
     ],
+    methods: Annotated[AuthMethodRegistry, Depends(get_auth_method_registry)],
 ) -> EmailCodeRequestResponse:
     now = _utc_now()
+    method = methods.get("email")
+    if not isinstance(method, EmailOtpAuthMethod):
+        raise HTTPException(status_code=503, detail="Email authentication is unavailable")
     try:
-        issued = await identity.request_login_otp(
+        issued = await method.request_code(
+            identity,
             session,
             email=payload.email,
             now=now,
@@ -168,9 +407,14 @@ async def verify_login_email_code(
         NotificationOutboxService,
         Depends(get_notification_outbox_service),
     ],
+    methods: Annotated[AuthMethodRegistry, Depends(get_auth_method_registry)],
 ) -> AuthSessionResponse:
+    method = methods.get("email")
+    if not isinstance(method, EmailOtpAuthMethod):
+        raise HTTPException(status_code=503, detail="Email authentication is unavailable")
     try:
-        tokens = await identity.verify_login_otp(
+        tokens = await method.verify_code(
+            identity,
             session,
             email=payload.email,
             code=payload.code,
@@ -323,21 +567,24 @@ async def update_profile(
     provided_fields = {
         field_mapping.get(field, field) for field in payload.model_fields_set if field != "email"
     }
-    updated = await identity.update_profile(
-        session,
-        user_id=user.id,
-        changes=ProfileChanges(
-            first_name=payload.first_name,
-            last_name=payload.last_name,
-            gender=payload.gender,
-            birth_date=payload.birth_date,
-            phone=payload.phone,
-            height_cm=payload.height,
-            weight_kg=payload.weight,
-            provided_fields=frozenset(provided_fields),
-        ),
-        now=_utc_now(),
-    )
+    try:
+        updated = await identity.update_profile(
+            session,
+            user_id=user.id,
+            changes=ProfileChanges(
+                first_name=payload.first_name,
+                last_name=payload.last_name,
+                gender=payload.gender,
+                birth_date=payload.birth_date,
+                phone=payload.phone,
+                height_cm=payload.height,
+                weight_kg=payload.weight,
+                provided_fields=frozenset(provided_fields),
+            ),
+            now=_utc_now(),
+        )
+    except (InvalidPhoneError, PhoneAlreadyUsedError) as error:
+        raise HTTPException(status_code=400, detail="Invalid phone") from error
     await session.commit()
     return _user_response(updated)
 

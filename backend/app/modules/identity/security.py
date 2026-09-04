@@ -10,10 +10,16 @@ from uuid import uuid4
 
 import jwt
 
-from app.modules.identity.exceptions import InvalidEmailError, InvalidSessionError
-from app.modules.identity.models import OtpPurpose
+from app.modules.identity.exceptions import (
+    InvalidEmailError,
+    InvalidPhoneError,
+    InvalidSessionError,
+)
+from app.modules.identity.models import OtpMethod, OtpPurpose
 
 EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+PHONE_SEPARATORS_PATTERN = re.compile(r"[\s().-]+")
+E164_PATTERN = re.compile(r"^\+[1-9]\d{7,14}$")
 SUPPORTED_JWT_ALGORITHMS = {"HS256", "HS384", "HS512"}
 
 
@@ -55,8 +61,12 @@ class OtpSecurity:
         salt: str,
         purpose: OtpPurpose,
         target_email_normalized: str,
+        method: OtpMethod = OtpMethod.EMAIL,
     ) -> str:
-        payload = "\0".join((salt, purpose.value, target_email_normalized, code))
+        parts = [salt, purpose.value, target_email_normalized, code]
+        if method is not OtpMethod.EMAIL:
+            parts.insert(2, method.value)
+        payload = "\0".join(parts)
         return hmac.new(self._pepper, payload.encode("utf-8"), hashlib.sha256).hexdigest()
 
     def verify(
@@ -67,12 +77,14 @@ class OtpSecurity:
         purpose: OtpPurpose,
         target_email_normalized: str,
         expected_digest: str,
+        method: OtpMethod = OtpMethod.EMAIL,
     ) -> bool:
         actual = self.digest(
             code=code,
             salt=salt,
             purpose=purpose,
             target_email_normalized=target_email_normalized,
+            method=method,
         )
         return hmac.compare_digest(actual, expected_digest)
 
@@ -193,6 +205,25 @@ def normalize_email(value: str) -> tuple[str, str]:
     if len(display) > 320 or not EMAIL_PATTERN.fullmatch(display):
         raise InvalidEmailError("Invalid email")
     return display, normalized
+
+
+def normalize_phone(value: str) -> tuple[str, str]:
+    """Return a readable phone and a stable E.164 representation.
+
+    Russian numbers may be entered with a leading 8 or 7. Other countries
+    must include their international prefix. This normalizer is provider-
+    independent and can be reused once an SMS service is selected.
+    """
+
+    display = value.strip()
+    compact = PHONE_SEPARATORS_PATTERN.sub("", display)
+    if compact.startswith("8") and len(compact) == 11:
+        compact = f"+7{compact[1:]}"
+    elif compact.startswith("7") and len(compact) == 11:
+        compact = f"+{compact}"
+    if not E164_PATTERN.fullmatch(compact):
+        raise InvalidPhoneError("Invalid phone")
+    return display, compact
 
 
 def ensure_utc(value: datetime) -> datetime:

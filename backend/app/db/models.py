@@ -35,8 +35,10 @@ from app.modules.crm.reference_models import (
 from app.modules.delivery.models import CdekShipment, CdekShipmentAttempt, CdekShipmentEvent
 from app.modules.fulfillment.models import FulfillmentJob, FulfillmentJobAttempt
 from app.modules.identity.models import (
+    ExternalAuthIdentity,
     IdentityMigrationRun,
     OtpChallenge,
+    PasswordCredential,
     Permission,
     RefreshSession,
     Role,
@@ -114,6 +116,8 @@ __all__ = [
     "CatalogDocument",
     "CatalogDocumentRevision",
     "IdentityMigrationRun",
+    "ExternalAuthIdentity",
+    "PasswordCredential",
     "InventoryReservation",
     "LegacyOrderClaim",
     "LegacyOrderImport",
