@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
 from anyio import to_thread
 from fastapi import FastAPI
@@ -29,6 +30,8 @@ from app.modules.crm.material_service import CrmMaterialService
 from app.modules.crm.read_service import CrmReadService
 from app.modules.crm.router import router as crm_router
 from app.modules.crm.router import write_router as crm_write_router
+from app.modules.delivery.directory import PickupDirectory
+from app.modules.delivery.directory_router import router as pickup_directory_router
 from app.modules.delivery.provider import AiohttpCdekTransport, CdekProviderClient
 from app.modules.delivery.quote_router import router as cdek_quote_router
 from app.modules.delivery.quote_service import CdekQuoteService
@@ -211,6 +214,9 @@ def create_app(
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         await database_manager.startup()
+        directory_task = None
+        if database_manager.enabled and runtime_settings.cdek_client_id and runtime_settings.cdek_client_secret:
+            directory_task = asyncio.create_task(PickupDirectory(database_manager, runtime_settings).run())
         try:
             if runtime_settings.catalog_reads_enabled:
                 await verify_catalog_cutover(
@@ -270,6 +276,10 @@ def create_app(
             finally:
                 await storage_manager.shutdown()
         finally:
+            if directory_task is not None:
+                directory_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await directory_task
             await database_manager.shutdown()
 
     application = FastAPI(
@@ -308,6 +318,7 @@ def create_app(
         allow_headers=["*"],
     )
     application.include_router(system_router)
+    application.include_router(pickup_directory_router)
     application.include_router(qr_code_router)
     if runtime_settings.catalog_reads_enabled:
         application.include_router(catalog_router)
@@ -348,6 +359,7 @@ def create_app(
         application.include_router(partner_admin_router)
 
     if legacy_app is not None:
+        legacy_app.state.checkout_database = database_manager
         application.mount("/", legacy_app, name="legacy")
 
     return application

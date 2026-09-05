@@ -176,7 +176,8 @@ class CdekClient:
         if not packages:
             packages = [{"weight": 1000, "length": 20, "width": 20, "height": 10}]
 
-        recipient_name = f"{order.first_name or ''} {order.last_name or ''}".strip()
+        recipient_name = " ".join(filter(None, [order.last_name, order.first_name,
+                                                getattr(order, "patronymic", None)]))
         if not recipient_name:
             recipient_name = "Покупатель"
 
@@ -191,8 +192,9 @@ class CdekClient:
             "from_location": {"code": self.sender_city_code},
         }
 
-        if order.email:
-            payload["recipient"]["email"] = order.email
+        recipient_email = getattr(order, "recipient_email", None) or order.email
+        if recipient_email:
+            payload["recipient"]["email"] = recipient_email
 
         if tariff_code == self.warehouse_to_warehouse_tariff:
             payload["delivery_point"] = order.cdek_point_code

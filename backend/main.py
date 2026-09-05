@@ -31,6 +31,8 @@ from app.core.config import get_settings
 from app.core.exceptions import ConfigurationError
 import email_service
 from cdek_client import CdekClient
+from app.modules.checkout.contact import CheckoutContact
+from app.modules.checkout.legacy_contact import prepare_legacy_contact_order
 from image_optimization import optimize_image_bytes
 from payments import YooKassaClient
 
@@ -198,6 +200,9 @@ class Order(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     # Customer Info
+    buyer_name = Column(String, nullable=True)
+    buyer_phone = Column(String, nullable=True)
+    recipient_email = Column(String, nullable=True)
     email = Column(String, nullable=True)
     phone = Column(String, nullable=True)
     first_name = Column(String, nullable=True)
@@ -246,6 +251,8 @@ class User(Base):
 
 # Pydantic schemata
 class OrderCreate(BaseModel):
+    buyer: Optional[CheckoutContact] = None
+    recipient: Optional[CheckoutContact] = None
     email: Optional[str] = None
     phone: Optional[str] = None
     first_name: Optional[str] = None
@@ -594,6 +601,9 @@ def run_migrations():
         ("orders", "delivery_price", "REAL"),
         ("orders", "cdek_number", "TEXT"),
         ("orders", "cdek_status", "TEXT"),
+        ("orders", "buyer_name", "TEXT"),
+        ("orders", "buyer_phone", "TEXT"),
+        ("orders", "recipient_email", "TEXT"),
         ("products", "mobile_product_slider_images", "TEXT"),
         ("product_variants", "width_cm", "REAL"),
         ("product_variants", "height_cm", "REAL"),
@@ -1009,9 +1019,15 @@ async def upload_file(file: UploadFile = File(...)):
     return {"url": f"/uploads/{filename}"}
 
 @app.post("/api/orders")
-async def create_order(order_data: OrderCreate):
+async def create_order(order_data: OrderCreate, request: Request):
+    payload = order_data.model_dump(exclude={"buyer", "recipient"})
+    if order_data.buyer is not None:
+        payload = await prepare_legacy_contact_order(
+            payload, buyer=order_data.buyer, recipient=order_data.recipient,
+            database=getattr(request.app.state, "checkout_database", None),
+        )
     db = SessionLocal()
-    new_order = Order(**order_data.model_dump())
+    new_order = Order(**payload)
     changed_product_ids = set()
     
     # Decrement stock
@@ -1238,48 +1254,18 @@ def update_settings(settings: dict):
 
 @app.post("/api/cdek/calculate")
 async def calculate_cdek_tariff(request: Request):
+    from app.modules.checkout.legacy_delivery import quote_legacy_delivery
     try:
         body = await request.json()
-        city = body.get("city")
-        delivery_method = body.get("delivery_method")
-        cart_items = body.get("cart_items", [])
-        
-        from cdek_client import CdekClient
-        client = CdekClient()
-        city_code = await client.get_city_code(city)
-        if not city_code:
-            return {"delivery_price": 0}
-            
-        packages = []
-        for item in cart_items:
-            packages.append({
-                "weight": int(item.get("weight", 500)),
-                "length": int(item.get("length", 20)),
-                "width": int(item.get("width", 20)),
-                "height": int(item.get("height", 10)),
-            })
-            
-        if not packages:
-            packages = [{"weight": 1000, "length": 20, "width": 20, "height": 10}]
-            
-        tariff_code = (
-            client.warehouse_to_door_tariff
-            if delivery_method == "cdek_door"
-            else client.warehouse_to_warehouse_tariff
+        return await quote_legacy_delivery(
+            str(body.get("city") or ""), str(body.get("delivery_method") or ""),
+            body.get("cart_items", []),
         )
-        result = await client.calculate_tariffs_by_code(
-            client.sender_city_code,
-            city_code,
-            tariff_code,
-            packages,
-        )
-        
-        if result and result.get("delivery_sum"):
-            return {"delivery_price": result.get("delivery_sum")}
-        return {"delivery_price": 0}
-    except Exception:
+    except HTTPException:
+        raise
+    except Exception as error:
         logger.warning("CDEK tariff calculation failed")
-        return {"delivery_price": 0}
+        raise HTTPException(503, "Расчёт доставки временно недоступен") from error
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
