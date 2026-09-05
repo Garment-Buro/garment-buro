@@ -26,6 +26,7 @@ export function PresentationSurface({ isOverlay = false }: PresentationSurfacePr
     };
 
     useEffect(() => {
+        if (!isOverlay) return;
         const html = document.documentElement;
         const body = document.body;
         const scrollY = window.scrollY;
@@ -50,7 +51,7 @@ export function PresentationSurface({ isOverlay = false }: PresentationSurfacePr
             body.style.width = previousBodyWidth;
             window.scrollTo(0, scrollY);
         };
-    }, []);
+    }, [isOverlay]);
 
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
@@ -77,7 +78,8 @@ export function PresentationSurface({ isOverlay = false }: PresentationSurfacePr
             const pinThreshold = Math.max(0, hero.offsetHeight - heroPeekHeight);
 
             sheet.style.setProperty("--presentation-hero-peek", `${heroPeekHeight}px`);
-            hero.dataset.heroPeekPinned = String(sheet.scrollTop >= pinThreshold);
+            const scrollTop = isOverlay ? sheet.scrollTop : window.scrollY;
+            hero.dataset.heroPeekPinned = String(scrollTop >= pinThreshold);
         };
 
         const scheduleUpdate = () => {
@@ -86,15 +88,16 @@ export function PresentationSurface({ isOverlay = false }: PresentationSurfacePr
         };
 
         updateScrollState();
-        sheet.addEventListener("scroll", scheduleUpdate, { passive: true });
+        const scrollTarget = isOverlay ? sheet : window;
+        scrollTarget.addEventListener("scroll", scheduleUpdate, { passive: true });
         window.addEventListener("resize", scheduleUpdate);
 
         return () => {
-            sheet.removeEventListener("scroll", scheduleUpdate);
+            scrollTarget.removeEventListener("scroll", scheduleUpdate);
             window.removeEventListener("resize", scheduleUpdate);
             window.cancelAnimationFrame(animationFrame);
         };
-    }, []);
+    }, [isOverlay]);
 
     return (
         <div
@@ -111,8 +114,9 @@ export function PresentationSurface({ isOverlay = false }: PresentationSurfacePr
             <section
                 ref={dialogRef}
                 className={styles.sheet}
-                role="dialog"
-                aria-modal="true"
+                data-presentation-sheet
+                role={isOverlay ? 'dialog' : undefined}
+                aria-modal={isOverlay ? true : undefined}
                 aria-label="Презентация Garment Buro"
                 tabIndex={-1}
             >

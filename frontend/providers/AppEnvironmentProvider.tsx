@@ -40,6 +40,9 @@ export function AppEnvironmentProvider({ children }: AppEnvironmentProviderProps
         const html = document.documentElement;
         const body = document.body;
         const metaThemeColor = document.querySelector('meta[name="theme-color"]') as HTMLMetaElement | null;
+        const previousThemeMedia = metaThemeColor?.getAttribute('media');
+        const usesNativeSafariColor = surface === 'safari26'
+            && ['nikitamoiseev', 'light-running', 'presentation'].includes(pageChrome.page);
         let secondThemeRefreshId: number | undefined;
 
         const syncPageChrome = () => {
@@ -58,7 +61,14 @@ export function AppEnvironmentProvider({ children }: AppEnvironmentProviderProps
             body.style.setProperty('--app-top-color', activeTopColor);
             body.style.setProperty('--app-page-color', pageChrome.pageColor);
             body.style.setProperty('--app-page-bottom-offset', bottomOffset);
-            if (metaThemeColor) metaThemeColor.content = activeTopColor;
+            if (metaThemeColor) {
+                metaThemeColor.content = activeTopColor;
+                // Safari 26 samples the real page edge for its glass toolbar.
+                // Do not pin a competing solid tint on immersive public pages.
+                if (usesNativeSafariColor) metaThemeColor.setAttribute('media', 'not all');
+                else if (previousThemeMedia == null) metaThemeColor.removeAttribute('media');
+                else metaThemeColor.setAttribute('media', previousThemeMedia);
+            }
         };
 
         syncPageChrome();
@@ -80,6 +90,10 @@ export function AppEnvironmentProvider({ children }: AppEnvironmentProviderProps
             if (secondThemeRefreshId !== undefined) window.cancelAnimationFrame(secondThemeRefreshId);
             window.clearTimeout(themeRefreshTimer);
             overlayObserver.disconnect();
+            if (metaThemeColor) {
+                if (previousThemeMedia == null) metaThemeColor.removeAttribute('media');
+                else metaThemeColor.setAttribute('media', previousThemeMedia);
+            }
         };
     }, [pageChrome, surface]);
 

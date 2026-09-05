@@ -77,16 +77,18 @@ export function PresentationRoadmap() {
 
     useEffect(() => {
         const section = sectionRef.current;
-        const scrollContainer = section?.closest<HTMLElement>('[role="dialog"]');
+        const scrollContainer = section?.closest<HTMLElement>('[data-presentation-sheet]');
 
         if (!scrollContainer) return;
+        const isOverlay = scrollContainer.getAttribute('role') === 'dialog';
+        const scrollTarget = isOverlay ? scrollContainer : window;
 
         let animationFrame = 0;
 
         const updateActiveStep = () => {
             animationFrame = 0;
 
-            const sheetTop = scrollContainer.getBoundingClientRect().top;
+            const sheetTop = isOverlay ? scrollContainer.getBoundingClientRect().top : 0;
             const heroPeekHeight = Number.parseFloat(
                 getComputedStyle(scrollContainer).getPropertyValue("--presentation-hero-peek"),
             ) || 97;
@@ -103,8 +105,9 @@ export function PresentationRoadmap() {
             });
 
             const isAtScrollEnd = (
-                scrollContainer.scrollTop + scrollContainer.clientHeight
-                >= scrollContainer.scrollHeight - 1
+                isOverlay
+                    ? scrollContainer.scrollTop + scrollContainer.clientHeight >= scrollContainer.scrollHeight - 1
+                    : window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 1
             );
 
             if (isAtScrollEnd) {
@@ -139,11 +142,11 @@ export function PresentationRoadmap() {
         };
 
         updateActiveStep();
-        scrollContainer.addEventListener("scroll", scheduleUpdate, { passive: true });
+        scrollTarget.addEventListener("scroll", scheduleUpdate, { passive: true });
         window.addEventListener("resize", scheduleUpdate);
 
         return () => {
-            scrollContainer.removeEventListener("scroll", scheduleUpdate);
+            scrollTarget.removeEventListener("scroll", scheduleUpdate);
             window.removeEventListener("resize", scheduleUpdate);
             window.cancelAnimationFrame(animationFrame);
         };

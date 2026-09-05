@@ -47,14 +47,15 @@ test("presentation sheet follows the requested viewport geometry and motion", ()
     assert.match(stylesSource, /background:\s*#fff/);
     assert.match(stylesSource, /background-image:\s*url\('\/Шапка\.webp'\)/);
     assert.match(stylesSource, /background-color:\s*rgb\(3 61 100 \/ 22%\)/);
-    assert.match(stylesSource, /\.standaloneRoot \.sheet\s*\{[\s\S]*?inset:\s*0;[\s\S]*?height:\s*100dvh;[\s\S]*?border-radius:\s*0/);
+    assert.match(stylesSource, /\.standaloneRoot \.sheet\s*\{[\s\S]*?position:\s*relative;[\s\S]*?height:\s*auto;[\s\S]*?overflow:\s*visible/);
     assert.match(stylesSource, /@keyframes presentation-sheet-in[\s\S]*?translate3d\(0,\s*100%,\s*0\)[\s\S]*?translate3d\(0,\s*0,\s*0\)/);
 });
 
 test("presentation hero and roadmap rails follow the requested sticky scroll behavior", () => {
     assert.match(componentSource, /const heroRef = useRef<HTMLDivElement>\(null\)/);
     assert.match(componentSource, /const heroPeekHeight = 97 \+ \(25 \* viewportProgress\)/);
-    assert.match(componentSource, /hero\.dataset\.heroPeekPinned = String\(sheet\.scrollTop >= pinThreshold\)/);
+    assert.match(componentSource, /const scrollTop = isOverlay \? sheet\.scrollTop : window\.scrollY/);
+    assert.match(componentSource, /hero\.dataset\.heroPeekPinned = String\(scrollTop >= pinThreshold\)/);
     assert.match(componentSource, /data-hero-peek-pinned="false"/);
     assert.match(stylesSource, /\.hero\s*\{[\s\S]*?position:\s*sticky;[\s\S]*?top:\s*0/);
     assert.match(stylesSource, /\.hero\[data-hero-peek-pinned="true"\]\s*\{[\s\S]*?clip-path:\s*inset\(0 0 calc\(100% - var\(--presentation-hero-peek\)\) 0\)/);
