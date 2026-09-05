@@ -9,9 +9,11 @@ export const SplashScreen = ({ controller }: { controller: SplashController }) =
         revealed,
         exiting,
         videoRef,
-        logoReady,
+        playbackIssue,
         dismiss,
+        retryLogo,
         tryPlayLogo,
+        handleLogoData,
         handleLogoPlaying,
         handleLogoError,
     } = controller;
@@ -91,8 +93,8 @@ export const SplashScreen = ({ controller }: { controller: SplashController }) =
                             flexShrink: 0,
                             borderRadius: '50%',
                             overflow: 'hidden',
-                            opacity: logoReady ? 1 : 0,
-                            transition: 'opacity 120ms ease-out',
+                            // Keep the media surface visible during autoplay negotiation.
+                            // Hiding it until `playing` can prevent WebKit from starting it.
                         }}
                         >
                         <video
@@ -109,7 +111,7 @@ export const SplashScreen = ({ controller }: { controller: SplashController }) =
                             onLoadedMetadata={tryPlayLogo}
                             onCanPlayThrough={tryPlayLogo}
                             onCanPlay={tryPlayLogo}
-                            onLoadedData={tryPlayLogo}
+                            onLoadedData={handleLogoData}
                             onPlaying={handleLogoPlaying}
                             onError={handleLogoError}
                             onStalled={tryPlayLogo}
@@ -126,6 +128,18 @@ export const SplashScreen = ({ controller }: { controller: SplashController }) =
                         />
                     </div>
                 </div>
+
+                {playbackIssue && (
+                    <div role="status" className="splashPlaybackStatus" onClick={(event) => event.stopPropagation()}>
+                        <p>{playbackIssue === 'blocked'
+                            ? 'Браузер приостановил анимацию'
+                            : playbackIssue === 'error'
+                                ? 'Не удалось загрузить анимацию'
+                                : 'Анимация загружается дольше обычного'}</p>
+                        <button type="button" onClick={retryLogo}>Включить анимацию</button>
+                        <button type="button" onClick={dismiss}>Продолжить</button>
+                    </div>
+                )}
 
                 {/* Hint at the bottom */}
                 <div
