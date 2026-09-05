@@ -30,13 +30,35 @@ def normalize_points(raw: object) -> list[dict]:
             raise ValueError("Missing pickup address")
         code = str(item["code"])
         payload = {key: item.get(key) for key in ("name", "work_time", "type", "note")}
-        payload.update(code=code, location={key: location.get(key) for key in (
-            "city", "city_code", "region", "address", "address_full", "latitude", "longitude",
-        )})
-        search_text = " ".join(str(value or "") for value in (
-            code, item.get("name"), location.get("region"), location.get("city"),
-            location.get("address"),
-        )).casefold().replace("ё", "е")
+        payload.update(
+            code=code,
+            location={
+                key: location.get(key)
+                for key in (
+                    "city",
+                    "city_code",
+                    "region",
+                    "address",
+                    "address_full",
+                    "latitude",
+                    "longitude",
+                )
+            },
+        )
+        search_text = (
+            " ".join(
+                str(value or "")
+                for value in (
+                    code,
+                    item.get("name"),
+                    location.get("region"),
+                    location.get("city"),
+                    location.get("address"),
+                )
+            )
+            .casefold()
+            .replace("ё", "е")
+        )
         points[code] = {"code": code, "search_text": search_text, "payload": payload}
     return list(points.values())
 
@@ -58,6 +80,7 @@ class DirectoryTransport(AiohttpCdekTransport):
                 if len(body) > 64 * 1024 * 1024:
                     raise ValueError("CDEK directory exceeds size limit")
             import json
+
             return json.loads(body)
 
 
@@ -70,13 +93,20 @@ class PickupDirectory:
         now = datetime.now(UTC)
         # Atomic lease also throttles provider failures across all API replicas.
         async with self.database.session() as session:
-            result = await session.execute(update(PickupDirectoryState).where(
-                PickupDirectoryState.key == DIRECTORY_KEY,
-                or_(PickupDirectoryState.updated_at.is_(None),
-                    PickupDirectoryState.updated_at < now - REFRESH_INTERVAL),
-                or_(PickupDirectoryState.retry_at.is_(None),
-                    PickupDirectoryState.retry_at < now),
-            ).values(retry_at=now + RETRY_INTERVAL))
+            result = await session.execute(
+                update(PickupDirectoryState)
+                .where(
+                    PickupDirectoryState.key == DIRECTORY_KEY,
+                    or_(
+                        PickupDirectoryState.updated_at.is_(None),
+                        PickupDirectoryState.updated_at < now - REFRESH_INTERVAL,
+                    ),
+                    or_(
+                        PickupDirectoryState.retry_at.is_(None), PickupDirectoryState.retry_at < now
+                    ),
+                )
+                .values(retry_at=now + RETRY_INTERVAL)
+            )
             await session.commit()
             if not result.rowcount:
                 return False
@@ -87,11 +117,15 @@ class PickupDirectory:
                 # A failed fetch/parse never deletes the last good snapshot.
                 await session.execute(delete(PickupPoint))
                 for start in range(0, len(points), 500):
-                    session.add_all(PickupPoint(**point) for point in points[start:start + 500])
+                    session.add_all(PickupPoint(**point) for point in points[start : start + 500])
                     await session.flush()
-                await session.execute(update(PickupDirectoryState).where(
-                    PickupDirectoryState.key == DIRECTORY_KEY,
-                ).values(updated_at=now, retry_at=None))
+                await session.execute(
+                    update(PickupDirectoryState)
+                    .where(
+                        PickupDirectoryState.key == DIRECTORY_KEY,
+                    )
+                    .values(updated_at=now, retry_at=None)
+                )
                 await session.commit()
             return True
         finally:

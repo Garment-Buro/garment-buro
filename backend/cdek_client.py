@@ -176,8 +176,9 @@ class CdekClient:
         if not packages:
             packages = [{"weight": 1000, "length": 20, "width": 20, "height": 10}]
 
-        recipient_name = " ".join(filter(None, [order.last_name, order.first_name,
-                                                getattr(order, "patronymic", None)]))
+        recipient_name = " ".join(
+            filter(None, [order.last_name, order.first_name, getattr(order, "patronymic", None)])
+        )
         if not recipient_name:
             recipient_name = "Покупатель"
 

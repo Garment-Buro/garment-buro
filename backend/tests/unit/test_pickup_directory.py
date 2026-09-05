@@ -26,14 +26,27 @@ from app.modules.identity.repository import IdentityRepository
 
 
 def point(code="TVR1", address="Советская, 12"):
-    return {"code": code, "work_time": "10:00–20:00", "location": {
-        "city": "Тверь", "address": address, "latitude": 56.8, "longitude": 35.9,
-    }}
+    return {
+        "code": code,
+        "work_time": "10:00–20:00",
+        "location": {
+            "city": "Тверь",
+            "address": address,
+            "latitude": 56.8,
+            "longitude": 35.9,
+        },
+    }
 
 
 async def database_at(path):
-    database = DatabaseManager(Settings(_env_file=None, app_env="test", database_enabled=True,
-                                        database_url=f"sqlite+aiosqlite:///{path}"))
+    database = DatabaseManager(
+        Settings(
+            _env_file=None,
+            app_env="test",
+            database_enabled=True,
+            database_url=f"sqlite+aiosqlite:///{path}",
+        )
+    )
     await database.startup()
     async with database.engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
@@ -66,12 +79,16 @@ def test_directory_atomic_refresh_ttl_search_and_outage(tmp_path, monkeypatch):
                 assert not list(await session.scalars(search_statement("%_")))
                 page = await list_pickup_points(Response(), session, q="Тверь", limit=1)
                 assert page["total"] == 2 and len(page["points"]) == 1
-                await session.execute(update(PickupDirectoryState).values(
-                    updated_at=datetime.now(UTC) - timedelta(days=2)))
+                await session.execute(
+                    update(PickupDirectoryState).values(
+                        updated_at=datetime.now(UTC) - timedelta(days=2)
+                    )
+                )
                 await session.commit()
 
             async def invalid(_):
                 return []
+
             monkeypatch.setattr(DirectoryTransport, "fetch_points", invalid)
             with pytest.raises(ValueError):
                 await directory.refresh()
@@ -80,14 +97,18 @@ def test_directory_atomic_refresh_ttl_search_and_outage(tmp_path, monkeypatch):
                 assert len(list(await session.scalars(select(PickupPoint)))) == 2
                 page = await list_pickup_points(Response(), session)
                 assert page["stale"] is True
-                await session.execute(update(PickupDirectoryState).values(
-                    updated_at=datetime.now(UTC) - timedelta(days=8)))
+                await session.execute(
+                    update(PickupDirectoryState).values(
+                        updated_at=datetime.now(UTC) - timedelta(days=8)
+                    )
+                )
                 await session.commit()
                 with pytest.raises(HTTPException) as caught:
                     await list_pickup_points(Response(), session)
                 assert caught.value.status_code == 503
         finally:
             await database.shutdown()
+
     asyncio.run(scenario())
 
 
@@ -101,6 +122,7 @@ def test_empty_directory_is_unavailable_not_demo(tmp_path):
                 assert caught.value.status_code == 503
         finally:
             await database.shutdown()
+
     asyncio.run(scenario())
 
 
@@ -124,11 +146,16 @@ def test_checkout_customer_is_not_verified_or_overwritten(tmp_path):
                 assert user.first_name == "Сохранённое имя"
         finally:
             await database.shutdown()
+
     asyncio.run(scenario())
 
 
 def test_contacts_and_directory_reject_invalid_values():
-    valid = {"name": "  Анна   Соколова  ", "phone": "+7 (900) 123-45-67", "email": "Anna@example.test"}
+    valid = {
+        "name": "  Анна   Соколова  ",
+        "phone": "+7 (900) 123-45-67",
+        "email": "Anna@example.test",
+    }
     contact = CheckoutContact(**valid)
     assert contact.name == "Анна Соколова"
     assert contact.phone == "+79001234567"
@@ -145,33 +172,58 @@ def test_recipient_does_not_own_buyer_order_and_address_is_canonical(tmp_path, m
     async def quote(city, method, items):
         assert city == "Тверь" and method == "cdek_pickup"
         return {"delivery_price": 450.0}
+
     monkeypatch.setattr("app.modules.checkout.legacy_contact.quote_legacy_delivery", quote)
 
     async def scenario():
         database = await database_at(tmp_path / "contacts.db")
-        buyer = CheckoutContact(name="Анна Соколова", email="buyer@example.test", phone="+79001234567")
-        recipient = CheckoutContact(name="Мария Соколова", email="recipient@example.test", phone="+79007654321")
-        payload = {"delivery_city": "Подмена", "delivery_address": "Подмена", "delivery_method": "cdek_pickup",
-                   "cdek_point_code": "TVR1", "cart_items": '[{"quantity":1}]', "delivery_price": 450.0}
+        buyer = CheckoutContact(
+            name="Анна Соколова", email="buyer@example.test", phone="+79001234567"
+        )
+        recipient = CheckoutContact(
+            name="Мария Соколова", email="recipient@example.test", phone="+79007654321"
+        )
+        payload = {
+            "delivery_city": "Подмена",
+            "delivery_address": "Подмена",
+            "delivery_method": "cdek_pickup",
+            "cdek_point_code": "TVR1",
+            "cart_items": '[{"quantity":1}]',
+            "delivery_price": 450.0,
+        }
         try:
             async with database.session() as session:
                 session.add(PickupPoint(**normalize_points([point()])[0]))
-                await session.execute(update(PickupDirectoryState).values(updated_at=datetime.now(UTC)))
+                await session.execute(
+                    update(PickupDirectoryState).values(updated_at=datetime.now(UTC))
+                )
                 await session.commit()
-            result = await prepare_legacy_contact_order(dict(payload), buyer=buyer, recipient=recipient, database=database)
+            result = await prepare_legacy_contact_order(
+                dict(payload), buyer=buyer, recipient=recipient, database=database
+            )
             assert result["email"] == "buyer@example.test"
             assert result["phone"] == recipient.phone
             assert result["first_name"] == recipient.name
             assert result["recipient_email"] == recipient.email
             assert result["delivery_address"] == "Тверь, Советская, 12"
             async with database.session() as session:
-                assert [u.email_normalized for u in await session.scalars(select(User))] == [buyer.email]
+                assert [u.email_normalized for u in await session.scalars(select(User))] == [
+                    buyer.email
+                ]
             with pytest.raises(HTTPException) as error:
-                await prepare_legacy_contact_order(payload | {"cdek_point_code": "deleted"}, buyer=buyer, recipient=None, database=database)
+                await prepare_legacy_contact_order(
+                    payload | {"cdek_point_code": "deleted"},
+                    buyer=buyer,
+                    recipient=None,
+                    database=database,
+                )
             assert error.value.status_code == 422
             with pytest.raises(HTTPException) as error:
-                await prepare_legacy_contact_order(payload | {"delivery_price": 0}, buyer=buyer, recipient=None, database=database)
+                await prepare_legacy_contact_order(
+                    payload | {"delivery_price": 0}, buyer=buyer, recipient=None, database=database
+                )
             assert error.value.status_code == 409
         finally:
             await database.shutdown()
+
     asyncio.run(scenario())

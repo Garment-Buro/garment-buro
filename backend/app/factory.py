@@ -215,8 +215,14 @@ def create_app(
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         await database_manager.startup()
         directory_task = None
-        if database_manager.enabled and runtime_settings.cdek_client_id and runtime_settings.cdek_client_secret:
-            directory_task = asyncio.create_task(PickupDirectory(database_manager, runtime_settings).run())
+        if (
+            database_manager.enabled
+            and runtime_settings.cdek_client_id
+            and runtime_settings.cdek_client_secret
+        ):
+            directory_task = asyncio.create_task(
+                PickupDirectory(database_manager, runtime_settings).run()
+            )
         try:
             if runtime_settings.catalog_reads_enabled:
                 await verify_catalog_cutover(

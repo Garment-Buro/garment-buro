@@ -22,8 +22,11 @@ async def list_pickup_points(
 ):
     state = await session.get(PickupDirectoryState, DIRECTORY_KEY)
     if state is None or state.updated_at is None:
-        raise HTTPException(503, "Справочник СДЭК ещё не загружен. Попробуйте позже.",
-                            headers={"Retry-After": "60", "Cache-Control": "no-store"})
+        raise HTTPException(
+            503,
+            "Справочник СДЭК ещё не загружен. Попробуйте позже.",
+            headers={"Retry-After": "60", "Cache-Control": "no-store"},
+        )
     updated_at = state.updated_at.replace(tzinfo=UTC)
     # Very old points must not appear selectable after a prolonged outage.
     if datetime.now(UTC) - updated_at > timedelta(days=7):
@@ -32,5 +35,9 @@ async def list_pickup_points(
     total = await session.scalar(select(func.count()).select_from(statement.subquery()))
     points = await session.scalars(statement.offset(offset).limit(limit))
     response.headers["Cache-Control"] = "public, max-age=300"
-    return {"points": [point.payload for point in points], "total": total,
-            "updated_at": updated_at, "stale": datetime.now(UTC) - updated_at > timedelta(days=1)}
+    return {
+        "points": [point.payload for point in points],
+        "total": total,
+        "updated_at": updated_at,
+        "stale": datetime.now(UTC) - updated_at > timedelta(days=1),
+    }

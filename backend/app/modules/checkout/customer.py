@@ -11,6 +11,8 @@ async def prepare_checkout_customer(database: DatabaseManager, email: str) -> No
         # Never overwrite an existing customer's profile from an anonymous checkout,
         # mark the email verified, issue a session, or grant access by phone alone.
         await IdentityRepository().get_or_create_customer(
-            session, email=email, email_normalized=normalized,
+            session,
+            email=email,
+            email_normalized=normalized,
         )
         await session.commit()
