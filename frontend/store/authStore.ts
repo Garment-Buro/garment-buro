@@ -11,6 +11,7 @@ import { isIdentitySessionV2Enabled } from '@/lib/auth/config';
 import { authSessionChannel, withAuthRefreshLock } from '@/lib/auth/sessionChannel';
 import { AuthSessionCoordinator } from '@/lib/auth/sessionCoordinator';
 import type { AuthSessionResponse, AuthUser } from '@/lib/auth/types';
+import { useCheckoutDetailsStore } from './checkoutDetailsStore';
 
 export type User = AuthUser;
 type AuthenticatedOperation<Result> = (token: string) => Promise<Result>;
@@ -197,6 +198,7 @@ export const useAuthStore = create<AuthState>()(
                 },
 
                 logout: async () => {
+                    useCheckoutDetailsStore.getState().clear();
                     if (!sessionV2Enabled) {
                         clearSession(false);
                         return;
@@ -211,6 +213,7 @@ export const useAuthStore = create<AuthState>()(
                 },
 
                 acceptRemoteLogout: (pending) => {
+                    useCheckoutDetailsStore.getState().clear();
                     clearSession(pending);
                 },
             };

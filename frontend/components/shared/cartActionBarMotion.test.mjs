@@ -5,6 +5,8 @@ import test from "node:test";
 
 const root = process.cwd();
 const cartActionBarSource = [
+    path.join(root, "components", "checkout", "CartDeliveryDetails.tsx"),
+    path.join(root, "components", "checkout", "DeliverySheet.tsx"),
     path.join(root, "components", "cart", "CartActionBar.tsx"),
     path.join(root, "components", "cart", "CartAddProductCard.tsx"),
     path.join(root, "components", "cart", "CartChoiceOption.tsx"),
@@ -136,7 +138,7 @@ test("cart drag cannot stretch above the expanded panel height", () => {
 });
 
 test("expanded cart renders the requested Figma cart sections", () => {
-    assert.match(cartActionBarSource, /Доставка в пункт выдачи/);
+    assert.match(cartActionBarSource, /Пункт выдачи СДЭК/);
     assert.match(cartActionBarSource, /Доставка курьером/);
     assert.match(cartActionBarSource, /Получатель/);
     assert.match(cartActionBarSource, /cart-action-bar-expanded-cart-items/);
@@ -174,24 +176,17 @@ test("expanded cart content uses transparent framing with thirty-percent inner s
     assert.match(cartActionBarSource, /const ExpandedCartSeparator = \(\) => \(/);
     assert.match(cartActionBarSource, /height:\s*'clamp\(8px, 2\.162vw, 14px\)'/);
     assert.match(cartActionBarSource, /width:\s*'100%'/);
-    assert.match(cartActionBarSource, /maxWidth:\s*'72%'/);
+    assert.match(cartActionBarSource, /CartDeliveryDetails method=\{deliveryMethod\}/);
 });
 
-test("expanded cart delivery and recipient spacing matches compact layout", () => {
-    assert.doesNotMatch(cartActionBarSource, /className="flex items-center gap-\[8px\] whitespace-nowrap"/);
-    assert.match(cartActionBarSource, /className="flex items-center whitespace-nowrap"/);
-    assert.equal((cartActionBarSource.match(/className="flex items-center whitespace-nowrap" style=\{\{ gap: 3 \}\}/g) ?? []).length, 1);
-    assert.equal((cartActionBarSource.match(/variant="delivery"/g) ?? []).length, 2);
-    assert.match(cartActionBarSource, /padding:\s*'clamp\(20px, 5\.405vw, 35px\) 5px clamp\(10px, 2\.703vw, 17px\)'/);
-    assert.match(cartActionBarSource, /paddingInline:\s*'max\(0px, calc\(clamp\(10px, 2\.703vw, 17px\) - 5px\)\)'/);
-    assert.match(cartActionBarSource, /padding:\s*'clamp\(10px, 2\.703vw, 17px\) clamp\(10px, 2\.703vw, 17px\) clamp\(13px, 3\.514vw, 22px\)'/);
-    assert.match(cartActionBarSource, /<div style=\{\{\s*paddingLeft:\s*'clamp\(25px, 6\.757vw, 43px\)'\s*\}\}>/);
-    assert.ok((cartActionBarSource.match(/style=\{\{ alignItems: 'self-end' \}\}/g) ?? []).length >= 2);
-    assert.match(cartActionBarSource, /cart-action-bar-payment-method[\s\S]*?paddingInline:\s*'max\(0px, calc\(clamp\(28px, 7\.568vw, 48px\) - 5px\)\)'/);
+test("expanded cart opens editable recipient and delivery sheets", () => {
+    assert.match(cartActionBarSource, /setSheet\('delivery'\)/);
+    assert.match(cartActionBarSource, /setSheet\('recipient'\)/);
+    assert.match(cartActionBarSource, /<DeliverySheet method=\{method\}/);
+    assert.match(cartActionBarSource, /<RecipientSheet onClose=/);
+    assert.match(cartActionBarSource, /role="radiogroup" aria-label="Пункты СДЭК"/);
+    assert.match(cartActionBarSource, /Найти пункт СДЭК/);
     assert.match(cartActionBarSource, /cart-action-bar-grand-total-section px-\[5px\]/);
-    assert.match(cartActionBarSource, /paddingInline:\s*'max\(0px, calc\(clamp\(28px, 7\.568vw, 48px\) - 5px\)\)'/);
-    assert.doesNotMatch(cartActionBarSource, /padding:\s*'14px 10px 16px'/);
-    assert.doesNotMatch(cartActionBarSource, /paddingLeft:\s*25,\s*marginTop:\s*7/);
 });
 
 test("expanded cart product and add-product blocks match the 370px Figma layout", () => {
@@ -544,8 +539,10 @@ test("expanded cart footer starts the selected payment instead of opening legacy
     assert.match(cartActionBarSource, /payment_method:\s*paymentMethod/);
     assert.match(cartActionBarSource, /createCartActionOrder\(\{/);
     assert.match(cartActionBarSource, /requestJson<CartActionOrderResponse>\('\/orders'/);
-    assert.match(cartActionBarSource, /const CART_ACTION_GUEST_PAYMENT_EMAIL = 'guest@garment-buro\.ru'/);
-    assert.match(cartActionBarSource, /email:\s*user\?\.email\?\.trim\(\) \|\| CART_ACTION_GUEST_PAYMENT_EMAIL/);
+    assert.doesNotMatch(cartActionBarSource, /guest@garment-buro\.ru/);
+    assert.match(cartActionBarSource, /email:\s*buyer\.email\.trim\(\)/);
+    assert.match(cartActionBarSource, /validContact\(buyer\)/);
+    assert.doesNotMatch(cartActionBarSource, /Клочинский Константин|ул\. Беговая/);
     assert.doesNotMatch(cartActionBarSource, /if \(!isAuthenticated \|\| !user\?\.email\)/);
     assert.match(cartActionBarSource, /window\.location\.assign\(data\.payment_url\)/);
     assert.match(cartActionBarSource, /router\.push\(data\.order_id \? `\/order\/\$\{data\.order_id\}` : '\/order\/error'\)/);

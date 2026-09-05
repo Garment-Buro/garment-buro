@@ -32,6 +32,7 @@ from app.modules.crm.reference_models import (
     CrmTechCardCheckpoint,
     CrmTechCardRevision,
 )
+from app.modules.delivery.directory_models import PickupDirectoryState, PickupPoint
 from app.modules.delivery.models import CdekShipment, CdekShipmentAttempt, CdekShipmentEvent
 from app.modules.fulfillment.models import FulfillmentJob, FulfillmentJobAttempt
 from app.modules.identity.models import (
@@ -77,6 +78,8 @@ from app.modules.payments.models import (
 from app.modules.payouts.models import Payout
 
 __all__ = [
+    "PickupDirectoryState",
+    "PickupPoint",
     "CrmOrderProject",
     "CrmProductionUnit",
     "CrmProjectEvent",

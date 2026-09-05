@@ -19,6 +19,7 @@ export type DeliveryCalculationResponse = {
 };
 
 export type CheckoutOrderPayload = {
+    buyer: import('./contact').CheckoutContact;
     email: string;
     phone: string;
     first_name: string;
