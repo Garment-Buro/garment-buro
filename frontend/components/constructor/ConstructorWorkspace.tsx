@@ -9,6 +9,7 @@ import { ConstructorInstructionOverlay } from "@/components/constructor/Construc
 import { DecorationOptionCard, UploadDecorationCard } from "@/components/constructor/DecorationOptionCard";
 import { RotateModelIcon } from "@/components/constructor/RotateModelIcon";
 import { SizeFitModal } from "@/components/constructor/SizeFitModal";
+import { TextDecorationEditor } from "@/components/constructor/TextDecorationEditor";
 import { CONSTRUCTOR_CATEGORIES } from "@/lib/constructor/config/categories";
 import { IMAGE_FILE_ACCEPT } from "@/lib/media/utils/upload";
 import { formatCm } from "@/lib/constructor/utils/constructor";
@@ -154,6 +155,13 @@ export const ConstructorWorkspace = ({ controller }: { controller: ConstructorPa
                     </svg>
                 </button>
 
+                {controller.selectedTextItem && (
+                    <button type="button" onClick={() => controller.openTextEditor(controller.selectedTextItem!.uid)}
+                        className="absolute right-[10px] top-[10px] z-30 rounded-[10px] bg-white px-4 py-2 text-[13px] shadow-sm">
+                        Изменить текст
+                    </button>
+                )}
+
                 {!isPanelExpanded && (
                     <div
                         key={`rotate-controls-${modelView}-${selectedItemUid || "empty"}-${glassRefreshId}`}
@@ -214,6 +222,7 @@ export const ConstructorWorkspace = ({ controller }: { controller: ConstructorPa
 
                         <div className="mt-[5px] overflow-x-auto px-[25px] scrollbar-hide">
                             <div className="flex w-max items-center gap-[30px] after:block after:w-[25px] after:shrink-0 after:content-['']">
+                                <button type="button" onClick={() => controller.openTextEditor()} className="whitespace-nowrap font-manrope text-[12px] font-semibold text-black">Текст +</button>
                         {CONSTRUCTOR_CATEGORIES.map((cat) => (
                                     <button
                                         key={cat.id}
@@ -442,6 +451,14 @@ export const ConstructorWorkspace = ({ controller }: { controller: ConstructorPa
                     }}
                     onSave={handleSaveDraft}
                 />
+                {controller.isTextEditorOpen && createPortal(
+                    <TextDecorationEditor
+                        initialValue={controller.editingText}
+                        onClose={() => { controller.setIsTextEditorOpen(false); resetConstructorViewportAfterKeyboard(); }}
+                        onSave={controller.saveTextDecoration}
+                    />,
+                    document.body,
+                )}
             </div>
         </div>
     );

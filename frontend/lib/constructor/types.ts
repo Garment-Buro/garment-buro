@@ -14,6 +14,12 @@ export type GarmentFit = {
 };
 
 export type CanvasBounds = { x: number; y: number; width: number; height: number };
+export type TextDecoration = {
+    content: string;
+    fontId: 'manrope' | 'inter' | 'mono' | 'serif';
+    fontSize: number;
+    color: string;
+};
 export type UploadedImage = { src: string; width: number; height: number };
 export type CanvasViewport = {
     stagePos: { x: number; y: number };
@@ -35,6 +41,9 @@ export interface PlacedHardware {
 export type PlacedItemsByView = Record<ModelView, PlacedHardware[]>;
 
 export type ConstructorDecoration = {
+    text?: TextDecoration;
+    originalWidth?: number;
+    originalHeight?: number;
     view: ModelView;
     uid: string;
     variantId: string;
@@ -93,6 +102,7 @@ export type ClothingModel = {
 export type HardwareCategory = "prints" | "rivets" | "distress" | "zippers" | "pullers" | "embroidery";
 
 export type HardwareVariant = {
+    text?: TextDecoration;
     id: string;
     categoryId: HardwareCategory;
     name: string;

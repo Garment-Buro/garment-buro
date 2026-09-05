@@ -11,6 +11,7 @@ import {
     CANVAS_SIZE,
     COLLAPSED_PANEL_BASE_HEIGHT,
     CUSTOM_BASE_PRICE,
+    PX_PER_CM,
     ROTATE_CONTROLS_HEIGHT,
     ROTATE_PANEL_GAP,
 } from "@/lib/constructor/constants";
@@ -22,6 +23,8 @@ import type {
     ModelView,
     PlacedHardware,
     PlacedItemsByView,
+    TextDecoration,
+    UploadedImage,
 } from "@/lib/constructor/types";
 import {
     buildConstructorCustomization,
@@ -51,6 +54,8 @@ export const useConstructorPageController = ({
     const [placedItemsByView, setPlacedItemsByView] = useState<PlacedItemsByView>({ front: [], back: [] });
     const [selectedItemUid, setSelectedItemUid] = useState<string | null>(null);
     const [customDecorations, setCustomDecorations] = useState<HardwareVariant[]>([]);
+    const [isTextEditorOpen, setIsTextEditorOpen] = useState(false);
+    const [editingTextUid, setEditingTextUid] = useState<string | null>(null);
     const [areDecorationCaptionsVisible, setAreDecorationCaptionsVisible] = useState(false);
     const [isPanelExpanded, setIsPanelExpanded] = useState(false);
     const [isCustomizationDetailsOpen, setIsCustomizationDetailsOpen] = useState(false);
@@ -261,10 +266,10 @@ export const useConstructorPageController = ({
     const panelBottom = "var(--constructor-panel-bottom, 5px)";
     const panelBottomForCanvas = 10;
 
-    const handleAddHardware = (variantId: string) => {
+    const handleAddHardware = (variantId: string, newHardware?: HardwareVariant) => {
         setAreDecorationCaptionsVisible(true);
         setGlassRefreshId((value) => value + 1);
-        const hardware = hardwareMap[variantId];
+        const hardware = newHardware || hardwareMap[variantId];
         const baseSize = hardware
             ? getItemSizeCm({ uid: "", variantId, x: 0, y: 0, scale: 1 }, hardware)
             : null;
@@ -296,13 +301,56 @@ export const useConstructorPageController = ({
                         existingItems: prev[modelView],
                         canvasSize: CANVAS_SIZE,
                     }),
-                    scale: 1,
+                    scale: hardware?.text ? Math.min(1, 300 / Math.max(hardware.defaultWidth, hardware.defaultHeight || 1)) : 1,
                     rotation: 0,
                     ...(baseSize ? { baseLongSideCm: baseSize.longSideCm } : {}),
                 },
             ],
         }));
         setSelectedItemUid(newItemUid);
+    };
+
+    const selectedTextItem = placedItems.find((item) => item.uid === selectedItemUid && hardwareMap[item.variantId]?.text);
+    const editingTextItem = placedItems.find((item) => item.uid === editingTextUid);
+    const openTextEditor = (uid: string | null = null) => {
+        setIsInstructionMounted(false);
+        setEditingTextUid(uid);
+        setIsTextEditorOpen(true);
+    };
+    const saveTextDecoration = (result: UploadedImage & { text: TextDecoration }) => {
+        nextCustomDecorationIdRef.current += 1;
+        const variant: HardwareVariant = {
+            id: `custom_${nextCustomDecorationIdRef.current}`,
+            categoryId: 'prints',
+            name: result.text.content,
+            src: result.src,
+            text: result.text,
+            defaultWidth: result.width,
+            defaultHeight: result.height,
+            price: CUSTOM_BASE_PRICE,
+            basePrice: CUSTOM_BASE_PRICE,
+            minSizeMm: 10,
+            maxSizeMm: 600,
+            isCustom: true,
+        };
+        const oldVariantStillUsed = editingTextItem && Object.values(placedItemsByView).flat().some((item) => (
+            item.uid !== editingTextItem.uid && item.variantId === editingTextItem.variantId
+        ));
+        setCustomDecorations((previous) => [
+            ...previous.filter((entry) => !editingTextItem || oldVariantStillUsed || entry.id !== editingTextItem.variantId),
+            variant,
+        ]);
+        if (editingTextItem) {
+            setPlacedItemsByView((previous) => ({
+                ...previous,
+                [modelView]: previous[modelView].map((item) => item.uid === editingTextItem.uid
+                    ? { ...item, variantId: variant.id, baseLongSideCm: Math.max(result.width, result.height) / PX_PER_CM }
+                    : item),
+            }));
+        } else {
+            handleAddHardware(variant.id, variant);
+        }
+        setSelectedCategory('prints');
     };
 
     const handleUpdateItem = (uid: string, newAttrs: Partial<PlacedHardware>) => {
@@ -324,7 +372,7 @@ export const useConstructorPageController = ({
         const files = Array.from(event.target.files || []);
         if (files.length === 0) return;
 
-        const freeSlots = Math.max(0, 5 - customDecorations.length);
+        const freeSlots = Math.max(0, 5 - customDecorations.filter((decoration) => !decoration.text).length);
         if (freeSlots === 0) {
             event.target.value = "";
             return;
@@ -563,6 +611,12 @@ export const useConstructorPageController = ({
     };
 
     return {
+        isTextEditorOpen,
+        setIsTextEditorOpen,
+        openTextEditor,
+        saveTextDecoration,
+        selectedTextItem,
+        editingText: editingTextItem ? hardwareMap[editingTextItem.variantId]?.text : undefined,
         router,
         selectedSize,
         setIsSizeModalOpen,
