@@ -9,6 +9,7 @@ import {
     SPLASH_SESSION_KEY,
 } from '@/lib/browser/utils/splash';
 import { useVideoQueue } from '@/store/videoQueueStore';
+import { playSplashVideo } from '@/lib/browser/utils/splashPlayback';
 
 type SplashWindow = Window & { [SPLASH_APP_RUN_KEY]?: boolean };
 
@@ -23,6 +24,7 @@ export const useSplashController = () => {
     const videoRef = useRef<HTMLVideoElement>(null);
     const { registerVideo, unregisterVideo, setVideoStatus } = useVideoQueue();
     const [logoReady, setLogoReady] = useState(false);
+    const [playbackIssue, setPlaybackIssue] = useState<'blocked' | 'error' | 'slow' | null>(null);
 
     useEffect(() => {
         if (isHiddenRoute) {
@@ -87,37 +89,55 @@ export const useSplashController = () => {
         }, 650);
     };
 
+    const handleLogoPlaying = useCallback(() => {
+        setLogoReady(true);
+        setRevealed(true);
+        setPlaybackIssue(null);
+        setVideoStatus('logo', 'loaded');
+    }, [setVideoStatus]);
+
     const tryPlayLogo = useCallback(() => {
         const video = videoRef.current;
         if (!video) return;
-        video.muted = true;
-        video.defaultMuted = true;
-        video.autoplay = true;
-        video.playsInline = true;
-        video.setAttribute('muted', '');
-        video.setAttribute('autoplay', '');
-        video.setAttribute('playsinline', '');
-        video.setAttribute('webkit-playsinline', '');
-        video.removeAttribute('controls');
-        const maybePromise = video.play();
-        if (maybePromise && typeof maybePromise.catch === 'function') {
-            maybePromise.catch(() => { });
-        }
-    }, []);
+        void playSplashVideo(video).then((result) => {
+            if (videoRef.current !== video) return;
+            if (result === 'playing') handleLogoPlaying();
+            else if (result !== 'interrupted' && video.paused) {
+                setPlaybackIssue(result);
+                setRevealed(true);
+                setVideoStatus('logo', 'loaded');
+            }
+        });
+    }, [handleLogoPlaying, setVideoStatus]);
 
-    const handleLogoPlaying = () => {
-        if (!logoReady) {
-            setLogoReady(true);
-            setRevealed(true);
-            setVideoStatus('logo', 'loaded');
-        }
+    const handleLogoData = () => {
+        // A decoded frame is useful even when the browser requires a gesture to play.
+        setRevealed(true);
+        tryPlayLogo();
     };
 
     const handleLogoError = () => {
         setLogoReady(false);
-        setRevealed(false);
+        setRevealed(true);
+        setPlaybackIssue('error');
         setVideoStatus('logo', 'loaded');
     };
+
+    const retryLogo = () => {
+        const video = videoRef.current;
+        if (!video) return;
+        if (video.error) video.load();
+        tryPlayLogo();
+    };
+
+    useEffect(() => {
+        if (!show || logoReady) return;
+        const revealTimer = window.setTimeout(() => {
+            setRevealed(true);
+            setPlaybackIssue((issue) => issue ?? 'slow');
+        }, 3500);
+        return () => window.clearTimeout(revealTimer);
+    }, [show, logoReady]);
 
     useEffect(() => {
         if (!show) return;
@@ -144,8 +164,11 @@ export const useSplashController = () => {
         exiting,
         videoRef,
         logoReady,
+        playbackIssue,
         dismiss,
+        retryLogo,
         tryPlayLogo,
+        handleLogoData,
         handleLogoPlaying,
         handleLogoError,
     };

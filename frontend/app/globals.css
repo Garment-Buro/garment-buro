@@ -315,6 +315,32 @@ body::-webkit-scrollbar,
   100% { opacity: 0.35; }
 }
 
+.splashPlaybackStatus {
+  position: absolute;
+  top: calc(50% + 120px);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  width: min(100% - 32px, 440px);
+  text-align: center;
+  color: #313131;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.splashPlaybackStatus p { flex-basis: 100%; }
+.splashPlaybackStatus button {
+  padding: 8px 12px;
+  border: 1px solid #a0a0a0;
+  border-radius: 8px;
+  cursor: pointer;
+  background: transparent;
+}
+.splashPlaybackStatus button:hover { background: #fff; }
+.splashPlaybackStatus button:active { transform: scale(0.98); }
+.splashPlaybackStatus button:focus-visible { outline: 2px solid #313131; outline-offset: 4px; }
+
 .splash-hint-pulse {
   animation: p2o-hint-pulse 1.8s ease-in-out infinite;
 }

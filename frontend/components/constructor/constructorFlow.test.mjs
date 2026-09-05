@@ -77,6 +77,7 @@ const splashSource = [
     path.join(root, "hooks", "browser", "useSplashController.ts"),
     path.join(root, "providers", "SplashBoundary.tsx"),
     path.join(root, "lib", "browser", "utils", "splash.ts"),
+    path.join(root, "lib", "browser", "utils", "splashPlayback.ts"),
 ].map(file => fs.readFileSync(file, "utf8")).join("\n");
 const offerSource = fs.readFileSync(path.join(root, "app", "offer", "page.tsx"), "utf8");
 const cartStoreSource = [
@@ -515,11 +516,10 @@ test("splash waits for hydration before mounting the video surface", () => {
     assert.doesNotMatch(globalStylesSource, /data-p2o-splash/);
 });
 
-test("splash keeps the animated logo hidden until it is actually playing", () => {
+test("splash keeps the video visible while negotiating autoplay", () => {
     assert.match(splashSource, /href="\/logo_anim\.mp4" as="video" type="video\/mp4"/);
     assert.doesNotMatch(splashSource, /pwa-icon-source\.png|poster=/);
-    assert.match(splashSource, /opacity:\s*logoReady \? 1 : 0/);
-    assert.match(splashSource, /transition:\s*'opacity 120ms ease-out'/);
+    assert.doesNotMatch(splashSource, /opacity:\s*logoReady \? 1 : 0/);
     assert.match(splashSource, /video\.defaultMuted = true/);
     assert.match(splashSource, /video\.setAttribute\('muted', ''\)/);
     assert.match(splashSource, /video\.setAttribute\('webkit-playsinline', ''\)/);
@@ -529,12 +529,16 @@ test("splash keeps the animated logo hidden until it is actually playing", () =>
     assert.match(splashSource, /onError=\{handleLogoError\}/);
 });
 
-test("splash retries muted inline autoplay and reveals the video only on playing", () => {
-    assert.match(splashSource, /const handleLogoPlaying = \(\) => \{[\s\S]*?setLogoReady\(true\)/);
+test("splash retries playback and exposes recovery instead of a blank screen", () => {
+    assert.match(splashSource, /const handleLogoPlaying = useCallback\(\(\) => \{[\s\S]*?setLogoReady\(true\)/);
     assert.match(splashSource, /onCanPlayThrough=\{tryPlayLogo\}/);
     assert.match(splashSource, /onCanPlay=\{tryPlayLogo\}/);
     assert.match(splashSource, /onLoadedMetadata=\{tryPlayLogo\}/);
-    assert.match(splashSource, /onLoadedData=\{tryPlayLogo\}/);
+    assert.match(splashSource, /onLoadedData=\{handleLogoData\}/);
+    assert.match(splashSource, /setPlaybackIssue\(\(issue\) => issue \?\? 'slow'\)/);
+    assert.match(splashSource, /3500\)/);
+    assert.match(splashSource, /onClick=\{retryLogo\}/);
+    assert.match(splashSource, /onClick=\{dismiss\}>Продолжить/);
     assert.match(splashSource, /onPlaying=\{handleLogoPlaying\}/);
     assert.match(splashSource, /const retryTimers = \[0, 180, 600\]/);
     assert.match(splashSource, /window\.addEventListener\('pageshow', resumePlayback\)/);

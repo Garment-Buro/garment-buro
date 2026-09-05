@@ -31,7 +31,7 @@ test("the 15 July 20:39 splash waits for logo_anim readiness after hydration", (
     assert.match(splashSource, /const \[show, setShow\] = useState\(false\)/);
     assert.match(splashSource, /const openTimer = window\.setTimeout\(\(\) => setShow\(true\), 0\)/);
     assert.match(splashSource, /if \(isHiddenRoute \|\| !show\) return null/);
-    assert.match(splashSource, /opacity: logoReady \? 1 : 0/);
+    assert.doesNotMatch(splashSource, /opacity: logoReady \? 1 : 0/);
     assert.match(splashSource, /src="\/logo_anim\.mp4"/);
     assert.match(splashSource, /onCanPlayThrough=\{tryPlayLogo\}/);
     assert.match(splashSource, /onPlaying=\{handleLogoPlaying\}/);
