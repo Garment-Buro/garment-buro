@@ -58,6 +58,11 @@ export const createCheckoutOrderPayload = ({
     totalPrice: number;
     deliveryPrice: number | null;
 }): CheckoutOrderPayload => ({
+    buyer: {
+        name: [form.lastName, form.firstName, form.patronymic].filter(Boolean).join(' '),
+        phone: form.phone,
+        email: form.email,
+    },
     email: form.email,
     phone: form.phone,
     first_name: form.firstName,

@@ -6,6 +6,10 @@ import type { CdekOffice, Coordinates, LoadState, YandexMapInstance, YandexMapsA
 import { getOfficeAddress, getOfficeCoords, getOfficeTitle } from '@/lib/cdek/utils/cdek';
 import { loadYandexMaps } from '@/lib/cdek/utils/yandexMaps';
 
+const escapeMapText = (value: string) => value.replace(/[&<>"']/g, character => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+})[character]!);
+
 type UseCdekYandexMapOptions = {
     offices: CdekOffice[];
     selectedCode: string;
@@ -59,10 +63,10 @@ export const useCdekYandexMap = ({
         officesWithCoords.forEach(({ office, coords }) => {
             const isActive = office.code === selectedCode;
             const placemark = new mapsApi.Placemark(coords, {
-                hintContent: getOfficeTitle(office),
-                balloonContentHeader: getOfficeTitle(office),
-                balloonContentBody: getOfficeAddress(office),
-                balloonContentFooter: office.work_time || '',
+                hintContent: escapeMapText(getOfficeTitle(office)),
+                balloonContentHeader: escapeMapText(getOfficeTitle(office)),
+                balloonContentBody: escapeMapText(getOfficeAddress(office)),
+                balloonContentFooter: escapeMapText(office.work_time || ''),
             }, {
                 preset: 'islands#circleIcon',
                 iconColor: isActive ? '#D6FF58' : '#111111',
@@ -75,16 +79,19 @@ export const useCdekYandexMap = ({
 
         if (searchCenter) {
             map.geoObjects.add(new mapsApi.Placemark(searchCenter, {
-                hintContent: selectedAddressLabel || 'Искомый адрес',
+                hintContent: escapeMapText(selectedAddressLabel || 'Искомый адрес'),
                 balloonContentHeader: 'Искомый адрес',
-                balloonContentBody: selectedAddressLabel,
+                balloonContentBody: escapeMapText(selectedAddressLabel),
             }, { preset: 'islands#redHomeIcon', iconColor: '#FF4D2D', zIndex: 1000 }));
         }
 
         const selected = officesWithCoords.find(({ office }) => office.code === selectedCode);
         if (selected) map.setCenter(selected.coords, 14, { duration: 250 });
         else if (searchCenter) map.setCenter(searchCenter, 13, { duration: 250 });
-        else if (bounds.length > 1) map.setBounds(bounds, { checkZoomRange: true, zoomMargin: 36 });
+        else if (bounds.length > 1) map.setBounds([
+            [Math.min(...bounds.map(point => point[0])), Math.min(...bounds.map(point => point[1]))],
+            [Math.max(...bounds.map(point => point[0])), Math.max(...bounds.map(point => point[1]))],
+        ], { checkZoomRange: true, zoomMargin: 36 });
         else if (bounds.length === 1) map.setCenter(bounds[0] as Coordinates, 13);
     }, [mapState, officesWithCoords, onSelect, searchCenter, selectedAddressLabel, selectedCode]);
 

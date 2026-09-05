@@ -52,6 +52,10 @@ export const CartActionBar: React.FC<CartActionBarProps> = (props) => {
         paymentMethod,
         setPaymentMethod,
         isPaymentSubmitting,
+        checkoutError,
+        retryQuote,
+        quoteLoading,
+        deliveryQuoted,
         isCouponOpen,
         setIsCouponOpen,
         pendingCoupon,
@@ -144,6 +148,10 @@ export const CartActionBar: React.FC<CartActionBarProps> = (props) => {
             appliedCoupon={appliedCoupon}
             setAppliedCoupon={setAppliedCoupon}
             productsTotal={productsTotal}
+            checkoutError={checkoutError}
+            retryQuote={retryQuote}
+            quoteLoading={quoteLoading}
+            deliveryQuoted={deliveryQuoted}
             deliveryPrice={deliveryPrice}
             discount={discount}
             grandTotal={grandTotal}

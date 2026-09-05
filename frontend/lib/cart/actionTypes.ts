@@ -40,6 +40,9 @@ export interface CartPanelPresentation {
 }
 
 export interface CartActionOrderPayload {
+    buyer?: import('@/lib/checkout/contact').CheckoutContact;
+    recipient?: import('@/lib/checkout/contact').CheckoutContact;
+    cdek_point_code?: string;
     email: string;
     phone: string;
     first_name: string;

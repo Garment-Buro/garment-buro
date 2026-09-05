@@ -26,7 +26,7 @@ export function CdekYandexMap({
         <div className="relative mb-4 h-[280px] overflow-hidden rounded-[24px] border border-black/10 bg-[#EDEDE8] md:h-[390px]">
             <div ref={mapNodeRef} className="absolute inset-0" />
             <div className="pointer-events-none absolute left-5 top-5 z-10 rounded-full bg-[#FCFCF8]/90 px-4 py-2 text-[12px] uppercase tracking-[0.16em] text-black/55 shadow-sm backdrop-blur">
-                yandex map · {officeCount} points
+                Пункты СДЭК: {officeCount}
             </div>
             {mapState === 'loading' && (
                 <div className="absolute inset-0 z-20 flex items-center justify-center bg-[#EDEDE8]">

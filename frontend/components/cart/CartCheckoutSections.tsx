@@ -117,6 +117,7 @@ export const CartCouponSection = ({
 };
 
 type CartTotalsSectionProps = {
+    deliveryLabel?: string;
     productsTotal: number;
     deliveryPrice: number;
     appliedCoupon: CartActionCoupon | null;
@@ -124,6 +125,7 @@ type CartTotalsSectionProps = {
 };
 
 export const CartTotalsSection = ({
+    deliveryLabel,
     productsTotal,
     deliveryPrice,
     appliedCoupon,
@@ -140,7 +142,7 @@ export const CartTotalsSection = ({
             </div>
             <div className="flex justify-between">
                 <span>Доставка</span>
-                <span>{deliveryPrice > 0 ? formatCartPrice(deliveryPrice) : 'Бесплатно'}</span>
+                <span>{deliveryLabel || (deliveryPrice > 0 ? formatCartPrice(deliveryPrice) : 'Бесплатно')}</span>
             </div>
             {appliedCoupon ? (
                 <div className="flex justify-between text-[#45F472]">

@@ -1,4 +1,3 @@
-import Image from 'next/image';
 import type {
     Dispatch,
     RefObject,
@@ -14,21 +13,14 @@ import {
 } from '@/lib/cart/constants';
 import type { CartItem } from '@/lib/cart/types';
 
-import { AppIcon } from '@/components/icons/AppIcon';
+import { CartDeliveryDetails } from '@/components/checkout/CartDeliveryDetails';
 import { CartAddProductCard } from './CartAddProductCard';
-import { CartChoiceOption } from './CartChoiceOption';
 import {
     CartCouponSection,
     CartGrandTotalSection,
     CartTotalsSection,
 } from './CartCheckoutSections';
 import { CartItemRow } from './CartItemRow';
-
-const ChevronRight = () => (
-    <svg width="8" height="9" viewBox="0 0 8 9" fill="none" style={{ width: 6.5, height: 7.5 }}>
-        <path d="M0.5 0.5L7 4.25391L0.5 8.00668" stroke="#2D2D2D" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-);
 
 const ExpandedCartSeparator = () => (
     <div
@@ -70,6 +62,10 @@ type CartExpandedContentProps = {
     setAppliedCoupon: Dispatch<SetStateAction<CartActionCoupon | null>>;
     productsTotal: number;
     deliveryPrice: number;
+    checkoutError: string;
+    retryQuote: () => void;
+    quoteLoading: boolean;
+    deliveryQuoted: boolean;
     discount: number;
     grandTotal: number;
     agreementIdPrefix: string;
@@ -108,6 +104,10 @@ export const CartExpandedContent = ({
     setAppliedCoupon,
     productsTotal,
     deliveryPrice,
+    checkoutError,
+    retryQuote,
+    quoteLoading,
+    deliveryQuoted,
     discount,
     grandTotal,
     agreementIdPrefix,
@@ -131,95 +131,9 @@ export const CartExpandedContent = ({
             touchAction: 'pan-y',
         }}
     >
-        <div
-            className="flex w-full flex-col"
-            style={{
-                width: '100%',
-                padding: 'clamp(20px, 5.405vw, 35px) 5px clamp(10px, 2.703vw, 17px)',
-                background: CART_ACTION_PRODUCT_SECTION_BACKGROUND,
-            }}
-        >
-            <div
-                className="flex flex-col"
-                style={{ paddingInline: 'max(0px, calc(clamp(10px, 2.703vw, 17px) - 5px))' }}
-            >
-                <div className="flex items-center justify-between" style={{ padding: '0 clamp(30px, 8.108vw, 52px) 0 clamp(10px, 2.703vw, 17px)' }}>
-                    <div className="flex gap-[7px]" style={{ alignItems: 'self-end' }}>
-                        <AppIcon name="map-pin" width={10} height={12} className="shrink-0 text-[#2D2D2D]" style={{ width: 10, height: 12 }} />
-                        <Image src="/cdek icon.svg" alt="СДЭК" width={36} height={10} className="shrink-0" style={{ width: 36, height: 10 }} />
-                    </div>
-                    <ChevronRight />
-                </div>
-                <div style={{ paddingLeft: 'clamp(25px, 6.757vw, 43px)', marginTop: 'clamp(5px, 1.351vw, 9px)', maxWidth: '72%' }}>
-                    <span style={{
-                        display: 'block',
-                        color: '#2D2D2D',
-                        fontFamily: 'var(--font-manrope), Manrope, sans-serif',
-                        fontSize: 10,
-                        fontWeight: 500,
-                        lineHeight: 'normal',
-                    }}>
-                        Россия, г. Москва, пункт выдачи СДЭК, ул. Беговая, 38/1, 170007
-                    </span>
-                </div>
-            </div>
-            <div className="flex justify-between" style={{ marginTop: 'clamp(10px, 2.703vw, 17px)', gap: 'clamp(3px, 0.811vw, 5px)' }}>
-                <CartChoiceOption
-                    variant="delivery"
-                    active={deliveryMethod === 'pickup'}
-                    onSelect={() => setDeliveryMethod('pickup')}
-                    label="Доставка в пункт выдачи"
-                    primary="Бесплатно"
-                    secondary="8 мая - 12 мая"
-                />
-                <CartChoiceOption
-                    variant="delivery"
-                    active={deliveryMethod === 'courier'}
-                    onSelect={() => setDeliveryMethod('courier')}
-                    label="Доставка курьером"
-                    primary="547 ₽"
-                    secondary="4 мая - 8 мая"
-                />
-            </div>
-        </div>
-
-        <ExpandedCartSeparator />
-
-        <div
-            className="flex w-full flex-col"
-            style={{
-                width: '100%',
-                padding: 'clamp(10px, 2.703vw, 17px) clamp(10px, 2.703vw, 17px) clamp(13px, 3.514vw, 22px)',
-                background: CART_ACTION_PRODUCT_SECTION_BACKGROUND,
-            }}
-        >
-            <div className="flex items-center justify-between" style={{ padding: '0 clamp(30px, 8.108vw, 52px) 0 clamp(10px, 2.703vw, 17px)' }}>
-                <div className="flex gap-[7px]" style={{ alignItems: 'self-end' }}>
-                    <AppIcon name="customer" width={12} height={14} className="shrink-0 text-[#2D2D2D]" style={{ width: 12, height: 14 }} />
-                    <span style={{
-                        color: '#2D2D2D',
-                        fontFamily: 'var(--font-manrope), Manrope, sans-serif',
-                        fontSize: 12,
-                        fontWeight: 700,
-                        lineHeight: 'normal',
-                    }}>
-                        Получатель
-                    </span>
-                </div>
-                <ChevronRight />
-            </div>
-            <div style={{ paddingLeft: 'clamp(25px, 6.757vw, 43px)' }}>
-                <span style={{
-                    color: '#2D2D2D',
-                    fontFamily: 'var(--font-manrope), Manrope, sans-serif',
-                    fontSize: 10,
-                    fontWeight: 500,
-                    lineHeight: 'normal',
-                }}>
-                    Клочинский Константин, +7 900 200-00-11
-                </span>
-            </div>
-        </div>
+        <CartDeliveryDetails method={deliveryMethod} onChange={setDeliveryMethod} />
+        {checkoutError && <p role="alert" className="px-6 py-3 text-sm text-red-800">{checkoutError}</p>}
+        {!deliveryQuoted && items.length > 0 && <button type="button" disabled={quoteLoading} onClick={retryQuote} className="px-6 py-3 text-left text-sm underline disabled:opacity-50">{quoteLoading ? 'Рассчитываем доставку…' : 'Рассчитать доставку'}</button>}
 
         {showAddProductCard ? (
             <>
@@ -271,6 +185,7 @@ export const CartExpandedContent = ({
         />
         <ExpandedCartSeparator />
         <CartTotalsSection
+            deliveryLabel={quoteLoading ? 'Рассчитываем…' : !deliveryQuoted ? 'После выбора адреса' : undefined}
             productsTotal={productsTotal}
             deliveryPrice={deliveryPrice}
             appliedCoupon={appliedCoupon}
