@@ -182,6 +182,11 @@ export const buildConstructorCustomization = ({
                 y: item.y,
                 scale: item.scale,
                 rotation: item.rotation || 0,
+                ...(hardware?.text ? {
+                    text: hardware.text,
+                    originalWidth: hardware.defaultWidth,
+                    originalHeight: hardware.defaultHeight,
+                } : {}),
             };
         }));
 
@@ -213,7 +218,7 @@ export const getHardwareScaleLimits = (item: PlacedHardware, hardware: HardwareV
     const maxScale = hardware.maxSizeMm ? hardware.maxSizeMm / baseLongSideMm : 4;
     const safeMin = Math.max(0.01, Math.min(minScale, maxScale));
     const safeMax = Math.max(safeMin, maxScale);
-    return getCustomDecorationScaleLimits({ isCustom: hardware.isCustom, minScale: safeMin, maxScale: safeMax });
+    return getCustomDecorationScaleLimits({ isCustom: hardware.isCustom && !hardware.text, minScale: safeMin, maxScale: safeMax });
 };
 
 export const getPlacedItemsFromCustomization = (
@@ -251,8 +256,8 @@ export const getCustomDecorationsFromCustomization = (
         if (seenIds.has(decoration.variantId)) return [];
         seenIds.add(decoration.variantId);
         const safeScale = Math.max(decoration.scale || 1, 0.01);
-        const defaultWidth = Math.max(24, Math.round((decoration.widthCm / safeScale) * PX_PER_CM));
-        const defaultHeight = Math.max(24, Math.round((decoration.heightCm / safeScale) * PX_PER_CM));
+        const defaultWidth = decoration.originalWidth || Math.max(24, Math.round((decoration.widthCm / safeScale) * PX_PER_CM));
+        const defaultHeight = decoration.originalHeight || Math.max(24, Math.round((decoration.heightCm / safeScale) * PX_PER_CM));
         const price = decoration.price || CUSTOM_BASE_PRICE;
         return [{
             id: decoration.variantId,
@@ -264,8 +269,9 @@ export const getCustomDecorationsFromCustomization = (
             defaultWidth,
             defaultHeight,
             minSizeMm: 10,
-            maxSizeMm: 300,
+            maxSizeMm: decoration.text ? 600 : 300,
             isCustom: true,
+            ...(decoration.text ? { text: decoration.text } : {}),
         }];
     });
 };

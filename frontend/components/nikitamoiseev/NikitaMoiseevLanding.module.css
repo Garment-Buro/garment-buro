@@ -145,7 +145,8 @@
     scroll-behavior: smooth;
     scroll-snap-type: x mandatory;
     scrollbar-width: none;
-    touch-action: pan-x;
+    touch-action: pan-x pan-y pinch-zoom;
+    overscroll-behavior-x: contain;
 }
 
 .carouselTrack::-webkit-scrollbar {
@@ -342,14 +343,21 @@
     z-index: 4;
     width: 128%;
     transform: translateX(-50%);
-    color: transparent;
+    color: rgb(3 61 100 / 55%);
     font-size: clamp(96px, calc(25.2632vw + 2.526px), 144px);
     font-weight: 800;
     letter-spacing: -0.07em;
     line-height: 0.999;
     text-align: center;
     white-space: nowrap;
-    -webkit-text-stroke: 1px rgb(3 61 100 / 42%);
+    pointer-events: none;
+}
+
+.collectionNames svg {
+    display: block;
+    height: 1em;
+    margin: 0 auto;
+    overflow: visible;
 }
 
 .collectionNames span {
