@@ -77,6 +77,11 @@ PNG sizes are 128–1024 pixels.
 
 ## Database migrations
 
+Partner withdrawals to sole-proprietor bank accounts are documented in
+[Tochka partner payouts](docs/tochka-partner-payouts.md). The integration is
+disabled by default; it creates drafts for signing in the bank and reconciles
+payment statuses without automatically signing or retrying uncertain transfers.
+
 Run migrations from `backend/` with an explicit `DATABASE_URL`:
 
 ```bash

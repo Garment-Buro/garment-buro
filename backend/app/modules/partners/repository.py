@@ -294,6 +294,7 @@ class PartnerRepository:
             select(PartnerPayoutRequest)
             .where(PartnerPayoutRequest.id == payout_id)
             .with_for_update()
+            .execution_options(populate_existing=True)
         )
 
     @staticmethod

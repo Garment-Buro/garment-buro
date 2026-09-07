@@ -13,6 +13,11 @@ from app.api.system import router as system_router
 from app.core.config import Settings, get_settings
 from app.db.session import DatabaseManager
 from app.integrations.minio import MinioStorage
+from app.integrations.tochka.provider import TochkaPayoutProvider
+from app.integrations.tochka.transport import TochkaTransport
+from app.modules.bank_payouts.router import router as bank_payout_router
+from app.modules.bank_payouts.service import PartnerBankPayoutService
+from app.modules.bank_payouts.worker import reconcile_bank_payouts
 from app.modules.carts.cutover import verify_cart_cutover
 from app.modules.carts.router import router as cart_router
 from app.modules.catalog.content import verify_catalog_content_cutover
@@ -97,6 +102,7 @@ def create_app(
     crm_file_service: CrmFileService | None = None,
     cdek_quote_service: CdekQuoteService | None = None,
     partner_program_service: PartnerProgramService | None = None,
+    partner_bank_payout_service: PartnerBankPayoutService | None = None,
     qr_code_service: QrCodeService | None = None,
 ) -> FastAPI:
     runtime_settings = settings or get_settings()
@@ -118,6 +124,8 @@ def create_app(
     crm_file_manager = crm_file_service
     cdek_quote_manager = cdek_quote_service
     partner_program_manager = partner_program_service
+    bank_payout_manager = partner_bank_payout_service
+    bank_transport: TochkaTransport | None = None
     qr_code_manager = qr_code_service or QrCodeService(runtime_settings)
     payment_transport: AiohttpYooKassaTransport | None = None
     payout_transport: AiohttpYooKassaPayoutTransport | None = None
@@ -125,6 +133,13 @@ def create_app(
 
     if runtime_settings.partner_program_enabled:
         partner_program_manager = partner_program_manager or PartnerProgramService(runtime_settings)
+    if runtime_settings.tochka_payouts_enabled and bank_payout_manager is None:
+        if partner_program_manager is None:
+            raise RuntimeError("Partner program was not initialized")
+        bank_transport = TochkaTransport(runtime_settings)
+        bank_payout_manager = PartnerBankPayoutService(
+            runtime_settings, TochkaPayoutProvider(bank_transport), partner_program_manager
+        )
     if (
         runtime_settings.payment_webhook_v2_enabled
         or runtime_settings.checkout_v2_enabled
@@ -215,6 +230,7 @@ def create_app(
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         await database_manager.startup()
         directory_task = None
+        bank_task = None
         if (
             database_manager.enabled
             and runtime_settings.cdek_client_id
@@ -267,12 +283,24 @@ def create_app(
                         await payout_transport.startup()
                     if cdek_quote_transport is not None:
                         await cdek_quote_transport.startup()
+                    if bank_transport is not None:
+                        await bank_transport.startup()
+                    if runtime_settings.tochka_payouts_enabled and bank_payout_manager is not None:
+                        bank_task = asyncio.create_task(
+                            reconcile_bank_payouts(database_manager, bank_payout_manager)
+                        )
                     if legacy_app is None:
                         yield
                     else:
                         async with legacy_app.router.lifespan_context(legacy_app):
                             yield
                 finally:
+                    if bank_task is not None:
+                        bank_task.cancel()
+                        with suppress(asyncio.CancelledError):
+                            await bank_task
+                    if bank_transport is not None:
+                        await bank_transport.shutdown()
                     if payment_transport is not None:
                         await payment_transport.shutdown()
                     if payout_transport is not None:
@@ -314,6 +342,7 @@ def create_app(
     application.state.crm_file_service = crm_file_manager
     application.state.cdek_quote_service = cdek_quote_manager
     application.state.partner_program_service = partner_program_manager
+    application.state.partner_bank_payout_service = bank_payout_manager
     application.state.qr_code_service = qr_code_manager
 
     application.add_middleware(
@@ -363,6 +392,7 @@ def create_app(
         application.include_router(partner_public_router)
         application.include_router(partner_router)
         application.include_router(partner_admin_router)
+        application.include_router(bank_payout_router)
 
     if legacy_app is not None:
         legacy_app.state.checkout_database = database_manager

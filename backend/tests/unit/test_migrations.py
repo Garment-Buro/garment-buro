@@ -14,7 +14,7 @@ def test_alembic_has_one_linear_partner_cabinet_head() -> None:
     config = Config(str(backend_dir / "alembic.ini"))
     scripts = ScriptDirectory.from_config(config)
 
-    assert scripts.get_heads() == ["20260905_0032"]
+    assert scripts.get_heads() == ["20260908_0033"]
     revision = scripts.get_revision("20260904_0031")
     assert revision is not None
     assert revision.down_revision == "20260904_0030"
@@ -61,6 +61,8 @@ def test_partner_program_tables_share_the_target_metadata() -> None:
         "partner_commissions",
         "partner_payout_requests",
         "partner_requisites",
+        "partner_bank_payments",
+        "partner_bank_payment_events",
     } <= set(Base.metadata.tables)
 
 

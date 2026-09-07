@@ -541,6 +541,14 @@ class PartnerProgramService:
         payout = await self.repository.get_payout_for_update(session, payout_id=payout_id)
         if payout is None:
             raise PartnerNotFoundError("Payout request was not found")
+        # Once submitted, only bank evidence can release the reservation or mark paid.
+        # This remains enforced even if the integration is temporarily disabled.
+        from app.modules.bank_payouts.repository import BankPayoutRepository
+
+        if await BankPayoutRepository().get(session, payout_id, lock=True) is not None:
+            raise PartnerPayoutStateError("Use bank reconciliation for this payout")
+        if self.settings.tochka_payouts_enabled and status == PartnerPayoutStatus.PAID.value:
+            raise PartnerPayoutStateError("A confirmed bank payment is required")
         allowed = {
             PartnerPayoutStatus.REQUESTED.value: {
                 PartnerPayoutStatus.APPROVED.value,

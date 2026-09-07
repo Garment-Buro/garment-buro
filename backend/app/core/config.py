@@ -5,6 +5,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from functools import lru_cache
+from typing import Literal
 from urllib.parse import urlsplit
 
 from pydantic import SecretStr, field_validator, model_validator
@@ -163,6 +164,14 @@ class Settings(BaseSettings):
     yookassa_payouts_enabled: bool = False
     payout_retry_window_seconds: int = 82_800
     payout_processing_timeout_seconds: int = 60
+    tochka_payouts_enabled: bool = False
+    tochka_environment: Literal["sandbox", "production"] = "sandbox"
+    tochka_api_token: SecretStr | None = None
+    tochka_account_code: SecretStr | None = None
+    tochka_bank_code: str = "044525104"
+    tochka_ca_file: str | None = None
+    tochka_timeout_seconds: int = 15
+    tochka_poll_seconds: int = 60
     fulfillment_outbox_enabled: bool = False
     fulfillment_email_enabled: bool = False
     fulfillment_crm_enabled: bool = False
@@ -309,6 +318,29 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "PARTNER_ATTRIBUTION_SECRET is required when PARTNER_PROGRAM_ENABLED is true"
                 )
+        if not 1 <= self.tochka_timeout_seconds <= 60 or not 30 <= self.tochka_poll_seconds <= 3600:
+            raise ValueError("Invalid Tochka timeout or poll interval")
+        if self.tochka_payouts_enabled:
+            if not self.partner_program_enabled or not self.secret_value(
+                self.notification_encryption_key
+            ):
+                raise ValueError("Tochka payouts require partner program and requisites encryption")
+            if self.tochka_environment == "production":
+                if self.app_env != AppEnvironment.PRODUCTION:
+                    raise ValueError("Real Tochka payouts are only allowed in production")
+                token = self.secret_value(self.tochka_api_token)
+                if not token or token == "sandbox.jwt.token":
+                    raise ValueError("TOCHKA_API_TOKEN is required for production")
+                if not re.fullmatch(
+                    r"[0-9]{20}", self.secret_value(self.tochka_account_code) or ""
+                ):
+                    raise ValueError("TOCHKA_ACCOUNT_CODE must contain 20 digits")
+            elif self.app_env == AppEnvironment.PRODUCTION:
+                raise ValueError(
+                    "Sandbox bank statuses must not update production partner balances"
+                )
+            if not re.fullmatch(r"[0-9]{9}", self.tochka_bank_code):
+                raise ValueError("TOCHKA_BANK_CODE must contain 9 digits")
         if not 1 <= self.partner_attribution_days <= 365:
             raise ValueError("PARTNER_ATTRIBUTION_DAYS must be between 1 and 365")
         if not 0 <= self.partner_commission_hold_days <= 365:

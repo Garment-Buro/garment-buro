@@ -22,6 +22,8 @@ garment-buro-referencing/
 *.key
 *.csr
 *.crt
+# Public bank trust anchor only; this is not a client certificate or private key.
+!backend/app/integrations/tochka/russian_trusted_root_ca.pem
 certificate/
 certbot/
 

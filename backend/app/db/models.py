@@ -1,5 +1,6 @@
 """Import all refactored ORM models so Alembic sees one metadata graph."""
 
+from app.modules.bank_payouts.models import PartnerBankPayment, PartnerBankPaymentEvent
 from app.modules.carts.models import Cart, CartItem, CartMigrationRun
 from app.modules.catalog.models import (
     CatalogAuditEvent,
@@ -78,6 +79,8 @@ from app.modules.payments.models import (
 from app.modules.payouts.models import Payout
 
 __all__ = [
+    "PartnerBankPayment",
+    "PartnerBankPaymentEvent",
     "PickupDirectoryState",
     "PickupPoint",
     "CrmOrderProject",
