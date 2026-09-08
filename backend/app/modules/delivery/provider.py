@@ -5,6 +5,7 @@ import json
 import re
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Protocol
 
@@ -48,6 +49,7 @@ class CdekOrderSnapshot:
     cdek_number: str | None = None
     status_code: str | None = None
     status_name: str | None = None
+    status_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -505,10 +507,19 @@ def _snapshot(payload: dict[str, object], *, expected_uuid: str) -> CdekOrderSna
     client_order_number = _optional_reference(source.get("number"))
     status_code: str | None = None
     status_name: str | None = None
+    status_at: datetime | None = None
     statuses = source.get("statuses")
     if isinstance(statuses, list) and statuses:
-        latest = statuses[-1]
+        # CDEK arrays are not guaranteed chronological. Never infer latest from position.
+        dated = [
+            (parsed, item)
+            for item in statuses
+            if isinstance(item, dict)
+            if (parsed := _status_time(item.get("date_time"))) is not None
+        ]
+        latest = max(dated, key=lambda row: row[0])[1] if dated else statuses[-1]
         if isinstance(latest, dict):
+            status_at = _status_time(latest.get("date_time"))
             status_code = _optional_reference(latest.get("code"))
             name = latest.get("name")
             status_name = name.strip()[:255] if isinstance(name, str) and name.strip() else None
@@ -518,7 +529,18 @@ def _snapshot(payload: dict[str, object], *, expected_uuid: str) -> CdekOrderSna
         cdek_number=cdek_number,
         status_code=status_code,
         status_name=status_name,
+        status_at=status_at,
     )
+
+
+def _status_time(value: object) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed.astimezone(timezone.utc) if parsed.tzinfo is not None else None
 
 
 def _safe_reference(value: object, code: str) -> str:

@@ -64,6 +64,8 @@ class Settings(BaseSettings):
     order_reads_enabled: bool = False
     order_migration_fingerprint: str | None = None
     checkout_v2_enabled: bool = False
+    order_moderation_enabled: bool = False
+    cdek_tracking_enabled: bool = False
     partner_program_enabled: bool = False
     partner_attribution_secret: SecretStr | None = None
     partner_attribution_days: int = 30
@@ -307,6 +309,24 @@ class Settings(BaseSettings):
                     "Target checkout requires enabled dependencies: "
                     + ", ".join(missing_checkout_flags)
                 )
+        if self.order_moderation_enabled and not all(
+            (
+                self.checkout_v2_enabled,
+                self.payment_management_enabled,
+                self.payment_reconciliation_enabled,
+                self.fulfillment_outbox_enabled,
+                self.fulfillment_crm_enabled,
+            )
+        ):
+            raise ValueError(
+                "ORDER_MODERATION_ENABLED requires checkout, payment management/reconciliation and CRM outbox"
+            )
+        if self.cdek_tracking_enabled and not (
+            self.database_enabled
+            and self.secret_value(self.cdek_client_id)
+            and self.secret_value(self.cdek_client_secret)
+        ):
+            raise ValueError("CDEK_TRACKING_ENABLED requires database and CDEK credentials")
         if self.partner_program_enabled:
             if not self.database_enabled:
                 raise ValueError(

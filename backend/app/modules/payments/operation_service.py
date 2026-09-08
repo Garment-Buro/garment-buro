@@ -230,6 +230,17 @@ class PaymentOperationService:
         )
         if attempt is None:
             raise PaymentStateError("Payment attempt does not exist")
+        from app.modules.orders.workflow_repository import workflow_for_order
+
+        flow = await workflow_for_order(session, attempt.payment.order_id)
+        if flow is not None and (
+            flow.payment_attempt_id != attempt.id
+            or flow.decision
+            != ("approve" if operation_type is PaymentOperationType.CAPTURE else "reject")
+            or client_key != f"moderation_{flow.id}_{flow.decision_key}"
+            or actor_user_id != flow.decision_actor_id
+        ):
+            raise PaymentOperationConflictError("Use the audited backend moderation decision")
         request_digest = self._request_digest(attempt, operation_type)
 
         operation = await self.repository.get_by_client_digest(
@@ -285,6 +296,10 @@ class PaymentOperationService:
             )
             if reconciled is not None:
                 return reconciled
+            if current_time - ensure_utc(operation.started_at) >= timedelta(hours=23):
+                raise PaymentOperationFailedError(
+                    "idempotence_window_expired", outcome_unknown=True
+                )
             self._validate_attempt(
                 attempt,
                 operation_type=operation_type,

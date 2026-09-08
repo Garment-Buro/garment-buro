@@ -420,6 +420,24 @@ class OrderLifecycleService:
         now: datetime | None = None,
     ) -> Order:
         order = await self._order_for_update(session, order_id)
+        from app.modules.orders.workflow_repository import transition, workflow_for_order
+        from app.modules.payments.models import PaymentAttempt
+
+        flow = await workflow_for_order(session, order_id)
+        if flow is not None and (
+            flow.decision != "approve"
+            or flow.state not in {"capture_pending", "production", "shipped", "completed"}
+        ):
+            # Provider evidence is retained, but an unexpected capture cannot release production.
+            return order
+        if flow is not None:
+            evidence = await session.get(PaymentAttempt, flow.payment_attempt_id)
+            if (
+                payment_attempt_id != flow.payment_attempt_id
+                or evidence is None
+                or evidence.status != "succeeded"
+            ):
+                raise InvalidOrderTransitionError("Confirmed capture evidence is required")
         if order.payment_status == OrderPaymentStatus.PAID.value and order.status in {
             OrderStatus.PROCESSING.value,
             OrderStatus.SHIPPED.value,
@@ -445,6 +463,8 @@ class OrderLifecycleService:
         )
         await self.inventory_service.confirm_order(session, order=order, now=now)
         order.payment_status = OrderPaymentStatus.PAID.value
+        if flow is not None:
+            transition(session, flow, "production", "payment.captured")
         self._transition(
             session,
             order=order,
@@ -508,9 +528,18 @@ class OrderLifecycleService:
         session: AsyncSession,
         *,
         order_id: int,
-        actor_user_id: int,
+        actor_user_id: int | None,
     ) -> Order:
         order = await self._order_for_update(session, order_id)
+        from app.modules.orders.workflow_repository import transition, workflow_for_order
+
+        flow = await workflow_for_order(session, order_id)
+        if flow is not None:
+            if order.status in {OrderStatus.SHIPPED.value, OrderStatus.COMPLETED.value}:
+                return order
+            if flow.state != "production":
+                raise InvalidOrderTransitionError("Order is not in production")
+            transition(session, flow, "shipped", "delivery.handed_over")
         self._require_state(
             order,
             status=OrderStatus.PROCESSING,
@@ -531,9 +560,18 @@ class OrderLifecycleService:
         session: AsyncSession,
         *,
         order_id: int,
-        actor_user_id: int,
+        actor_user_id: int | None,
     ) -> Order:
         order = await self._order_for_update(session, order_id)
+        from app.modules.orders.workflow_repository import transition, workflow_for_order
+
+        flow = await workflow_for_order(session, order_id)
+        if flow is not None:
+            if flow.cdek_status != "DELIVERED":
+                raise InvalidOrderTransitionError("CDEK delivery confirmation is required")
+            if order.status == OrderStatus.COMPLETED.value:
+                return order
+            transition(session, flow, "completed", "cdek.delivered")
         self._require_state(
             order,
             status=OrderStatus.SHIPPED,
@@ -768,6 +806,11 @@ class TargetOrderReadService:
 
     @staticmethod
     def map_order(order: Order) -> LegacyOrderResponse:
+        from app.modules.orders.workflow import customer_stage
+
+        flow = order.workflow
+        shipment = order.cdek_shipment
+        stage, stage_label = customer_stage(flow)
         imported = order.legacy_import
         cart_items = (
             imported.raw_cart_items
@@ -792,14 +835,35 @@ class TargetOrderReadService:
             cart_items=cart_items,
             total_price=float(order.total_price),
             status=order.status,
-            cdek_uuid=(imported.delivery_provider_uuid if imported is not None else None),
+            customer_stage=stage,
+            customer_stage_label=stage_label,
+            workflow_state=flow.state if flow is not None else None,
+            cdek_uuid=(
+                shipment.provider_uuid
+                if shipment is not None
+                else imported.delivery_provider_uuid
+                if imported is not None
+                else None
+            ),
             cdek_point_code=order.cdek_point_code,
             delivery_price=float(order.delivery_price),
             payment_id=(imported.payment_provider_id if imported is not None else None),
             payment_status=order.payment_status,
             created_at=order.created_at,
-            cdek_number=(imported.delivery_provider_number if imported is not None else None),
-            cdek_status=(imported.delivery_provider_status if imported is not None else None),
+            cdek_number=(
+                shipment.provider_cdek_number
+                if shipment is not None
+                else imported.delivery_provider_number
+                if imported is not None
+                else None
+            ),
+            cdek_status=(
+                shipment.provider_status_code
+                if shipment is not None
+                else imported.delivery_provider_status
+                if imported is not None
+                else None
+            ),
         )
 
     @staticmethod

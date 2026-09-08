@@ -321,6 +321,9 @@ class PaymentService:
                 attempt=attempt,
                 now=current_time,
             )
+        from app.modules.orders.workflow import apply_payment_observation
+
+        await apply_payment_observation(session, self.settings, attempt, current_time)
         await session.flush()
         return self._prepared(attempt, payment=payment, replayed=False)
 

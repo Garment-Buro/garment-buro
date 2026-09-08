@@ -8,8 +8,10 @@ from sqlalchemy import func, select
 from app.modules.crm.models import CrmProductionUnit, CrmProductionUnitStatus, CrmProjectStatus
 from app.modules.crm.production_service import CrmProductionService
 from app.modules.crm.service import CrmProjectService
+from app.modules.delivery.models import CdekShipment
 from app.modules.orders.models import Order, OrderItem
 from app.modules.orders.service import OrderLifecycleService
+from app.modules.orders.workflow_repository import workflow_for_order
 from app.modules.production.evidence import (
     ProductionConflict,
     ProductionNotFound,
@@ -57,7 +59,15 @@ class ProductionService:
             if replay.command_digest != fingerprint:
                 raise ProductionConflict("Ключ команды уже использован с другими параметрами")
             return CommandReceipt(project_id=project_id, version=replay.version, event_id=replay.id)
-        if order is None or order.payment_status != "paid" or order.status != "processing":
+        allowed_order_states = {"processing"}
+        if command.action == "dispatch":
+            # Carrier polling may win the race with the shipping terminal acknowledgement.
+            allowed_order_states |= {"shipped", "completed"}
+        if (
+            order is None
+            or order.payment_status != "paid"
+            or order.status not in allowed_order_states
+        ):
             raise ProductionConflict("Работа доступна только по оплаченному заказу в обработке")
         if project.status in {"cancelled", "on_hold"}:
             raise ProductionConflict("Производственный заказ остановлен")
@@ -397,6 +407,19 @@ class ProductionService:
             self._state(bag, "packed")
             if not command.tracking_number or not command.note:
                 raise ProductionConflict("Укажите трек-номер и подтверждение передачи перевозчику")
+            flow = await workflow_for_order(session, order.id)
+            if flow is not None:
+                shipment = await session.scalar(
+                    select(CdekShipment).where(CdekShipment.order_id == order.id)
+                )
+                if (
+                    shipment is None
+                    or shipment.provider_uuid is None
+                    or shipment.provider_cdek_number != command.tracking_number
+                ):
+                    raise ProductionConflict(
+                        "Трек-номер должен совпадать с подтверждённым отправлением СДЭК этого заказа"
+                    )
             if (
                 not order.first_name
                 or not order.phone

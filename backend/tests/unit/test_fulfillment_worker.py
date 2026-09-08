@@ -65,6 +65,7 @@ def _settings(path: Path, *, max_attempts: int = 3) -> Settings:
         notification_max_attempts=2,
         fulfillment_outbox_enabled=True,
         fulfillment_email_enabled=True,
+        smtp_password="unit-test-only-smtp",
         fulfillment_max_attempts=max_attempts,
         fulfillment_retry_base_seconds=30,
         fulfillment_retry_cap_seconds=120,

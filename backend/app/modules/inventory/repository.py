@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.catalog.models import Product, ProductVariant
 from app.modules.inventory.models import InventoryReservation, InventoryReservationStatus
 from app.modules.orders.models import Order
+from app.modules.orders.workflow_models import OrderWorkflow
 
 
 class InventoryRepository:
@@ -78,7 +79,13 @@ class InventoryRepository:
             InventoryReservation.expires_at <= now,
         )
         statement = (
-            select(Order).where(Order.id.in_(expired_order_ids)).order_by(Order.id).limit(limit)
+            select(Order)
+            .where(
+                Order.id.in_(expired_order_ids),
+                ~select(OrderWorkflow.id).where(OrderWorkflow.order_id == Order.id).exists(),
+            )
+            .order_by(Order.id)
+            .limit(limit)
         )
         if session.get_bind().dialect.name == "postgresql":
             statement = statement.with_for_update(skip_locked=True)

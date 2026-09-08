@@ -291,6 +291,18 @@ services:
     healthcheck:
       disable: true
 
+  order-workflow-worker:
+    <<: *backend-common
+    profiles: ["order-workflows"]
+    command: ["python", "-m", "scripts.process_order_workflows"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+
 networks:
   app:
     driver: bridge

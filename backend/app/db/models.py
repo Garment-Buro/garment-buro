@@ -60,6 +60,7 @@ from app.modules.orders.models import (
     OrderMigrationRun,
     OrderStatusHistory,
 )
+from app.modules.orders.workflow_models import OrderWorkflow, OrderWorkflowEvent, OrderWorkflowJob
 from app.modules.partners.models import (
     PartnerCommission,
     PartnerLanding,
@@ -86,6 +87,9 @@ from app.modules.production.models import (
 )
 
 __all__ = [
+    "OrderWorkflow",
+    "OrderWorkflowEvent",
+    "OrderWorkflowJob",
     "ProductionBag",
     "ProductionEvent",
     "ProductionSpecification",

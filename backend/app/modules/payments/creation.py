@@ -155,7 +155,7 @@ class PaymentCreationService:
             if current_time - started_at > timedelta(
                 seconds=self.settings.payment_creation_retry_window_seconds
             ):
-                await self.payment_service.mark_creation_failed(
+                await self.payment_service.mark_creation_unknown(
                     session,
                     attempt_id=attempt.id,
                     error_code="idempotence_window_expired",

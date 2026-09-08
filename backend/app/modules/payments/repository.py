@@ -59,6 +59,7 @@ class PaymentRepository:
         *,
         order_id: int,
     ) -> Payment | None:
+        await self.get_order_for_update(session, order_id=order_id)
         return await session.scalar(
             select(Payment).where(Payment.order_id == order_id).with_for_update()
         )
@@ -81,7 +82,16 @@ class PaymentRepository:
             .options(selectinload(PaymentAttempt.payment))
         )
         if for_update:
-            statement = statement.with_for_update()
+            attempt_id = await session.scalar(
+                select(PaymentAttempt.id).where(
+                    PaymentAttempt.client_key_digest_sha256 == client_key_digest_sha256
+                )
+            )
+            return (
+                await self.get_attempt_for_update(session, attempt_id=attempt_id)
+                if attempt_id is not None
+                else None
+            )
         return await session.scalar(statement)
 
     async def get_open_attempt(
@@ -146,10 +156,22 @@ class PaymentRepository:
         *,
         attempt_id: int,
     ) -> PaymentAttempt | None:
+        await session.scalar(
+            select(Order)
+            .where(
+                Order.id
+                == select(Payment.order_id)
+                .join(PaymentAttempt, PaymentAttempt.payment_id == Payment.id)
+                .where(PaymentAttempt.id == attempt_id)
+                .scalar_subquery()
+            )
+            .with_for_update()
+        )
         return await session.scalar(
             select(PaymentAttempt)
             .where(PaymentAttempt.id == attempt_id)
             .options(selectinload(PaymentAttempt.payment))
+            .execution_options(populate_existing=True)
             .with_for_update()
         )
 
@@ -159,12 +181,16 @@ class PaymentRepository:
         *,
         payment_id: int,
     ) -> PaymentAttempt | None:
-        return await session.scalar(
-            select(PaymentAttempt)
+        attempt_id = await session.scalar(
+            select(PaymentAttempt.id)
             .where(PaymentAttempt.payment_id == payment_id)
             .order_by(PaymentAttempt.attempt_number.desc())
             .limit(1)
-            .with_for_update()
+        )
+        return (
+            await self.get_attempt_for_update(session, attempt_id=attempt_id)
+            if attempt_id is not None
+            else None
         )
 
     async def find_attempt_by_provider_id(
@@ -183,12 +209,14 @@ class PaymentRepository:
         *,
         provider_payment_id: str,
     ) -> PaymentAttempt | None:
-        return await session.scalar(
-            select(PaymentAttempt)
-            .where(PaymentAttempt.provider_payment_id == provider_payment_id)
-            .options(selectinload(PaymentAttempt.payment))
-            .with_for_update()
+        attempt_id = await session.scalar(
+            select(PaymentAttempt.id).where(
+                PaymentAttempt.provider_payment_id == provider_payment_id
+            )
         )
+        if attempt_id is not None:
+            return await self.get_attempt_for_update(session, attempt_id=attempt_id)
+        return None
 
     async def get_reconciliation_job_for_attempt_for_update(
         self,

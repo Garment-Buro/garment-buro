@@ -707,7 +707,7 @@ def test_expired_idempotence_window_fails_closed_without_network(tmp_path: Path)
             assert provider.calls == []
             async with database.session() as session:
                 attempt = await session.get(PaymentAttempt, attempt_id)
-                assert attempt is not None and attempt.status == "failed"
+                assert attempt is not None and attempt.status == "unknown"
                 assert attempt.last_error_code == "idempotence_window_expired"
         finally:
             await database.shutdown()

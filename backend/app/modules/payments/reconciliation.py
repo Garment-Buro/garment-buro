@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
@@ -16,6 +17,7 @@ from app.modules.orders.service import (
     OrderLifecycleService,
     OrderNotFoundError,
 )
+from app.modules.orders.workflow_models import OrderWorkflow
 from app.modules.payments.models import (
     PaymentAttemptStatus,
     PaymentReconciliationJob,
@@ -210,6 +212,12 @@ class PaymentReconciliationProcessor:
                     observed_status=snapshot.status,
                 )
             else:
+                managed = await session.scalar(
+                    select(OrderWorkflow.id).where(OrderWorkflow.payment_attempt_id == attempt.id)
+                )
+                if managed is not None:
+                    # Healthy holds can last days; the retry budget counts failures, not polls.
+                    locked.attempts_count = 0
                 await self.repository.mark_reconciliation_scheduled(
                     session,
                     locked,

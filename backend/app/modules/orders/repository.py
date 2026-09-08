@@ -290,8 +290,10 @@ class TargetOrderReadRepository:
         return or_(Order.user_id == user_id, claimed)
 
     @staticmethod
-    def _read_options() -> tuple[Load, Load]:
+    def _read_options() -> tuple[Load, ...]:
         return (
             selectinload(Order.items),
             selectinload(Order.legacy_import),
+            selectinload(Order.workflow),
+            selectinload(Order.cdek_shipment),
         )

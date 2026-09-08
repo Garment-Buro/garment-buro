@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Protocol
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +12,7 @@ from app.modules.orders.models import Order
 from app.modules.orders.schemas import OrderCreationCommand
 from app.modules.orders.security import normalize_order_idempotency_key
 from app.modules.orders.service import OrderCreationService
+from app.modules.orders.workflow import OrderModerationService
 from app.modules.partners.service import PartnerProgramService
 from app.modules.payments.creation import (
     PaymentCreationFailedError,
@@ -100,6 +101,13 @@ class CheckoutService:
         self._validate_actor(user_id=user_id, guest_access_token=guest_access_token)
         if command.payment_method not in SUPPORTED_CHECKOUT_PAYMENT_METHODS:
             raise CheckoutPaymentMethodError("Checkout payment method is not supported")
+        if self.settings.order_moderation_enabled:
+            if command.payment_method != "card":
+                raise CheckoutPaymentMethodError(
+                    "Moderated checkout requires a bank card: SBP does not support holds"
+                )
+            # Client-supplied automatic capture must never bypass staff moderation.
+            command = command.model_copy(update={"payment_capture_mode": "manual"})
 
         try:
             order = await self.order_creation_service.create(
@@ -130,6 +138,13 @@ class CheckoutService:
                 client_attempt_key=derive_checkout_payment_attempt_key(normalized_key),
                 capture_mode=command.payment_capture_mode,
             )
+            if self.settings.order_moderation_enabled:
+                await OrderModerationService(self.settings).attach(
+                    session,
+                    order_id=order.order_id,
+                    attempt_id=prepared.attempt_id,
+                    now=now or datetime.now(timezone.utc),
+                )
             await session.commit()
 
             try:

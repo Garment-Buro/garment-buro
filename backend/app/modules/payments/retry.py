@@ -126,6 +126,12 @@ class PaymentRetryService:
                 order_id=order_id,
             ):
                 raise PaymentRetryNotFoundError("Target order was not found")
+            from app.modules.orders.workflow_repository import workflow_for_order
+
+            if await workflow_for_order(session, order_id) is not None:
+                raise PaymentRetryStateError(
+                    "Managed payment is recovered by the order worker; a new charge is not allowed"
+                )
             await self._authorize(
                 session,
                 order_id=order_id,

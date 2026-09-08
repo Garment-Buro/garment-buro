@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     JSON,
@@ -21,6 +22,10 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, IntegerIdMixin, TimestampMixin
+
+if TYPE_CHECKING:
+    from app.modules.delivery.models import CdekShipment
+    from app.modules.orders.workflow_models import OrderWorkflow
 
 
 class LegacyOrderClaimSource(str, Enum):
@@ -118,6 +123,8 @@ class Order(Base, IntegerIdMixin, TimestampMixin):
         back_populates="order",
         order_by="OrderItem.sort_order",
     )
+    workflow: Mapped[OrderWorkflow | None] = relationship(uselist=False, lazy="raise")
+    cdek_shipment: Mapped[CdekShipment | None] = relationship(uselist=False, lazy="raise")
     status_history: Mapped[list[OrderStatusHistory]] = relationship(
         back_populates="order",
         order_by="OrderStatusHistory.version",

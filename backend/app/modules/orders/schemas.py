@@ -34,6 +34,9 @@ class LegacyOrderResponse(BaseModel):
     cart_items: str | None = None
     total_price: float | None = None
     status: str | None = None
+    customer_stage: str | None = None
+    customer_stage_label: str | None = None
+    workflow_state: str | None = None
     cdek_uuid: str | None = None
     cdek_point_code: str | None = None
     delivery_price: float | None = None
