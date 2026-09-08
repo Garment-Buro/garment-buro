@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings
 from app.modules.checkout.schemas import CheckoutResult
 from app.modules.checkout.security import derive_checkout_payment_attempt_key
+from app.modules.delivery.constants import CDEK_DELIVERY_METHODS
 from app.modules.orders.models import Order
 from app.modules.orders.schemas import OrderCreationCommand
 from app.modules.orders.security import normalize_order_idempotency_key
@@ -43,6 +44,10 @@ class CheckoutActorError(ValueError):
 
 
 class CheckoutPaymentMethodError(ValueError):
+    pass
+
+
+class CheckoutDeliveryMethodError(ValueError):
     pass
 
 
@@ -102,6 +107,10 @@ class CheckoutService:
         if command.payment_method not in SUPPORTED_CHECKOUT_PAYMENT_METHODS:
             raise CheckoutPaymentMethodError("Checkout payment method is not supported")
         if self.settings.order_moderation_enabled:
+            if command.delivery_method not in CDEK_DELIVERY_METHODS:
+                raise CheckoutDeliveryMethodError(
+                    "Managed orders require CDEK pickup or CDEK courier delivery"
+                )
             if command.payment_method != "card":
                 raise CheckoutPaymentMethodError(
                     "Moderated checkout requires a bank card: SBP does not support holds"

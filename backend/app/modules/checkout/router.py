@@ -11,6 +11,7 @@ from app.db.session import get_database_session
 from app.modules.checkout.schemas import CheckoutResponse
 from app.modules.checkout.service import (
     CheckoutActorError,
+    CheckoutDeliveryMethodError,
     CheckoutDisabledError,
     CheckoutPaymentError,
     CheckoutPaymentMethodError,
@@ -125,6 +126,7 @@ async def create_checkout(
     except (
         CheckoutActorError,
         CheckoutPaymentMethodError,
+        CheckoutDeliveryMethodError,
         InvalidOrderGuestAccessTokenError,
         InvalidOrderIdempotencyKeyError,
         OrderGuestAccessStateError,

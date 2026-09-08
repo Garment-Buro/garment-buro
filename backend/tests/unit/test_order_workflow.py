@@ -13,6 +13,7 @@ from app.core.config import Settings
 from app.db.session import DatabaseManager
 from app.modules.catalog.models import Product
 from app.modules.checkout.service import (
+    CheckoutDeliveryMethodError,
     CheckoutPaymentError,
     CheckoutPaymentMethodError,
     CheckoutService,
@@ -240,6 +241,12 @@ def test_hold_moderation_capture_production_and_delivery(tmp_path):
                 session.add(shipment)
                 await session.commit()
             assert len(provider.captures) == 1
+            tracking = OrderWorkflowProcessor(
+                db.settings.model_copy(update={"cdek_tracking_enabled": True}), provider
+            )
+            async with db.session() as session:
+                assert await tracking.seed_tracking(session, NOW) == 1
+                assert await tracking.seed_tracking(session, NOW) == 0
             for code, offset, expected in [
                 ("ACCEPTED", 0, "production"),
                 ("RECEIVED_AT_SHIPMENT_WAREHOUSE", 1, "shipped"),
@@ -443,6 +450,26 @@ def test_cdek_parser_uses_timestamp_not_array_order():
     )
     assert snapshot.status_code == "DELIVERED"
     assert snapshot.status_at == datetime(2026, 9, 8, 9, tzinfo=timezone.utc)
+
+
+def test_managed_checkout_rejects_untrackable_delivery(tmp_path):
+    async def scenario():
+        async with setup(tmp_path, checkout=False) as (db, provider, checkout, product_id):
+            async with db.session() as session:
+                with pytest.raises(CheckoutDeliveryMethodError):
+                    await checkout.checkout(
+                        session,
+                        idempotency_key="workflow-checkout-0001",
+                        command=_command(product_id).model_copy(
+                            update={"delivery_method": "unknown_carrier"}
+                        ),
+                        guest_access_token=generate_order_guest_access_token(),
+                        now=NOW,
+                    )
+                assert await session.scalar(select(func.count()).select_from(Order)) == 0
+            assert provider.creates == []
+
+    asyncio.run(scenario())
 
 
 @pytest.mark.skipif(

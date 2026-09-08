@@ -13,6 +13,7 @@ regexes = [
   '''material-invalid-precision-0001''',
   '''reconciliation_order_0001''',
   '''cancel_operation_key_0001''',
+  '''client_key="bypass-operation-0001"''', # Literal test idempotency identifier, not a credential.
   '''PARTNER_ATTRIBUTION_SECRET=replace-with-partner-attribution-secret''',
   '''plus2opacity-my-collection''',
   '''__p2oSplashHandledThisAppRun''',
