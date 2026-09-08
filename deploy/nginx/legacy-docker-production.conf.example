@@ -1,0 +1,331 @@
+# Verified server snapshot, 2026-09-08. Review networks/ports before reuse.
+# Requires the scoped UFW rule documented in docs/production-cutover-2026-09-08.md.
+# Keep unconfigured commerce/legacy mutation routes closed during cutover.
+map "$request_method:$uri" $gb_release_blocked {
+    default 0;
+    ~^POST:/api/orders/?$ 1;
+    ~^.*:/api/webhooks/yookassa/?$ 1;
+    ~^.*:/api/cdek 1;
+    ~^.*:/api/payments 1;
+    ~^.*:/api/payouts 1;
+    ~^(POST|PUT|PATCH|DELETE):/api/(products|variants|options|settings)(/|$) 1;
+    ~^POST:/api/upload/?$ 1;
+}
+
+server {
+    listen 80;
+    server_name garment-buro.ru www.garment-buro.ru dev.garment-buro.ru
+        partner.garment-buro.ru widget.garment-buro.ru;
+
+    # Certbot challenge location
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    # Redirect all HTTP traffic to HTTPS
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    server_name garment-buro.ru www.garment-buro.ru;
+    if ($gb_release_blocked) { return 503; }
+
+    location ^~ /storage/garment-buro-production-media/ {
+        proxy_pass http://172.17.0.1:9200/garment-buro-production-media/;
+        proxy_set_header Host minio:9000;
+    }
+    # Private bucket stays private in MinIO; only valid expiring signatures work.
+    location ^~ /storage/garment-buro-production-crm-private/ {
+        limit_except GET HEAD { deny all; }
+        proxy_pass http://172.17.0.1:9200/garment-buro-production-crm-private/;
+        proxy_set_header Host minio:9000;
+        add_header Cache-Control "no-store" always;
+    }
+    location /storage/ { return 404; }
+
+    # SSL certificates from Let's Encrypt
+    ssl_certificate /etc/nginx/ssl/live/garment-buro.ru/fullchain.pem;
+    ssl_certificate_key /etc/nginx/ssl/live/garment-buro.ru/privkey.pem;
+
+    client_max_body_size 50M;
+
+    # Docker DNS resolver
+    resolver 127.0.0.11 valid=30s;
+
+    # Legacy bookmarks move to the dedicated widget host.
+    location = /gb-widget {
+        return 301 https://widget.garment-buro.ru/;
+    }
+
+    location ^~ /gb-widget/ {
+        rewrite ^/gb-widget/(.*)$ https://widget.garment-buro.ru/$1 permanent;
+    }
+
+    # Stable public URLs for MZSA catalog import images.
+    location ^~ /mzsa-import/ {
+        root /var/www;
+        try_files $uri =404;
+        expires 30d;
+        add_header Cache-Control "public, max-age=2592000, immutable" always;
+        add_header X-Content-Type-Options "nosniff" always;
+    }
+
+    # CDEK service — Next.js API route, must come BEFORE /api/ block
+    location /api/cdek-service {
+        return 503;
+        proxy_pass http://172.17.0.1:3200;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    # YooKassa webhook: keep this exact route before the general /api/ proxy.
+    # Replace, rather than append, the client-supplied forwarding chain.
+    location = /api/webhooks/yookassa {
+        return 503;
+        proxy_pass http://172.17.0.1:8200;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        client_max_body_size 256k;
+    }
+
+    # Product catalog endpoints are read-heavy and can be cached briefly.
+    location ~* ^/api/products(/.*)?$ {
+        proxy_pass http://172.17.0.1:8200;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_hide_header Cache-Control;
+        proxy_hide_header Expires;
+        expires 5m;
+        add_header Cache-Control "public, max-age=300, stale-while-revalidate=600" always;
+    }
+
+    # Proxy to Backend API
+    location /api/ {
+        proxy_pass http://172.17.0.1:8200;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Range support if video is served from here
+        proxy_set_header Range $http_range;
+        proxy_set_header If-Range $http_if_range;
+    }
+
+    location = /admin/legacy { return 404; }
+
+    # Proxy to Backend Uploads
+    location ^~ /uploads/ {
+        proxy_pass http://172.17.0.1:8200;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Range support for uploaded videos
+        proxy_set_header Range $http_range;
+        proxy_set_header If-Range $http_if_range;
+        add_header Accept-Ranges "bytes" always;
+
+        # Let browsers reuse uploaded media aggressively.
+        proxy_hide_header Cache-Control;
+        proxy_hide_header Expires;
+        expires 30d;
+        add_header Cache-Control "public, max-age=2592000, immutable" always;
+        add_header Vary "Accept-Encoding" always;
+    }
+
+    # Frontend static video assets (e.g. /logo_anim.mp4, /item_*.mp4)
+    location ~* \.(mp4|webm|mov|m4v)$ {
+        proxy_pass http://172.17.0.1:3200;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+
+        proxy_set_header Range $http_range;
+        proxy_set_header If-Range $http_if_range;
+        add_header Accept-Ranges "bytes" always;
+
+        proxy_hide_header Cache-Control;
+        proxy_hide_header Expires;
+        expires 30d;
+        add_header Cache-Control "public, max-age=2592000, immutable" always;
+        add_header Vary "Accept-Encoding" always;
+    }
+
+    # Next.js fingerprinted assets
+    location ^~ /_next/static/ {
+        proxy_pass http://172.17.0.1:3200;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+
+        proxy_hide_header Cache-Control;
+        proxy_hide_header Expires;
+        expires 365d;
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        add_header Vary "Accept-Encoding" always;
+    }
+
+    # Cache static assets (images, fonts, css/js)
+    location ~* \.(jpg|jpeg|png|gif|webp|svg|ico|woff2|woff|ttf|css|js)$ {
+        proxy_pass http://172.17.0.1:3200;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+
+        proxy_hide_header Cache-Control;
+        proxy_hide_header Expires;
+        expires 30d;
+        add_header Cache-Control "public, max-age=2592000, immutable" always;
+        add_header Vary "Accept-Encoding" always;
+    }
+
+    # Proxy to Frontend
+    location / {
+        proxy_pass http://172.17.0.1:3200;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+        proxy_hide_header Cache-Control;
+        proxy_hide_header Expires;
+        expires off;
+        add_header Cache-Control "no-store, no-cache, max-age=0, must-revalidate" always;
+        add_header Pragma "no-cache" always;
+        add_header Expires "0" always;
+
+        # --- ПОДДЕРЖКА ВИДЕО (Range Requests) ---
+        proxy_set_header Range $http_range;
+        proxy_set_header If-Range $http_if_range;
+        proxy_no_cache $http_range;
+        proxy_buffering off;
+        # ----------------------------------------
+    }
+}
+
+server {
+    listen 443 ssl;
+    server_name dev.garment-buro.ru;
+
+    ssl_certificate /etc/nginx/ssl/live/garment-buro.ru/fullchain.pem;
+    ssl_certificate_key /etc/nginx/ssl/live/garment-buro.ru/privkey.pem;
+    client_max_body_size 100M;
+
+    location / {
+        proxy_pass http://host.docker.internal:3100;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_read_timeout 120s;
+    }
+}
+
+server {
+    listen 443 ssl;
+    server_name partner.garment-buro.ru;
+    if ($gb_release_blocked) { return 503; }
+
+    ssl_certificate /etc/nginx/ssl/live/garment-buro.ru/fullchain.pem;
+    ssl_certificate_key /etc/nginx/ssl/live/garment-buro.ru/privkey.pem;
+    client_max_body_size 27M;
+
+    location /api/ {
+        proxy_pass http://172.17.0.1:8200;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+
+    location / {
+        proxy_pass http://172.17.0.1:3200;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_read_timeout 120s;
+        add_header X-Robots-Tag "noindex, nofollow" always;
+    }
+}
+
+server {
+    listen 443 ssl;
+    server_name widget.garment-buro.ru;
+
+    ssl_certificate /etc/nginx/ssl/live/garment-buro.ru/fullchain.pem;
+    ssl_certificate_key /etc/nginx/ssl/live/garment-buro.ru/privkey.pem;
+    client_max_body_size 2M;
+    resolver 127.0.0.11 valid=30s;
+
+    location / {
+        set $upstream_garment_widget garment-widget;
+        proxy_pass http://$upstream_garment_widget:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_cache_bypass $http_upgrade;
+        proxy_read_timeout 180s;
+        proxy_send_timeout 180s;
+        proxy_buffering off;
+        add_header Cache-Control "no-store" always;
+    }
+}
+
+# Production terminal uses the same production database as the main site.
+server {
+    listen 80;
+    server_name production.garment-buro.ru;
+    location /.well-known/acme-challenge/ { root /var/www/certbot; }
+    location / { return 301 https://production.garment-buro.ru$request_uri; }
+}
+
+server {
+    listen 443 ssl;
+    server_name production.garment-buro.ru;
+    ssl_certificate /etc/nginx/ssl/live/production.garment-buro.ru/fullchain.pem;
+    ssl_certificate_key /etc/nginx/ssl/live/production.garment-buro.ru/privkey.pem;
+    add_header X-Robots-Tag "noindex, nofollow" always;
+    add_header Cache-Control "no-store" always;
+    client_max_body_size 27M;
+    if ($gb_release_blocked) { return 503; }
+    location /api/ {
+        proxy_pass http://172.17.0.1:8200;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_read_timeout 120s;
+    }
+    location / {
+        proxy_pass http://172.17.0.1:3200;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_read_timeout 120s;
+    }
+}
+
