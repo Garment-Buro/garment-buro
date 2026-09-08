@@ -7,6 +7,12 @@ class ProductionDenied(PermissionError):
     pass
 
 
+async def can_administer(session, user_id: int) -> bool:
+    return await IdentityRepository().user_has_permission(
+        session, user_id=user_id, permission=PermissionCode.PRODUCTION_ADMIN
+    )
+
+
 async def stations_for_user(session, user_id: int) -> list[str]:
     repository = IdentityRepository()
     if not await repository.user_has_permission(

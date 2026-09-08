@@ -19,7 +19,7 @@ COOKIE_PATH = "/api/production"
 
 
 class CodeLogin(BaseModel):
-    code: str = Field(pattern=r"^[0-9]{6}$", repr=False)
+    code: str = Field(pattern=r"^(?:[0-9]{6}|99[0-9]{6})$", repr=False)
 
 
 def enabled(request: Request):
@@ -32,9 +32,11 @@ async def get_production_user(request: Request, session: Session):
     if request.method not in {"GET", "HEAD", "OPTIONS"}:
         _require_same_origin(request)
     token = request.cookies.get(COOKIE, "")
-    user = await auth_service.resolve_session(session, token) if token else None
+    credential = await auth_service.resolve_credential(session, token) if token else None
+    user = await auth_service.employee_for_credential(session, credential) if credential else None
     if user is None:
         raise HTTPException(401, "Войдите по личному коду сотрудника")
+    request.state.production_station = credential.station
     return user
 
 

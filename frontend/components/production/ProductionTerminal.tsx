@@ -1,5 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { ProductionAdminTerminal } from './admin/ProductionAdminTerminal';
 import {
     PiArrowClockwise,
     PiPackage,
@@ -70,6 +72,7 @@ function Workspace() {
                     <span className={styles.employee}>
                         {employee?.name ?? 'Терминал'}
                     </span>
+                    {employee?.can_administer && <Link href="/production/admin">Администратор</Link>}
                     <button disabled={busy} onClick={() => void logout()}>
                         <PiSignOut aria-hidden />
                         Выйти
@@ -361,17 +364,21 @@ function Workspace() {
         </>
     );
 }
-export function ProductionTerminal() {
+export function ProductionTerminal({ mode = 'auto' }: { mode?: 'auto' | 'admin' | 'floor' }) {
     const initialize = useProductionAuthStore((state) => state.initialize);
     useEffect(() => { void initialize(); }, [initialize]);
     const ready = useProductionAuthStore((state) => state.isSessionReady);
     const authenticated = useProductionAuthStore((state) => state.isAuthenticated);
     const userId = useProductionAuthStore((state) => state.user?.id);
+    const canAdminister = useProductionAuthStore((state) => state.user?.can_administer);
     if (!ready)
         return (
             <main className={styles.login}>
                 <p role="status">Проверяем рабочую сессию…</p>
             </main>
         );
-    return authenticated ? <Workspace key={userId} /> : <ProductionLogin />;
+    if (!authenticated) return <ProductionLogin admin={mode === 'admin'} />;
+    if (canAdminister && mode !== 'floor') return <ProductionAdminTerminal key={userId} />;
+    if (mode === 'admin') return <main className={styles.login}><h1>Нет доступа</h1><p>Войдите личным кодом администратора.</p><Link href="/production">Вернуться в терминал</Link></main>;
+    return <Workspace key={userId} />;
 }

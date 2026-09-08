@@ -13,4 +13,4 @@ export const SPLASH_HIDDEN_ROUTES = new Set([
     '/production',
 ]);
 
-export const isSplashHiddenRoute = (pathname: string) => SPLASH_HIDDEN_ROUTES.has(pathname);
+export const isSplashHiddenRoute = (pathname: string) => SPLASH_HIDDEN_ROUTES.has(pathname) || pathname.startsWith('/production/');

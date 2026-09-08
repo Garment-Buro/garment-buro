@@ -15,9 +15,10 @@ from app.modules.production.auth_models import (
     ProductionLoginLimit,
     ProductionSession,
 )
-from app.modules.production.security import ProductionDenied, stations_for_user
+from app.modules.production.security import ProductionDenied, can_administer, stations_for_user
 
 PREFIXES = {
+    "admin": "99",
     "tech": "0",
     "kit": "1",
     "cut": "2",
@@ -70,11 +71,17 @@ async def issue_code(session, *, user_id: int, station: str, pepper: str) -> str
     user = await session.scalar(select(User).where(User.id == user_id).with_for_update())
     if user is None or user.status != "active" or station not in PREFIXES:
         raise ValueError("Active employee and known station are required")
-    if station not in await stations_for_user(session, user_id):
+    allowed = (
+        await can_administer(session, user_id)
+        if station == "admin"
+        else station in await stations_for_user(session, user_id)
+    )
+    if not allowed:
         raise ValueError("Assign the employee's station role before issuing a code")
     # Retain old digests so a revoked code can never be reassigned to another employee.
     for _ in range(100):
-        code = PREFIXES[station] + f"{secrets.randbelow(100000):05d}"
+        digits = 6 if station == "admin" else 5
+        code = PREFIXES[station] + str(secrets.randbelow(10**digits)).zfill(digits)
         digest = code_digest(code, pepper)
         if not await session.scalar(
             select(ProductionCredential.id).where(ProductionCredential.code_digest == digest)
@@ -149,6 +156,8 @@ async def employee_for_credential(session, credential):
     user = await session.get(User, credential.user_id)
     if not credential.active or user is None or user.status != "active":
         return None
+    if credential.station == "admin":
+        return user if await can_administer(session, user.id) else None
     try:
         stations = await stations_for_user(session, user.id)
     except ProductionDenied:
@@ -157,7 +166,12 @@ async def employee_for_credential(session, credential):
 
 
 async def resolve_session(session, token: str):
-    credential = await session.scalar(
+    credential = await resolve_credential(session, token)
+    return await employee_for_credential(session, credential) if credential else None
+
+
+async def resolve_credential(session, token: str):
+    return await session.scalar(
         select(ProductionCredential)
         .join(ProductionSession, ProductionSession.credential_id == ProductionCredential.id)
         .where(
@@ -165,4 +179,3 @@ async def resolve_session(session, token: str):
             ProductionSession.expires_at > datetime.now(timezone.utc),
         )
     )
-    return await employee_for_credential(session, credential) if credential else None

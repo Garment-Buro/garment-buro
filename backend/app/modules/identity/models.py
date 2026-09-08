@@ -42,6 +42,7 @@ class RoleName(str, Enum):
     MANAGER = "manager"
     ADMIN = "admin"
     PRODUCTION_TECH = "production_tech"
+    PRODUCTION_ADMIN = "production_admin"
     PRODUCTION_KIT = "production_kit"
     PRODUCTION_CUT = "production_cut"
     PRODUCTION_DTF = "production_dtf"
@@ -70,6 +71,7 @@ class PermissionCode(str, Enum):
     PARTNERS_MANAGE = "partners.manage"
     PRODUCTION_ACCESS = "production.access"
     PRODUCTION_TECH = "production.tech"
+    PRODUCTION_ADMIN = "production.admin"
     PRODUCTION_KIT = "production.kit"
     PRODUCTION_CUT = "production.cut"
     PRODUCTION_DTF = "production.dtf"
@@ -439,6 +441,7 @@ SYSTEM_ROLE_PERMISSIONS: dict[RoleName, Sequence[PermissionCode]] = {
         PermissionCode.PARTNERS_MANAGE,
     ),
     RoleName.ADMIN: tuple(PermissionCode),
+    RoleName.PRODUCTION_ADMIN: (PermissionCode.PRODUCTION_ACCESS, PermissionCode.PRODUCTION_ADMIN),
 }
 
 for _station in (

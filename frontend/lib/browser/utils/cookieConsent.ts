@@ -7,4 +7,4 @@ const COOKIE_CONSENT_HIDDEN_ROUTES = new Set([
     '/production',
 ]);
 
-export const isCookieConsentHiddenRoute = (pathname: string) => COOKIE_CONSENT_HIDDEN_ROUTES.has(pathname);
+export const isCookieConsentHiddenRoute = (pathname: string) => COOKIE_CONSENT_HIDDEN_ROUTES.has(pathname) || pathname.startsWith('/production/');

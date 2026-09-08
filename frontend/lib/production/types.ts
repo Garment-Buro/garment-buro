@@ -152,6 +152,7 @@ export interface Project extends Omit<QueueItem, 'blocked'> {
     }[];
 }
 export interface Employee {
+    can_administer?: boolean;
     id: number;
     name: string;
     stations: Station[];

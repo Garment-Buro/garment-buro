@@ -22,17 +22,19 @@ from app.modules.crm.production_service import (
 )
 from app.modules.crm.service import CrmProjectStateError, CrmProjectVersionConflictError
 from app.modules.identity.models import User
+from app.modules.production.admin_router import router as admin_router
 from app.modules.production.auth_router import get_production_user
 from app.modules.production.auth_router import router as auth_router
 from app.modules.production.evidence import ProductionConflict, ProductionNotFound
 from app.modules.production.models import ProductionSpecificationFile
 from app.modules.production.read_service import ProductionReadService
 from app.modules.production.schemas import CommandReceipt, ProductionCommand
-from app.modules.production.security import ProductionDenied, stations_for_user
+from app.modules.production.security import ProductionDenied, can_administer, stations_for_user
 from app.modules.production.service import ProductionService
 
 router = APIRouter(prefix="/api/production", tags=["production-terminal"])
 router.include_router(auth_router, prefix="")
+router.include_router(admin_router)
 Session = Annotated[AsyncSession, Depends(get_database_session)]
 CurrentUser = Annotated[User, Depends(get_production_user)]
 
@@ -51,12 +53,14 @@ Auth = Annotated[tuple[User, list[str]], Depends(access)]
 
 
 @router.get("/me")
-async def me(auth: Auth):
+async def me(auth: Auth, request: Request, session: Session):
     user, stations = auth
     return {
         "id": user.id,
         "name": user.first_name or user.email or "Сотрудник",
         "stations": stations,
+        "can_administer": getattr(request.state, "production_station", None) == "admin"
+        and await can_administer(session, user.id),
     }
 
 
