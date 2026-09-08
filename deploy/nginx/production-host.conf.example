@@ -1,0 +1,27 @@
+# HOST nginx variant. Install only after DNS and this domain's certificate exist.
+# Uses the PRIMARY frontend/database (3000), never the development stack (3100).
+server {
+    listen 80;
+    server_name production.garment-buro.ru;
+    location /.well-known/acme-challenge/ { root /var/www/letsencrypt; }
+    location / { return 301 https://production.garment-buro.ru$request_uri; }
+}
+server {
+    listen 443 ssl;
+    server_name production.garment-buro.ru;
+    ssl_certificate /etc/letsencrypt/live/production.garment-buro.ru/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/production.garment-buro.ru/privkey.pem;
+    client_max_body_size 27m;
+    add_header X-Robots-Tag "noindex, nofollow" always;
+    add_header Cache-Control "no-store" always;
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_hide_header Cache-Control;
+        proxy_read_timeout 120s;
+    }
+}

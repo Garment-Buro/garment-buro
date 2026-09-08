@@ -16,6 +16,19 @@ const PARTNER_PUBLIC_FILES = new Set([
 export function proxy(request: NextRequest) {
     const hostname = request.headers.get('host')?.split(':')[0].toLowerCase();
     const { pathname } = request.nextUrl;
+    if (hostname === 'production.garment-buro.ru') {
+        const url = request.nextUrl.clone();
+        if (pathname === '/') {
+            url.pathname = '/production';
+            return NextResponse.redirect(url);
+        }
+        const response = pathname === '/manifest.webmanifest'
+            ? NextResponse.rewrite(new URL('/production/manifest.webmanifest', request.url))
+            : NextResponse.next();
+        response.headers.set('X-Robots-Tag', 'noindex, nofollow');
+        response.headers.set('Cache-Control', 'no-store');
+        return response;
+    }
     if (hostname === 'partner.garment-buro.ru') {
         if (pathname === '/manifest.webmanifest') {
             const url = request.nextUrl.clone();

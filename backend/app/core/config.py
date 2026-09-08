@@ -74,6 +74,8 @@ class Settings(BaseSettings):
     crm_api_enabled: bool = False
     crm_writes_enabled: bool = False
     crm_files_enabled: bool = False
+    production_terminal_enabled: bool = False
+    production_public_base_url: str = "https://production.garment-buro.ru"
 
     minio_enabled: bool = False
     minio_endpoint: str = "localhost:9000"
@@ -366,6 +368,23 @@ class Settings(BaseSettings):
             raise ValueError("CRM_WRITES_ENABLED must be true when CRM_FILES_ENABLED is true")
         if self.crm_files_enabled and not self.minio_enabled:
             raise ValueError("MINIO_ENABLED must be true when CRM_FILES_ENABLED is true")
+        if self.production_terminal_enabled and not (
+            self.crm_api_enabled and self.crm_files_enabled and self.fulfillment_crm_enabled
+        ):
+            raise ValueError(
+                "Production terminal requires CRM_API_ENABLED, CRM_FILES_ENABLED and FULFILLMENT_CRM_ENABLED"
+            )
+        production_origin = urlsplit(self.production_public_base_url)
+        if (
+            production_origin.scheme not in {"http", "https"}
+            or not production_origin.netloc
+            or production_origin.username
+            or production_origin.password
+            or production_origin.path not in {"", "/"}
+            or production_origin.query
+            or production_origin.fragment
+        ):
+            raise ValueError("PRODUCTION_PUBLIC_BASE_URL must be an HTTP(S) origin")
 
         if self.minio_enabled:
             required_minio = {

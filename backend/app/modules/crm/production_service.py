@@ -64,9 +64,11 @@ class CrmProductionService:
         garment_size_id: int | None,
         tech_card_revision_id: int,
         actor_user_id: int | None,
+        from_terminal: bool = False,
         now: datetime | None = None,
     ) -> CrmProductionPlanRevision:
         unit = await self._require_unit(session, production_unit_id)
+        await self._guard_terminal(session, unit.id, from_terminal)
         if unit.status != CrmProductionUnitStatus.QUEUED.value:
             raise CrmProductionConflictError("Only a queued production unit can be planned")
         link = await self.repository.get_catalog_model_link(
@@ -173,11 +175,13 @@ class CrmProductionService:
         to_status: CrmProductionUnitStatus,
         reason_code: str,
         actor_user_id: int | None,
+        from_terminal: bool = False,
         now: datetime | None = None,
     ) -> CrmProductionUnit:
         if not CRM_REASON_CODE_PATTERN.fullmatch(reason_code):
             raise CrmProductionConflictError("Production reason code has an invalid format")
         unit = await self._require_unit(session, production_unit_id)
+        await self._guard_terminal(session, unit.id, from_terminal)
         self._require_version(unit.version, expected_version)
         if to_status.value not in CRM_UNIT_TRANSITIONS[unit.status]:
             raise CrmProductionConflictError(
@@ -250,6 +254,18 @@ class CrmProductionService:
     def _require_version(actual: int, expected: int) -> None:
         if expected <= 0 or actual != expected:
             raise CrmProductionVersionConflictError("CRM production unit version has changed")
+
+    @staticmethod
+    async def _guard_terminal(session, unit_id, from_terminal):
+        if not from_terminal:
+            from sqlalchemy import select
+
+            from app.modules.production.models import ProductionWorkItem
+
+            if await session.scalar(
+                select(ProductionWorkItem.id).where(ProductionWorkItem.unit_id == unit_id)
+            ):
+                raise CrmProductionConflictError("Use the production terminal for this unit")
 
     @staticmethod
     def _add_event(

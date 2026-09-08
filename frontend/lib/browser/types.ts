@@ -1,6 +1,6 @@
 export type BrowserSurface = 'pwa' | 'safari26' | 'safari18' | 'otherbrowser';
 
-export type AppPage = 'default' | 'catalog' | 'constructor' | 'product' | 'unfinished' | 'profile' | 'light-running' | 'nikitamoiseev' | 'partner' | 'presentation';
+export type AppPage = 'default' | 'catalog' | 'constructor' | 'product' | 'unfinished' | 'profile' | 'light-running' | 'nikitamoiseev' | 'partner' | 'presentation' | 'production';
 
 export type PageChromeConfig = {
     page: AppPage;

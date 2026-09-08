@@ -41,6 +41,16 @@ class RoleName(str, Enum):
     PARTNER = "partner"
     MANAGER = "manager"
     ADMIN = "admin"
+    PRODUCTION_TECH = "production_tech"
+    PRODUCTION_KIT = "production_kit"
+    PRODUCTION_CUT = "production_cut"
+    PRODUCTION_DTF = "production_dtf"
+    PRODUCTION_APPLICATION = "production_application"
+    PRODUCTION_SEWING = "production_sewing"
+    PRODUCTION_PRESS = "production_press"
+    PRODUCTION_QC = "production_qc"
+    PRODUCTION_PACKING = "production_packing"
+    PRODUCTION_SHIPPING = "production_shipping"
 
 
 class PermissionCode(str, Enum):
@@ -58,6 +68,17 @@ class PermissionCode(str, Enum):
     PAYOUTS_MANAGE = "payouts.manage"
     PARTNERS_READ_OWN = "partners.read_own"
     PARTNERS_MANAGE = "partners.manage"
+    PRODUCTION_ACCESS = "production.access"
+    PRODUCTION_TECH = "production.tech"
+    PRODUCTION_KIT = "production.kit"
+    PRODUCTION_CUT = "production.cut"
+    PRODUCTION_DTF = "production.dtf"
+    PRODUCTION_APPLICATION = "production.application"
+    PRODUCTION_SEWING = "production.sewing"
+    PRODUCTION_PRESS = "production.press"
+    PRODUCTION_QC = "production.qc"
+    PRODUCTION_PACKING = "production.packing"
+    PRODUCTION_SHIPPING = "production.shipping"
 
 
 class OtpPurpose(str, Enum):
@@ -419,3 +440,22 @@ SYSTEM_ROLE_PERMISSIONS: dict[RoleName, Sequence[PermissionCode]] = {
     ),
     RoleName.ADMIN: tuple(PermissionCode),
 }
+
+for _station in (
+    "tech",
+    "kit",
+    "cut",
+    "dtf",
+    "application",
+    "sewing",
+    "press",
+    "qc",
+    "packing",
+    "shipping",
+):
+    SYSTEM_ROLE_PERMISSIONS[RoleName(f"production_{_station}")] = (
+        PermissionCode.PROFILE_READ_OWN,
+        PermissionCode.PROFILE_WRITE_OWN,
+        PermissionCode.PRODUCTION_ACCESS,
+        PermissionCode(f"production.{_station}"),
+    )

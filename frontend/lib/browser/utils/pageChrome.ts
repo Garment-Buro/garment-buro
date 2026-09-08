@@ -90,11 +90,13 @@ export const isSiteChromeHidden = (pathname: string | null) => (
     pathname !== null && (
         SITE_CHROME_HIDDEN_ROUTES.has(pathname)
         || pathname.startsWith('/partner')
+        || pathname.startsWith('/production')
         || pathname.startsWith('/p/')
     )
 );
 
 export const getPageChrome = (pathname: string | null): PageChromeConfig => {
+    if (pathname?.startsWith('/production')) return { ...DEFAULT_PAGE_CHROME, page: 'production', topColor: '#f2f0ef', pageColor: '#f2f0ef' };
     if (pathname === '/' || pathname === '/presentation') return PAGE_CHROME[8];
     if (pathname?.startsWith('/constructor')) return PAGE_CHROME[1];
     if (pathname?.startsWith('/product')) return PAGE_CHROME[2];

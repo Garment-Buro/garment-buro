@@ -26,6 +26,7 @@ class CrmProductionRepository:
             select(CrmProductionUnit)
             .where(CrmProductionUnit.id == production_unit_id)
             .with_for_update()
+            .execution_options(populate_existing=True)
         )
 
     async def get_order_item(

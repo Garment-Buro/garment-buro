@@ -30,6 +30,7 @@ class QrCodeService:
             QrCodeSurface.SITE: self._validate_origin(settings.public_base_url),
             QrCodeSurface.PARTNER: self._validate_origin(settings.partner_public_base_url),
             QrCodeSurface.WIDGET: self._validate_origin(settings.widget_public_base_url),
+            QrCodeSurface.PRODUCTION: self._validate_origin(settings.production_public_base_url),
         }
 
     def build_target(self, path: str, surface: QrCodeSurface) -> str:

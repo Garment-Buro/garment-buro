@@ -77,8 +77,20 @@ from app.modules.payments.models import (
     PaymentReconciliationJob,
 )
 from app.modules.payouts.models import Payout
+from app.modules.production.models import (
+    ProductionBag,
+    ProductionEvent,
+    ProductionSpecification,
+    ProductionSpecificationFile,
+    ProductionWorkItem,
+)
 
 __all__ = [
+    "ProductionBag",
+    "ProductionEvent",
+    "ProductionSpecification",
+    "ProductionSpecificationFile",
+    "ProductionWorkItem",
     "PartnerBankPayment",
     "PartnerBankPaymentEvent",
     "PickupDirectoryState",

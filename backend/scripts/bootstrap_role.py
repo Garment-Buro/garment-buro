@@ -18,7 +18,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--role",
         required=True,
-        choices=[RoleName.MANAGER.value, RoleName.ADMIN.value],
+        choices=[
+            role.value
+            for role in RoleName
+            if role in {RoleName.MANAGER, RoleName.ADMIN} or role.value.startswith("production_")
+        ],
     )
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--expect-user-id", type=int)

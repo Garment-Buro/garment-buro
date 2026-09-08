@@ -10,3 +10,4 @@ class QrCodeSurface(str, Enum):
     SITE = "site"
     PARTNER = "partner"
     WIDGET = "widget"
+    PRODUCTION = "production"

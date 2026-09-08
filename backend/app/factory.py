@@ -76,6 +76,7 @@ from app.modules.payouts.provider import (
 )
 from app.modules.payouts.router import router as payout_router
 from app.modules.payouts.service import PayoutService
+from app.modules.production.router import router as production_router
 from app.modules.qr_codes.router import router as qr_code_router
 from app.modules.qr_codes.service import QrCodeService
 
@@ -382,6 +383,7 @@ def create_app(
         application.include_router(payout_router)
     if runtime_settings.crm_api_enabled:
         application.include_router(crm_router)
+        application.include_router(production_router)
     if runtime_settings.crm_writes_enabled:
         application.include_router(crm_write_router)
     if runtime_settings.crm_files_enabled:

@@ -80,6 +80,10 @@ jobs:
         env:
           TOCHKA_TEST_POSTGRES_URL: postgresql+asyncpg://garment_ci:garment-ci-only@127.0.0.1:5432/garment_buro_ci
         run: python -m pytest -q tests/unit/test_partner_bank_payouts.py -k postgres_concurrent
+      - name: Check concurrent production commands on PostgreSQL
+        env:
+          PRODUCTION_TEST_POSTGRES_URL: postgresql+asyncpg://garment_ci:garment-ci-only@127.0.0.1:5432/garment_buro_ci
+        run: python -m pytest -q tests/unit/test_production_terminal.py -k postgres
 
   frontend:
     name: Frontend

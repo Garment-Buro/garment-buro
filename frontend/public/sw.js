@@ -1,4 +1,4 @@
-const CACHE_NAME = 'garment-buro-shell-v1';
+const CACHE_NAME = 'garment-buro-shell-v2';
 const SHELL_FILES = [
     '/offline.html',
     '/pwa-icon-192.png',
@@ -25,6 +25,8 @@ self.addEventListener('fetch', event => {
 
     const url = new URL(request.url);
     if (url.origin !== self.location.origin) return;
+    // Private terminal pages and commands must never be replayed from offline cache.
+    if (url.hostname === 'production.garment-buro.ru' || url.pathname.startsWith('/production')) return;
     if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/uploads/') || url.pathname.startsWith('/storage/')) {
         return;
     }

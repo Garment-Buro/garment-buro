@@ -73,6 +73,7 @@ class CrmProjectService:
         to_status: CrmProjectStatus,
         reason_code: str,
         actor_user_id: int | None,
+        from_terminal: bool = False,
         now: datetime | None = None,
     ) -> CrmOrderProject:
         if expected_version <= 0:
@@ -82,6 +83,15 @@ class CrmProjectService:
         project = await self.repository.get_for_update(session, project_id=project_id)
         if project is None:
             raise CrmProjectNotFoundError("CRM project was not found")
+        if not from_terminal:
+            from sqlalchemy import select
+
+            from app.modules.production.models import ProductionBag
+
+            if await session.scalar(
+                select(ProductionBag.id).where(ProductionBag.project_id == project_id)
+            ):
+                raise CrmProjectStateError("Use the production terminal for this project")
         self._require_transition(project, expected_version, to_status)
         if to_status in {CrmProjectStatus.COMPLETED, CrmProjectStatus.CANCELLED}:
             units = await self.repository.list_units_for_update(
