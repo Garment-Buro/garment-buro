@@ -967,12 +967,38 @@ class Settings(BaseSettings):
         if self.app_env is AppEnvironment.PRODUCTION:
             required_secrets = {
                 "JWT_SECRET": self.jwt_secret,
-                "CDEK_CLIENT_ID": self.cdek_client_id,
-                "CDEK_CLIENT_SECRET": self.cdek_client_secret,
-                "YOOKASSA_SHOP_ID": self.yookassa_shop_id,
-                "YOOKASSA_API_KEY": self.yookassa_api_key,
                 "SMTP_PASSWORD": self.smtp_password,
             }
+            # A production terminal can run before payments/delivery onboarding.
+            # Disabled providers must not require fake credentials to boot.
+            if any(
+                (
+                    self.cdek_quote_enabled,
+                    self.cdek_creation_enabled,
+                    self.cdek_tracking_enabled,
+                    self.fulfillment_cdek_enabled,
+                )
+            ):
+                required_secrets.update(
+                    {
+                        "CDEK_CLIENT_ID": self.cdek_client_id,
+                        "CDEK_CLIENT_SECRET": self.cdek_client_secret,
+                    }
+                )
+            if any(
+                (
+                    self.payment_creation_enabled,
+                    self.payment_management_enabled,
+                    self.payment_webhook_v2_enabled,
+                    self.payment_reconciliation_enabled,
+                )
+            ):
+                required_secrets.update(
+                    {
+                        "YOOKASSA_SHOP_ID": self.yookassa_shop_id,
+                        "YOOKASSA_API_KEY": self.yookassa_api_key,
+                    }
+                )
             missing = [
                 name for name, value in required_secrets.items() if not self.secret_value(value)
             ]

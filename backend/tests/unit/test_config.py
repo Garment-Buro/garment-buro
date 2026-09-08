@@ -419,7 +419,7 @@ def test_staging_allows_disabled_external_integrations_without_credentials() -> 
     assert not settings.fulfillment_email_enabled
 
 
-def test_production_requires_all_external_service_secrets() -> None:
+def test_production_requires_core_secrets() -> None:
     with pytest.raises(ValidationError) as error:
         production_settings(
             jwt_secret="",
@@ -433,13 +433,33 @@ def test_production_requires_all_external_service_secrets() -> None:
     message = str(error.value)
     for setting_name in (
         "JWT_SECRET",
-        "CDEK_CLIENT_ID",
-        "CDEK_CLIENT_SECRET",
-        "YOOKASSA_SHOP_ID",
-        "YOOKASSA_API_KEY",
         "SMTP_PASSWORD",
     ):
         assert setting_name in message
+
+
+def test_production_allows_disabled_payment_and_delivery_without_credentials() -> None:
+    settings = production_settings(
+        cdek_client_id=None,
+        cdek_client_secret=None,
+        yookassa_shop_id=None,
+        yookassa_api_key=None,
+    )
+    assert not settings.payment_creation_enabled
+    assert not settings.cdek_creation_enabled
+
+
+def test_production_cdek_fulfillment_still_requires_provider_credentials() -> None:
+    with pytest.raises(ValidationError, match="CDEK_CLIENT_ID"):
+        production_settings(
+            database_enabled=True,
+            database_url="postgresql+asyncpg://test:test@localhost/test",
+            fulfillment_outbox_enabled=True,
+            fulfillment_cdek_enabled=True,
+            cdek_request_encryption_key="Y" * 43 + "=",
+            cdek_client_id=None,
+            cdek_client_secret=None,
+        )
 
 
 def test_production_rejects_short_jwt_secret() -> None:
