@@ -410,6 +410,15 @@ def test_api_denies_customers_and_hides_delivery(tmp_path):
     asyncio.run(scenario())
 
 
+def test_bag_commands_cannot_record_an_unrelated_unit_or_specification():
+    with pytest.raises(ValidationError, match="Параметры"):
+        ProductionCommand(action="release", expected_version=1, unit_id=999)
+    with pytest.raises(ValidationError, match="Параметры"):
+        ProductionCommand(
+            action="dtf_ready", expected_version=1, unit_id=1, tracking_number="fake-track"
+        )
+
+
 @pytest.mark.skipif(
     not os.getenv("PRODUCTION_TEST_POSTGRES_URL"), reason="Isolated PostgreSQL CI required"
 )

@@ -105,6 +105,25 @@ class ProductionCommand(StrictModel):
     note: str | None = Field(default=None, min_length=1, max_length=1000)
     tracking_number: str | None = Field(default=None, min_length=3, max_length=100)
 
+    @model_validator(mode="after")
+    def command_scope(self):
+        fields = {
+            "plan": {"unit_id", "specification"},
+            "confirm_documents": {"unit_id"},
+            "check_component": {"unit_id", "component_key", "checked"},
+            "dtf_ready": {"unit_id"},
+            "insert_dtf": {"unit_id"},
+            "complete_stage": {"unit_id", "stage", "quality_confirmed"},
+            "report_issue": {"unit_id"},
+            "resolve_issue": {"unit_id"},
+            "rework": {"unit_id", "stage"},
+            "dispatch": {"tracking_number"},
+        }
+        allowed = fields.get(self.action, set()) | {"action", "expected_version", "note"}
+        if self.model_fields_set - allowed:
+            raise ValueError("Параметры команды не соответствуют выбранному действию")
+        return self
+
 
 class CommandReceipt(BaseModel):
     project_id: int
