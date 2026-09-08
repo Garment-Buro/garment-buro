@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
     PiArrowClockwise,
     PiPackage,
@@ -7,7 +7,7 @@ import {
     PiSignOut,
     PiMagnifyingGlass,
 } from 'react-icons/pi';
-import { useAuthStore } from '@/store/authStore';
+import { useProductionAuthStore } from '@/store/productionAuthStore';
 import { useProductionTerminal } from '@/hooks/production/useProductionTerminal';
 import {
     actionLabels,
@@ -25,7 +25,8 @@ import styles from './ProductionTerminal.module.css';
 
 function Workspace() {
     const terminal = useProductionTerminal();
-    const logout = useAuthStore((state) => state.logout);
+    const logout = useProductionAuthStore((state) => state.logout);
+    const authError = useProductionAuthStore((state) => state.error);
     const [station, setStation] = useState<Station | 'cycle'>('tech');
     const [search, setSearch] = useState('');
     const [printError, setPrintError] = useState('');
@@ -98,6 +99,7 @@ function Workspace() {
                     </button>
                 </nav>
                 <div className={styles.messages} aria-live="polite">
+                    {authError && <p role="alert" className={styles.error}>{authError}</p>}
                     {printError && (
                         <p className={styles.error} role="alert">
                             {printError}
@@ -360,9 +362,11 @@ function Workspace() {
     );
 }
 export function ProductionTerminal() {
-    const ready = useAuthStore((state) => state.isSessionReady);
-    const authenticated = useAuthStore((state) => state.isAuthenticated);
-    const userId = useAuthStore((state) => state.user?.id);
+    const initialize = useProductionAuthStore((state) => state.initialize);
+    useEffect(() => { void initialize(); }, [initialize]);
+    const ready = useProductionAuthStore((state) => state.isSessionReady);
+    const authenticated = useProductionAuthStore((state) => state.isAuthenticated);
+    const userId = useProductionAuthStore((state) => state.user?.id);
     if (!ready)
         return (
             <main className={styles.login}>

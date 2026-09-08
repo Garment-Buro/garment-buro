@@ -2,12 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { productionApi } from '@/lib/api/production';
-import { useAuthStore } from '@/store/authStore';
+import { useProductionAuthStore } from '@/store/productionAuthStore';
 import type { Command, Employee, Project, Queue } from '@/lib/production/types';
 
 export function useProductionTerminal() {
-    const run = useAuthStore((state) => state.runAuthenticated);
-    const userId = useAuthStore((state) => state.user?.id);
+    const run = useProductionAuthStore((state) => state.runAuthenticated);
+    const userId = useProductionAuthStore((state) => state.user?.id);
     const [employee, setEmployee] = useState<Employee | null>(null);
     const [queue, setQueue] = useState<Queue>({ items: [], next_cursor: null });
     const [project, setProject] = useState<Project | null>(null);

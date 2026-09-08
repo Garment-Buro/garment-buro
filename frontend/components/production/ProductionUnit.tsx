@@ -10,7 +10,7 @@ import {
 } from '@/lib/production/types';
 import { canAct, currentStage } from '@/lib/production/workflow';
 import { productionApi } from '@/lib/api/production';
-import { useAuthStore } from '@/store/authStore';
+import { useProductionAuthStore } from '@/store/productionAuthStore';
 import { SpecificationForm } from './SpecificationForm';
 import { OrderEvidence } from './OrderEvidence';
 import styles from './ProductionTerminal.module.css';
@@ -30,7 +30,7 @@ export function ProductionUnit({
     send: SendCommand;
     busy: boolean;
 }) {
-    const run = useAuthStore((state) => state.runAuthenticated);
+    const run = useProductionAuthStore((state) => state.runAuthenticated);
     const [quality, setQuality] = useState<number[]>([]);
     const [note, setNote] = useState('');
     const [wrapped, setWrapped] = useState(false);

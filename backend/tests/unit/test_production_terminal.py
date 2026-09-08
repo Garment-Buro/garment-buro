@@ -17,9 +17,9 @@ from app.modules.crm.models import CrmProductionUnit, CrmProductionUnitStatus
 from app.modules.crm.production_service import CrmProductionConflictError, CrmProductionService
 from app.modules.identity.models import PermissionCode, RoleName, User, UserRole
 from app.modules.identity.repository import IdentityRepository
-from app.modules.identity.router import get_current_identity_user
 from app.modules.media.models import MediaObject
 from app.modules.orders.models import Order, OrderItem
+from app.modules.production.auth_router import get_production_user
 from app.modules.production.evidence import ProductionConflict
 from app.modules.production.models import ProductionBag, ProductionEvent, ProductionSpecification
 from app.modules.production.read_service import ProductionReadService
@@ -388,7 +388,7 @@ def test_api_denies_customers_and_hides_delivery(tmp_path):
             async def identity():
                 return current
 
-            app.dependency_overrides[get_current_identity_user] = identity
+            app.dependency_overrides[get_production_user] = identity
             async with AsyncClient(
                 transport=ASGITransport(app=app), base_url="https://test"
             ) as client:

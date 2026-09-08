@@ -1,91 +1,44 @@
 'use client';
-import { useEmailAuthentication } from '@/hooks/auth/useEmailAuthentication';
-import { useAuthStore } from '@/store/authStore';
+
+import { useRef, useState } from 'react';
+import { useProductionAuthStore } from '@/store/productionAuthStore';
 import styles from './ProductionTerminal.module.css';
 
 export function ProductionLogin() {
-    const setAuth = useAuthStore((state) => state.setAuth);
-    const auth = useEmailAuthentication(setAuth);
+    const login = useProductionAuthStore((state) => state.login);
+    const sessionError = useProductionAuthStore((state) => state.error);
+    const [code, setCode] = useState('');
+    const [error, setError] = useState('');
+    const [loading, setLoading] = useState(false);
+    const locked = useRef(false);
     return (
         <main className={styles.login}>
             <section className={styles.panel}>
                 <p className={styles.eyebrow}>GARMENT BURO · ПРОИЗВОДСТВО</p>
                 <h1>Вход на участок</h1>
-                <p>
-                    Войдите с рабочей почтой. Доступ к операциям назначает
-                    руководитель производства.
-                </p>
-                {auth.step === 'input' ? (
-                    <form
-                        onSubmit={(event) => {
-                            event.preventDefault();
-                            void auth.sendCode();
-                        }}
-                    >
-                        <label>
-                            Рабочая почта
-                            <input
-                                required
-                                type="email"
-                                autoComplete="email"
-                                value={auth.email}
-                                onChange={(event) =>
-                                    auth.setEmail(event.target.value)
-                                }
-                            />
-                        </label>
-                        <button disabled={auth.loading} type="submit">
-                            {auth.loading ? 'Отправляем…' : 'Получить код'}
-                        </button>
-                    </form>
-                ) : (
-                    <div>
-                        <p>Введите код из письма на {auth.email}</p>
-                        <div
-                            className={styles.row}
-                            onPaste={auth.handleOtpPaste}
-                        >
-                            {auth.code.map((digit, index) => (
-                                <input
-                                    key={index}
-                                    aria-label={`Цифра ${index + 1}`}
-                                    ref={auth.inputRefs[index]}
-                                    value={digit}
-                                    onChange={(event) =>
-                                        auth.changeOtp(
-                                            index,
-                                            event.target.value,
-                                        )
-                                    }
-                                    onKeyDown={(event) =>
-                                        auth.handleOtpKeyDown(index, event)
-                                    }
-                                    inputMode="numeric"
-                                    autoComplete={
-                                        index === 0 ? 'one-time-code' : 'off'
-                                    }
-                                    maxLength={1}
-                                />
-                            ))}
-                        </div>
-                        <button onClick={auth.showInputStep}>
-                            Изменить почту
-                        </button>
-                        <button
-                            disabled={auth.timer > 0 || auth.loading}
-                            onClick={() => void auth.sendCode()}
-                        >
-                            {auth.timer > 0
-                                ? `Повтор через ${auth.timer} сек.`
-                                : 'Отправить снова'}
-                        </button>
-                    </div>
-                )}
-                {auth.error && (
-                    <p role="alert" className={styles.error}>
-                        {auth.error}
-                    </p>
-                )}
+                <p>Введите личный код из 6 цифр. Код и доступ к участку выдаёт руководитель производства.</p>
+                <form onSubmit={async (event) => {
+                    event.preventDefault();
+                    if (locked.current || !/^[0-9]{6}$/.test(code)) return;
+                    locked.current = true; setLoading(true); setError('');
+                    try { await login(code); }
+                    catch (failure) {
+                        setError(failure instanceof Error ? failure.message : 'Не удалось войти');
+                        setCode('');
+                    } finally { locked.current = false; setLoading(false); }
+                }}>
+                    <label htmlFor="production-code">Личный код сотрудника</label>
+                    <input id="production-code" type="password" inputMode="numeric"
+                        autoComplete="current-password" required pattern="[0-9]{6}"
+                        minLength={6} maxLength={6} disabled={loading} value={code}
+                        aria-describedby="production-code-help" aria-invalid={!!error}
+                        onChange={(event) => setCode(event.target.value.replace(/[^0-9]/g, '').slice(0, 6))} />
+                    <small id="production-code-help">Не передавайте свой код другим сотрудникам.</small>
+                    <button type="submit" disabled={loading || code.length !== 6}>
+                        {loading ? 'Проверяем код…' : 'Войти на участок'}
+                    </button>
+                </form>
+                {(error || sessionError) && <p role="alert" className={styles.error}>{error || sessionError}</p>}
                 <small>Без подключения к сети изменения не записываются.</small>
             </section>
         </main>

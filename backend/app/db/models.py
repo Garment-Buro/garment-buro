@@ -78,6 +78,11 @@ from app.modules.payments.models import (
     PaymentReconciliationJob,
 )
 from app.modules.payouts.models import Payout
+from app.modules.production.auth_models import (
+    ProductionCredential,
+    ProductionLoginLimit,
+    ProductionSession,
+)
 from app.modules.production.models import (
     ProductionBag,
     ProductionEvent,
@@ -87,6 +92,9 @@ from app.modules.production.models import (
 )
 
 __all__ = [
+    "ProductionCredential",
+    "ProductionSession",
+    "ProductionLoginLimit",
     "OrderWorkflow",
     "OrderWorkflowEvent",
     "OrderWorkflowJob",

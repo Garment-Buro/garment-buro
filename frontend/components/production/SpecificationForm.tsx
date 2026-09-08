@@ -9,7 +9,7 @@ import {
     type Unit,
 } from '@/lib/production/types';
 import { productionApi } from '@/lib/api/production';
-import { useAuthStore } from '@/store/authStore';
+import { useProductionAuthStore } from '@/store/productionAuthStore';
 import styles from './ProductionTerminal.module.css';
 
 export function SpecificationForm({
@@ -21,7 +21,7 @@ export function SpecificationForm({
     send: SendCommand;
     busy: boolean;
 }) {
-    const run = useAuthStore((state) => state.runAuthenticated);
+    const run = useProductionAuthStore((state) => state.runAuthenticated);
     const [value, setValue] = useState<Specification>(
         unit.specification
             ? {

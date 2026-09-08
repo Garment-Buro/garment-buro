@@ -1,7 +1,7 @@
 import { requestJson } from './http';
 import type { Command, Employee, Project, Queue } from '@/lib/production/types';
 
-const headers = (token: string) => ({ Authorization: `Bearer ${token}` });
+const headers = (token: string): Record<string, string> => token ? { Authorization: `Bearer ${token}` } : {};
 export const productionApi = {
     me: (token: string, signal?: AbortSignal) =>
         requestJson<Employee>('/production/me', {

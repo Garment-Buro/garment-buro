@@ -22,7 +22,8 @@ from app.modules.crm.production_service import (
 )
 from app.modules.crm.service import CrmProjectStateError, CrmProjectVersionConflictError
 from app.modules.identity.models import User
-from app.modules.identity.router import get_current_identity_user
+from app.modules.production.auth_router import get_production_user
+from app.modules.production.auth_router import router as auth_router
 from app.modules.production.evidence import ProductionConflict, ProductionNotFound
 from app.modules.production.models import ProductionSpecificationFile
 from app.modules.production.read_service import ProductionReadService
@@ -31,8 +32,9 @@ from app.modules.production.security import ProductionDenied, stations_for_user
 from app.modules.production.service import ProductionService
 
 router = APIRouter(prefix="/api/production", tags=["production-terminal"])
+router.include_router(auth_router, prefix="")
 Session = Annotated[AsyncSession, Depends(get_database_session)]
-CurrentUser = Annotated[User, Depends(get_current_identity_user)]
+CurrentUser = Annotated[User, Depends(get_production_user)]
 
 
 async def access(request: Request, response: Response, user: CurrentUser, session: Session):
