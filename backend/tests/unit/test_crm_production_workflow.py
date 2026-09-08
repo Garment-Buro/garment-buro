@@ -78,7 +78,9 @@ def _card_revision(name: str) -> CrmTechCardRevisionWrite:
     )
 
 
-async def _seed_unit_and_reference_data(database: DatabaseManager) -> tuple[int, int, int, int]:
+async def _seed_unit_and_reference_data(
+    database: DatabaseManager, quantity: int = 1
+) -> tuple[int, int, int, int]:
     digest = hashlib.sha256(b"crm-production-workflow").hexdigest()
     async with database.session() as session:
         actor = User(
@@ -109,9 +111,9 @@ async def _seed_unit_and_reference_data(database: DatabaseManager) -> tuple[int,
         await session.flush()
         order = Order(
             delivery_method="courier",
-            items_subtotal=Decimal("100.00"),
+            items_subtotal=Decimal("100.00") * quantity,
             delivery_price=Decimal("0.00"),
-            total_price=Decimal("100.00"),
+            total_price=Decimal("100.00") * quantity,
             currency="RUB",
             status="processing",
             payment_status="paid",
@@ -126,8 +128,8 @@ async def _seed_unit_and_reference_data(database: DatabaseManager) -> tuple[int,
                     variant_id_snapshot=None,
                     title_snapshot="Dress",
                     unit_price=Decimal("100.00"),
-                    quantity=1,
-                    line_total=Decimal("100.00"),
+                    quantity=quantity,
+                    line_total=Decimal("100.00") * quantity,
                     image_url_snapshot="",
                     size_snapshot="M",
                     color_snapshot="black",

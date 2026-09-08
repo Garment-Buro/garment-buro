@@ -31,7 +31,7 @@ from tests.unit.test_crm_production_workflow import NOW, _seed_unit_and_referenc
 
 
 @asynccontextmanager
-async def setup(tmp_path, postgres_url=None):
+async def setup(tmp_path, postgres_url=None, quantity=1):
     settings = _settings(tmp_path / "production.db")
     if postgres_url:
         settings = settings.model_copy(update={"database_url": postgres_url})
@@ -45,7 +45,7 @@ async def setup(tmp_path, postgres_url=None):
             db.engine.update_execution_options(schema_translate_map={None: schema})
         async with db.engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-        unit, _, size, card = await _seed_unit_and_reference_data(db)
+        unit, _, size, card = await _seed_unit_and_reference_data(db, quantity=quantity)
         async with db.session() as session:
             repo = IdentityRepository()
             await repo.ensure_system_authorization(session)
@@ -201,6 +201,88 @@ def test_full_flow_persists_dtf_pocket_quality_and_order_shipment(tmp_path):
                 assert detail["state"] == "dispatched" and detail["tracking_number"] == "TEST-001"
                 assert len(detail["events"]) == receipt.version
                 assert detail["units"][0]["stage_index"] == 6
+
+    asyncio.run(scenario())
+
+
+def test_mixed_routes_share_one_bag_and_wait_for_dtf_together(tmp_path):
+    async def scenario():
+        async with setup(tmp_path, quantity=2) as (db, service, spec):
+            await execute(db, service, "plan", unit_id=1, specification=spec)
+            # Individual document preparation does not depend on other unfinished specs.
+            await execute(db, service, "confirm_documents", unit_id=1)
+            with pytest.raises(ProductionConflict, match="всех вещей"):
+                await execute(db, service, "release")
+            plain = spec | {
+                "route": ["sewing", "qc", "packing"],
+                "pattern_file_ids": [],
+                "print_file_ids": [],
+            }
+            await execute(db, service, "plan", unit_id=2, specification=plain)
+            await execute(db, service, "confirm_documents", unit_id=2)
+            await execute(db, service, "release")
+            for unit in [1, 2]:
+                await execute(
+                    db,
+                    service,
+                    "check_component",
+                    unit_id=unit,
+                    component_key="fabric",
+                    checked=True,
+                )
+            await execute(db, service, "send_bag")
+            await execute(db, service, "complete_stage", unit_id=1, stage="cut", note="Wrapped")
+            with pytest.raises(ProductionConflict, match="пошив"):
+                await execute(db, service, "return_to_dtf")
+            await execute(db, service, "complete_stage", unit_id=2, stage="sewing")
+            await execute(db, service, "return_to_dtf")
+            with pytest.raises(ProductionConflict, match="состоянии мешка"):
+                await execute(
+                    db, service, "complete_stage", unit_id=2, stage="qc", quality_confirmed=[0, 1]
+                )
+            await execute(db, service, "dtf_ready", unit_id=1)
+            await execute(db, service, "insert_dtf", unit_id=1)
+            await execute(db, service, "send_bag")
+            async with db.session() as session:
+                detail = await ProductionReadService().detail(
+                    session, project_id=1, stations=["kit"]
+                )
+                assert len(detail["units"]) == 2
+                assert [unit["stage_index"] for unit in detail["units"]] == [1, 1]
+                assert await session.scalar(select(func.count()).select_from(ProductionBag)) == 1
+
+    asyncio.run(scenario())
+
+
+def test_originals_and_order_quantity_cannot_be_silently_missing(tmp_path):
+    async def scenario():
+        async with setup(tmp_path) as (db, service, spec):
+            with pytest.raises(ProductionConflict, match="Не все файлы"):
+                await execute(
+                    db, service, "plan", unit_id=1, specification=spec | {"print_file_ids": [999]}
+                )
+            with pytest.raises(ProductionConflict, match="отдельными файлами"):
+                await execute(
+                    db, service, "plan", unit_id=1, specification=spec | {"print_file_ids": [1]}
+                )
+            async with db.session() as session:
+                media = await session.get(MediaObject, 2)
+                media.is_public = True
+                await session.commit()
+            with pytest.raises(ProductionConflict, match="приватном"):
+                await execute(db, service, "plan", unit_id=1, specification=spec)
+            async with db.session() as session:
+                media = await session.get(MediaObject, 2)
+                media.is_public = False
+                await session.commit()
+            await execute(db, service, "plan", unit_id=1, specification=spec)
+            async with db.session() as session:
+                source = await session.get(OrderItem, 1)
+                source.quantity = 2
+                source.line_total = source.unit_price * 2
+                await session.commit()
+            with pytest.raises(ProductionConflict, match="всех позиций"):
+                await execute(db, service, "confirm_documents", unit_id=1)
 
     asyncio.run(scenario())
 

@@ -23,12 +23,48 @@ const names: Record<string, string> = {
     type: 'Тип',
     name: 'Название',
     fit: 'Посадка',
+    modelImages: 'Основа изделия (без наложения нанесений)',
+    selectedSize: 'Выбранный размер',
+    view: 'Сторона изделия',
+    widthCm: 'Ширина, см',
+    heightCm: 'Высота, см',
+    lengthCm: 'Длина, см',
+    image: 'Превью нанесения',
+    content: 'Содержание',
+    fontId: 'Шрифт',
+    canvas: 'Рабочая область конструктора',
+    garment: 'Габариты изделия',
+    scale: 'Масштаб',
 };
-function Value({ value, depth = 0 }: { value: unknown; depth?: number }) {
+function Value({
+    value,
+    depth = 0,
+    field = '',
+}: {
+    value: unknown;
+    depth?: number;
+    field?: string;
+}) {
     if (value == null) return <span>Не указано</span>;
     if (depth > 6)
         return <span>Подробная структура доступна в исходном заказе</span>;
     if (typeof value === 'boolean') return <span>{value ? 'Да' : 'Нет'}</span>;
+    if (typeof value === 'string' && value.startsWith('data:'))
+        return (
+            <span>
+                Встроенное превью сохранено в заказе. Для производства закрепите
+                отдельный оригинал файла.
+            </span>
+        );
+    if (['image', 'front', 'back'].includes(field) && safeImage(value))
+        return (
+            <img
+                className={styles.productImage}
+                src={safeImage(value)!}
+                alt={names[field] ?? field}
+                loading="lazy"
+            />
+        );
     if (typeof value !== 'object')
         return <span className={styles.break}>{String(value)}</span>;
     if (Array.isArray(value))
@@ -47,7 +83,7 @@ function Value({ value, depth = 0 }: { value: unknown; depth?: number }) {
                 <div key={key}>
                     <dt>{names[key] ?? key}</dt>
                     <dd>
-                        <Value value={item} depth={depth + 1} />
+                        <Value value={item} depth={depth + 1} field={key} />
                     </dd>
                 </div>
             ))}
