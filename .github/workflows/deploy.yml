@@ -1,6 +1,7 @@
 name: Build and deploy
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -21,6 +22,7 @@ env:
 
 jobs:
   quality:
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
     uses: ./.github/workflows/ci.yml
     secrets: inherit
 
@@ -71,6 +73,7 @@ jobs:
   deploy:
     name: Deploy ${{ github.ref_name == 'main' && 'production' || 'development' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     needs: build
     environment:
       name: ${{ github.ref_name == 'main' && 'production' || 'development' }}
@@ -93,6 +96,7 @@ jobs:
           chmod 0600 ~/.ssh/garment_buro_ci
           printf '%s\n' "$DEPLOY_KNOWN_HOSTS" >~/.ssh/known_hosts
           chmod 0600 ~/.ssh/known_hosts
+          printf 'Host *\n  BatchMode yes\n  ConnectTimeout 15\n  ConnectionAttempts 3\n  ServerAliveInterval 15\n  ServerAliveCountMax 4\n  StrictHostKeyChecking yes\n' >~/.ssh/config
       - name: Upload deployment descriptors
         shell: bash
         run: |
@@ -118,6 +122,21 @@ jobs:
           ssh -p "$DEPLOY_PORT" -i ~/.ssh/garment_buro_ci -o IdentitiesOnly=yes \
             "$DEPLOY_USER@$DEPLOY_HOST" \
             "bash '/srv/garment-buro/$DEPLOY_ENV/remote-deploy.next.sh' \
-              '$DEPLOY_ENV' '$BACKEND_IMAGE' '$FRONTEND_IMAGE'"
+              '$DEPLOY_ENV' '$BACKEND_IMAGE' '$FRONTEND_IMAGE' '${{ github.sha }}'"
+      - name: Remove temporary registry login
+        if: always()
+        shell: bash
+        run: |
           ssh -p "$DEPLOY_PORT" -i ~/.ssh/garment_buro_ci -o IdentitiesOnly=yes \
             "$DEPLOY_USER@$DEPLOY_HOST" "docker logout ghcr.io"
+      - name: Verify public surfaces
+        shell: bash
+        run: |
+          if [[ "$DEPLOY_ENV" == production ]]; then
+            urls=(https://garment-buro.ru/ https://www.garment-buro.ru/ https://partner.garment-buro.ru/partner https://production.garment-buro.ru/production https://production.garment-buro.ru/production/admin)
+          else
+            urls=(https://dev.garment-buro.ru/)
+          fi
+          for url in "${urls[@]}"; do
+            curl --fail --silent --show-error --location --max-time 30 --retry 3 "$url" -o /dev/null
+          done

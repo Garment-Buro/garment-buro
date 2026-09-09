@@ -1,160 +1,99 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
-umask 027
+umask 077
 
 environment_name="${1:-}"
 backend_image="${2:-}"
 frontend_image="${3:-}"
-
-case "$environment_name" in
-  production|development) ;;
-  *)
-    echo "environment must be production or development" >&2
-    exit 64
-    ;;
-esac
-
-if [[ -z "$backend_image" || -z "$frontend_image" ]]; then
-  echo "backend and frontend image references are required" >&2
-  exit 64
-fi
-
-deployment_dir="/srv/garment-buro/$environment_name"
-cd "$deployment_dir"
-
-if ! docker info --format '{{json .SecurityOptions}}' | grep -q rootless; then
-  echo "deployment must use the garment rootless Docker daemon" >&2
-  exit 77
-fi
-
-if [[ ! -f .env ]]; then
-  echo "missing $deployment_dir/.env" >&2
-  exit 78
-fi
-if grep -q "replace-with-" .env; then
-  echo "placeholder values remain in $deployment_dir/.env" >&2
-  exit 78
-fi
-if [[ ! -f legacy/ecommerce.db ]]; then
-  echo "missing reviewed legacy database at $deployment_dir/legacy/ecommerce.db" >&2
-  exit 78
-fi
-
+revision="${4:-}"
+case "$environment_name" in production|development) ;; *) exit 64 ;; esac
+[[ "$revision" =~ ^[a-f0-9]{40}$ ]] || exit 64
+[[ "$backend_image" == "ghcr.io/garment-buro/garment-buro-backend:$environment_name-$revision" ]] || exit 64
+[[ "$frontend_image" == "ghcr.io/garment-buro/garment-buro-frontend:$environment_name-$revision" ]] || exit 64
+cd "/srv/garment-buro/$environment_name"
+# Both environments share one small host; serialize cutovers across workflows.
+exec 9>/srv/garment-buro/.deploy.lock
+flock -w 1200 9
+docker info --format '{{json .SecurityOptions}}' | grep -q rootless || exit 77
+[[ -f .env && -s legacy/ecommerce.db && -f docker-compose.next.yml ]] || exit 78
 env_mode="$(stat -c '%a' .env)"
-if (( (8#$env_mode & 077) != 0 )); then
-  echo ".env must not be readable by group or other users" >&2
-  exit 77
-fi
+(( (8#$env_mode & 077) == 0 )) || exit 77
+if grep -q 'replace-with-' .env; then echo 'Unconfigured environment' >&2; exit 78; fi
 
-if [[ -f docker-compose.next.yml ]]; then
-  mv docker-compose.next.yml docker-compose.yml
-fi
-if [[ -f remote-deploy.next.sh ]]; then
-  mv remote-deploy.next.sh remote-deploy.sh
-  chmod 0750 remote-deploy.sh
-fi
-if [[ -f backup-server.next.sh ]]; then
-  mv backup-server.next.sh backup-server.sh
-  chmod 0750 backup-server.sh
-fi
-
-export DEPLOY_ENV="$environment_name"
-export BACKEND_IMAGE="$backend_image"
-export FRONTEND_IMAGE="$frontend_image"
-
+enabled() { grep -Eiq "^${1}=(true|1|yes|on)$" .env; }
 profiles=()
-enabled() {
-  grep -Eiq "^${1}=(true|1|yes|on)$" .env
-}
-if enabled IDENTITY_API_ENABLED; then
-  profiles+=(--profile notifications)
-fi
-if enabled PAYMENT_WEBHOOK_V2_ENABLED; then
-  profiles+=(--profile payments)
-fi
-if enabled PAYMENT_RECONCILIATION_ENABLED; then
-  profiles+=(--profile payment-reconciliation)
-fi
-if enabled FULFILLMENT_OUTBOX_ENABLED; then
-  profiles+=(--profile fulfillment)
-fi
-if enabled CDEK_CREATION_ENABLED; then
-  profiles+=(--profile cdek)
+workers=()
+add_worker() { if enabled "$1"; then profiles+=(--profile "$2"); workers+=("$3"); fi; }
+add_worker IDENTITY_API_ENABLED notifications notification-worker
+add_worker PAYMENT_WEBHOOK_V2_ENABLED payments payment-worker
+add_worker PAYMENT_RECONCILIATION_ENABLED payment-reconciliation payment-reconciler
+add_worker FULFILLMENT_OUTBOX_ENABLED fulfillment fulfillment-worker
+add_worker CDEK_CREATION_ENABLED cdek cdek-worker
+if enabled PAYMENT_CREATION_ENABLED && enabled PAYMENT_MANAGEMENT_ENABLED; then
+  profiles+=(--profile order-workflows)
+  workers+=(order-workflow-worker)
 fi
 
-compose=(
-  docker compose
-  --project-name "garment-buro-$environment_name"
-  --env-file .env
-  -f docker-compose.yml
-  "${profiles[@]}"
-)
-
+export DEPLOY_ENV="$environment_name" BACKEND_IMAGE="$backend_image" FRONTEND_IMAGE="$frontend_image"
+compose=(docker compose --project-name "garment-buro-$environment_name" --env-file .env -f docker-compose.next.yml "${profiles[@]}")
 "${compose[@]}" config --quiet
-"${compose[@]}" pull
-"${compose[@]}" up -d --wait --wait-timeout 180 postgres redis minio
-"${compose[@]}" run --rm minio-init
-"${compose[@]}" run --rm migrate
-"${compose[@]}" up -d --remove-orphans
+# Do not upgrade databases or re-seed legacy uploads during an application release.
+docker pull "$backend_image"
+docker pull "$frontend_image"
+timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+backup_dir="/srv/garment-buro/backups/$environment_name/$timestamp"
+mkdir -p "$backup_dir"
+chmod 0700 "$backup_dir"
+for file in .env .release docker-compose.yml; do
+  [[ ! -f "$file" ]] || install -m 0600 "$file" "$backup_dir/$(basename "$file")"
+done
+if [[ -f .release && -f docker-compose.yml ]]; then
+  # The existing release (not the candidate) defines the volumes being backed up.
+  bash backup-server.next.sh "$environment_name"
+else
+  echo 'Existing deployment metadata required; bootstrap is a separate operation' >&2
+  exit 78
+fi
 
-wait_for_url() {
-  local label="$1"
-  local url="$2"
-  local attempts=45
-  local index
-  for ((index = 1; index <= attempts; index += 1)); do
-    if curl --fail --silent --show-error --max-time 5 "$url" >/dev/null; then
-      return 0
-    fi
-    sleep 2
-  done
-  echo "$label health check failed: $url" >&2
-  return 1
-}
-
+switched=false
 rollback() {
-  if [[ ! -f .release ]]; then
-    echo "No previous release is available for image rollback" >&2
-    return 1
+  local code=$?
+  trap - ERR
+  if [[ "$switched" == true && -f "$backup_dir/.release" ]]; then
+    echo 'Release failed; restoring previous application images' >&2
+    # Database downgrade is intentionally never automatic.
+    source "$backup_dir/.release"
+    export BACKEND_IMAGE FRONTEND_IMAGE
+    install -m 0600 "$backup_dir/docker-compose.yml" docker-compose.yml
+    docker compose --project-name "garment-buro-$environment_name" --env-file .env \
+      -f docker-compose.yml "${profiles[@]}" up -d --no-deps --pull never backend frontend "${workers[@]}" || true
   fi
-  # shellcheck disable=SC1091
-  source .release
-  if [[ -z "${BACKEND_IMAGE:-}" || -z "${FRONTEND_IMAGE:-}" ]]; then
-    echo "Previous release metadata is incomplete" >&2
-    return 1
-  fi
-  export BACKEND_IMAGE FRONTEND_IMAGE
-  "${compose[@]}" up -d --remove-orphans
+  echo "Release failed. Recovery metadata: $backup_dir" >&2
+  exit "$code"
 }
+trap rollback ERR
+
+"${compose[@]}" run --rm --no-deps database-role-init
+"${compose[@]}" run --rm --no-deps migrate
+switched=true
+"${compose[@]}" up -d --no-deps --pull never --wait --wait-timeout 180 backend frontend "${workers[@]}"
 
 frontend_port="$(sed -n 's/^FRONTEND_HOST_PORT=//p' .env | tail -n 1)"
 backend_port="$(sed -n 's/^BACKEND_HOST_PORT=//p' .env | tail -n 1)"
 health_address="$(sed -n 's/^HOST_BIND_ADDRESS=//p' .env | tail -n 1)"
 health_address="${health_address:-127.0.0.1}"
-if [[ ! "$frontend_port" =~ ^[0-9]+$ || ! "$backend_port" =~ ^[0-9]+$ ]]; then
-  echo "invalid frontend/backend host port in .env" >&2
-  exit 78
-fi
-if [[ ! "$health_address" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]]; then
-  echo "invalid host bind address in .env" >&2
-  exit 78
-fi
-
-if ! wait_for_url "backend" "http://$health_address:$backend_port/health/ready" \
-  || ! wait_for_url "frontend" "http://$health_address:$frontend_port/"; then
-  rollback || true
-  exit 1
-fi
-
+[[ "$frontend_port" =~ ^[0-9]+$ && "$backend_port" =~ ^[0-9]+$ ]] || exit 78
+[[ "$health_address" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] || exit 78
+curl --fail --silent --show-error --retry 10 --retry-delay 3 --retry-connrefused "http://$health_address:$backend_port/health/ready"
+for path in / /production /production/admin /partner; do
+  curl --fail --silent --show-error --retry 5 --retry-delay 2 --retry-connrefused \
+    "http://$health_address:$frontend_port$path" -o /dev/null
+done
+# Atomically record only a healthy release. No application secrets in this file.
 release_tmp="$(mktemp .release.XXXXXX)"
-{
-  printf 'BACKEND_IMAGE=%q\n' "$backend_image"
-  printf 'FRONTEND_IMAGE=%q\n' "$frontend_image"
-  printf 'DEPLOYED_AT=%q\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-} >"$release_tmp"
-chmod 0640 "$release_tmp"
+printf 'BACKEND_IMAGE=%q\nFRONTEND_IMAGE=%q\nSOURCE_REVISION=%q\nDEPLOYED_AT=%q\n' \
+  "$backend_image" "$frontend_image" "$revision" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$release_tmp"
+install -m 0600 docker-compose.next.yml docker-compose.yml
 mv "$release_tmp" .release
-
-"${compose[@]}" ps
-curl --fail --silent --show-error "http://$health_address:$backend_port/health/ready"
-printf '\nDeployed %s\n' "$environment_name"
+install -m 0750 backup-server.next.sh backup-server.sh
+echo "Deployed $environment_name revision $revision"

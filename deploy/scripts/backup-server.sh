@@ -46,6 +46,8 @@ chmod 0700 "$backup_dir"
 "${compose[@]}" exec -T postgres sh -ec \
   'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' \
   >"$backup_dir/postgresql.dump"
+test -s "$backup_dir/postgresql.dump"
+"${compose[@]}" exec -T postgres pg_restore --list <"$backup_dir/postgresql.dump" >/dev/null
 
 sqlite_tmp="/tmp/garment-buro-legacy-backup.sqlite3"
 "${compose[@]}" exec -T backend python -c \
@@ -59,9 +61,16 @@ install -m 0600 .env "$backup_dir/deployment.env"
 install -m 0600 .release "$backup_dir/release"
 install -m 0600 docker-compose.yml "$backup_dir/docker-compose.yml"
 
+# Preserve public media and private production originals, not only legacy uploads.
+minio_container="$("${compose[@]}" ps -q minio)"
+test -n "$minio_container"
+docker run --rm --user 0:0 --network none --volumes-from "$minio_container:ro" \
+  --entrypoint tar "$BACKEND_IMAGE" -C /data -czf - . >"$backup_dir/minio-data.tar.gz"
+gzip -t "$backup_dir/minio-data.tar.gz"
+
 (
   cd "$backup_dir"
-  sha256sum postgresql.dump ecommerce.sqlite3 legacy-uploads.tar.gz >SHA256SUMS
+  sha256sum postgresql.dump ecommerce.sqlite3 legacy-uploads.tar.gz minio-data.tar.gz >SHA256SUMS
 )
 
 printf '%s\n' "$backup_dir"

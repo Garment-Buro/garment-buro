@@ -135,6 +135,7 @@ jobs:
       - name: Validate Compose and PostgreSQL runtime role
         shell: bash
         run: |
+          bash -n deploy/scripts/remote-deploy.sh deploy/scripts/backup-server.sh
           touch deploy/.env
           compose=(docker compose --project-name garment-role-ci -f deploy/docker-compose.server.yml)
           cleanup() { "${compose[@]}" down -v --remove-orphans >/dev/null 2>&1 || true; }
