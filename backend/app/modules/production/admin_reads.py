@@ -10,6 +10,7 @@ from app.modules.identity.models import Role, User, UserRole
 from app.modules.orders.models import Order
 from app.modules.orders.workflow_models import OrderWorkflow
 from app.modules.partners.models import PartnerPayoutRequest, PartnerProfile
+from app.modules.production.models import ProductionDemoEmployee
 
 
 def money(value):
@@ -100,7 +101,10 @@ class ProductionAdminReads:
 
     async def users(self, session, *, q, status, limit, offset):
         statement = select(User).where(
-            search(q, [User.id, User.email, User.phone, User.first_name, User.last_name])
+            ~select(ProductionDemoEmployee.id)
+            .where(ProductionDemoEmployee.user_id == User.id)
+            .exists(),
+            search(q, [User.id, User.email, User.phone, User.first_name, User.last_name]),
         )
         if status:
             statement = statement.where(User.status == status)
@@ -155,6 +159,7 @@ class ProductionAdminReads:
                     "paid_orders_total"
                 ),
             )
+            .where(Order.is_demo.is_(False))
             .group_by(key)
             .subquery()
         )
@@ -271,7 +276,13 @@ class ProductionAdminReads:
             "orders_count": count,
             "orders_total": money(total),
             "paid_orders_total": money(paid),
-            "users_count": await session.scalar(select(func.count(User.id))),
+            "users_count": await session.scalar(
+                select(func.count(User.id)).where(
+                    ~select(ProductionDemoEmployee.id)
+                    .where(ProductionDemoEmployee.user_id == User.id)
+                    .exists()
+                )
+            ),
             "clients_count": await session.scalar(
                 select(func.count()).select_from(self.clients_query())
             ),
