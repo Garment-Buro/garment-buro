@@ -114,6 +114,7 @@ export interface Unit {
     files: ProductionFile[];
 }
 export interface QueueItem {
+    is_demo?: boolean;
     stage_counts?: Partial<Record<Stage, number>>;
     dtf_pending?: number;
     project_id: number;
@@ -122,7 +123,7 @@ export interface QueueItem {
     units_count: number;
     state: string;
     version: number;
-    paid_at: string;
+    paid_at: string | null;
     blocked: boolean;
 }
 export interface Queue {
@@ -154,6 +155,7 @@ export interface Project extends Omit<QueueItem, 'blocked'> {
     }[];
 }
 export interface Employee {
+    is_demo?: boolean;
     can_administer?: boolean;
     id: number;
     name: string;

@@ -40,12 +40,14 @@ class ProductionReadService:
     def __init__(self):
         self.repository = ProductionRepository()
 
-    async def queue(self, session, *, cursor=None, limit=30):
+    async def queue(self, session, *, cursor=None, limit=30, demo_only=False):
         query = (
             select(CrmOrderProject, Order, ProductionBag)
             .join(Order, Order.id == CrmOrderProject.order_id)
             .outerjoin(ProductionBag, ProductionBag.project_id == CrmOrderProject.id)
         )
+        if demo_only:
+            query = query.where(Order.is_demo.is_(True), CrmOrderProject.is_demo.is_(True))
         if cursor:
             query = query.where(CrmOrderProject.id < cursor)
         rows = list(
@@ -79,6 +81,7 @@ class ProductionReadService:
                 {
                     "project_id": project.id,
                     "order_id": order.id,
+                    "is_demo": order.is_demo,
                     "customer": " ".join(filter(None, [order.first_name, order.last_name]))
                     or f"Заказ №{order.id}",
                     "units_count": project.units_count,
@@ -87,7 +90,7 @@ class ProductionReadService:
                     "stage_counts": stage_counts.get(bag.id, {}) if bag else {},
                     "dtf_pending": dtf_counts.get(bag.id, 0) if bag else 0,
                     "paid_at": project.payment_succeeded_at_snapshot,
-                    "blocked": order.payment_status != "paid"
+                    "blocked": (not order.is_demo and order.payment_status != "paid")
                     or order.status == "cancelled"
                     or project.status in {"cancelled", "on_hold"},
                 }
@@ -227,6 +230,7 @@ class ProductionReadService:
         return {
             "project_id": project_id,
             "order_id": order.id,
+            "is_demo": order.is_demo,
             "version": bag.version if bag else 0,
             "state": bag.state if bag else "inbox",
             "customer": " ".join(filter(None, [order.first_name, order.last_name]))

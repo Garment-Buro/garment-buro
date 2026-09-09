@@ -53,6 +53,9 @@ export function ProductionBag({
             <div className={styles.bagSummary}>
                 <div>
                     <h2>Мешок {project.customer}</h2>
+                    {project.is_demo && (
+                        <p>Тестовый заказ. Не производить и не отправлять.</p>
+                    )}
                     <p>
                         Заказ №{project.order_id} ·{' '}
                         {thingsCount(project.units_count)}

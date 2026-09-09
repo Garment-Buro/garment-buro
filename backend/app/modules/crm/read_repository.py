@@ -46,7 +46,8 @@ class CrmReadRepository:
         cursor: int | None,
         limit: int,
     ) -> tuple[list[CrmOrderProject], int | None]:
-        statement = select(CrmOrderProject)
+        # The legacy CRM contract represents paid orders only; demos live in the terminal.
+        statement = select(CrmOrderProject).where(CrmOrderProject.is_demo.is_(False))
         if status is not None:
             statement = statement.where(CrmOrderProject.status == status)
         if assigned_to_user_id is not None:
@@ -67,7 +68,11 @@ class CrmReadRepository:
         *,
         project_id: int,
     ) -> CrmOrderProject | None:
-        return await session.get(CrmOrderProject, project_id)
+        return await session.scalar(
+            select(CrmOrderProject).where(
+                CrmOrderProject.id == project_id, CrmOrderProject.is_demo.is_(False)
+            )
+        )
 
     @staticmethod
     async def list_project_units(

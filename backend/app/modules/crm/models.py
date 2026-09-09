@@ -5,6 +5,7 @@ from decimal import Decimal
 from enum import Enum
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -41,6 +42,11 @@ class CrmOrderProject(Base, IntegerIdMixin, TimestampMixin):
     __tablename__ = "crm_order_projects"
     __table_args__ = (
         CheckConstraint(
+            "(is_demo AND source_fulfillment_job_id IS NULL AND source_payment_attempt_id IS NULL AND payment_succeeded_at_snapshot IS NULL) "
+            "OR (NOT is_demo AND source_fulfillment_job_id IS NOT NULL AND source_payment_attempt_id IS NOT NULL AND payment_succeeded_at_snapshot IS NOT NULL)",
+            name="crm_project_payment_evidence_or_demo",
+        ),
+        CheckConstraint(
             "status IN ('queued', 'in_progress', 'on_hold', 'completed', 'cancelled')",
             name="crm_order_project_status_valid",
         ),
@@ -72,15 +78,16 @@ class CrmOrderProject(Base, IntegerIdMixin, TimestampMixin):
         unique=True,
         index=True,
     )
-    source_fulfillment_job_id: Mapped[int] = mapped_column(
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    source_fulfillment_job_id: Mapped[int | None] = mapped_column(
         ForeignKey("fulfillment_jobs.id", ondelete="RESTRICT"),
-        nullable=False,
+        nullable=True,
         unique=True,
         index=True,
     )
-    source_payment_attempt_id: Mapped[int] = mapped_column(
+    source_payment_attempt_id: Mapped[int | None] = mapped_column(
         ForeignKey("payment_attempts.id", ondelete="RESTRICT"),
-        nullable=False,
+        nullable=True,
         index=True,
     )
     assigned_to_user_id: Mapped[int | None] = mapped_column(
@@ -101,9 +108,9 @@ class CrmOrderProject(Base, IntegerIdMixin, TimestampMixin):
     units_count: Mapped[int] = mapped_column(Integer, nullable=False)
     total_price_snapshot: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
-    payment_succeeded_at_snapshot: Mapped[datetime] = mapped_column(
+    payment_succeeded_at_snapshot: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
-        nullable=False,
+        nullable=True,
     )
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

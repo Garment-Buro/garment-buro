@@ -3,6 +3,13 @@ import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import { canAct, currentStage, orderBlocked, safeImage } from './workflow.ts';
 
+test('explicit demo orders do not need payment but still respect production stops', () => {
+    const demo = { is_demo: true, payment_status: 'pending', order_status: 'processing', project_status: 'queued' };
+    assert.equal(orderBlocked(demo), false);
+    assert.equal(orderBlocked({ ...demo, is_demo: false }), true);
+    assert.equal(orderBlocked({ ...demo, project_status: 'on_hold' }), true);
+});
+
 test('floor roles cannot act at another station; tech supervises the cycle', () => {
     assert.equal(canAct(['cut'], 'shipping'), false);
     assert.equal(canAct(['cut'], 'cut'), true);

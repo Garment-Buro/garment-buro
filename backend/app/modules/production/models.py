@@ -21,6 +21,14 @@ from app.db.base import Base, IntegerIdMixin, TimestampMixin
 JSON_DATA = JSON().with_variant(JSONB, "postgresql")
 
 
+class ProductionDemoEmployee(Base, IntegerIdMixin):
+    """Explicitly restricted demo accounts, never identified by editable profile fields."""
+
+    __tablename__ = "production_demo_employees"
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), unique=True)
+    station: Mapped[str] = mapped_column(String(24), unique=True)
+
+
 class ProductionBag(Base, IntegerIdMixin, TimestampMixin):
     __tablename__ = "production_bags"
     __table_args__ = (

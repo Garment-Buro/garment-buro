@@ -34,6 +34,7 @@ def order_row(row):
     order, workflow_state = row
     return {
         "id": order.id,
+        "is_demo": order.is_demo,
         "user_id": order.user_id,
         "name": " ".join(x for x in (order.first_name, order.last_name) if x),
         "email": order.email,
@@ -244,7 +245,7 @@ class ProductionAdminReads:
                     func.count(Order.id),
                     func.sum(Order.total_price),
                     func.sum(case((Order.payment_status == "paid", Order.total_price), else_=0)),
-                )
+                ).where(Order.is_demo.is_(False))
             )
         ).one()
         payout_states = [
@@ -261,6 +262,7 @@ class ProductionAdminReads:
             for status, n in await session.execute(
                 select(state, func.count(Order.id))
                 .outerjoin(OrderWorkflow, OrderWorkflow.order_id == Order.id)
+                .where(Order.is_demo.is_(False))
                 .group_by(state)
             )
         ]

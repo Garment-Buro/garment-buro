@@ -9,9 +9,10 @@ from app.modules.crm.models import CrmProductionUnit, CrmProductionUnitStatus, C
 from app.modules.crm.production_service import CrmProductionService
 from app.modules.crm.service import CrmProjectService
 from app.modules.delivery.models import CdekShipment
-from app.modules.orders.models import Order, OrderItem
+from app.modules.orders.models import Order, OrderItem, OrderStatusHistory
 from app.modules.orders.service import OrderLifecycleService
 from app.modules.orders.workflow_repository import workflow_for_order
+from app.modules.production.demo_access import require_demo_project
 from app.modules.production.evidence import (
     ProductionConflict,
     ProductionNotFound,
@@ -43,6 +44,7 @@ class ProductionService:
         self, session, *, project_id: int, actor_id: int, key: str, command: ProductionCommand
     ):
         stations = await stations_for_user(session, actor_id)
+        await require_demo_project(session, actor_id, project_id)
         fingerprint = digest(
             {"actor": actor_id, "project": project_id, "command": command.model_dump(mode="json")}
         )
@@ -54,6 +56,8 @@ class ProductionService:
             select(Order).where(Order.id == project.order_id).with_for_update()
         )
         project = await self.repository.project(session, project_id, lock=True)
+        if order is not None and order.is_demo != project.is_demo:
+            raise ProductionConflict("Учебный признак проекта не совпадает с исходным заказом")
         replay = await self.repository.event(session, key)
         if replay:
             if replay.command_digest != fingerprint:
@@ -65,7 +69,7 @@ class ProductionService:
             allowed_order_states |= {"shipped", "completed"}
         if (
             order is None
-            or order.payment_status != "paid"
+            or (not order.is_demo and order.payment_status != "paid")
             or order.status not in allowed_order_states
         ):
             raise ProductionConflict("Работа доступна только по оплаченному заказу в обработке")
@@ -427,9 +431,26 @@ class ProductionService:
                 or not (order.delivery_address or order.cdek_point_code)
             ):
                 raise ProductionConflict("Не заполнены данные получателя или доставки в заказе")
-            await OrderLifecycleService(self.settings).mark_shipped(
-                session, order_id=order.id, actor_user_id=actor
-            )
+            if order.is_demo:
+                if not command.tracking_number.startswith("DEMO-"):
+                    raise ProductionConflict("Для учебной отгрузки используйте трек DEMO-…")
+                previous = order.status
+                order.status = "shipped"
+                order.version += 1
+                session.add(
+                    OrderStatusHistory(
+                        order_id=order.id,
+                        version=order.version,
+                        from_status=previous,
+                        to_status="shipped",
+                        reason_code="production.demo_dispatch",
+                        actor_user_id=actor,
+                    )
+                )
+            else:
+                await OrderLifecycleService(self.settings).mark_shipped(
+                    session, order_id=order.id, actor_user_id=actor
+                )
             bag.tracking_number = command.tracking_number
             bag.state = "dispatched"
 

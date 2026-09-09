@@ -42,6 +42,8 @@ class FulfillmentOutboxService:
         payment_attempt_id: int | None,
         now: datetime | None = None,
     ) -> list[FulfillmentJob]:
+        if order.is_demo:
+            return []
         if not self.settings.fulfillment_outbox_enabled:
             return []
         if order.id is None or payment_attempt_id is None or payment_attempt_id <= 0:

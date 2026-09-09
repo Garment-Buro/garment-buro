@@ -25,6 +25,7 @@ from app.modules.identity.models import User
 from app.modules.production.admin_router import router as admin_router
 from app.modules.production.auth_router import get_production_user
 from app.modules.production.auth_router import router as auth_router
+from app.modules.production.demo_access import is_demo_employee, require_demo_resource
 from app.modules.production.evidence import ProductionConflict, ProductionNotFound
 from app.modules.production.models import ProductionSpecificationFile
 from app.modules.production.read_service import ProductionReadService
@@ -44,6 +45,7 @@ async def access(request: Request, response: Response, user: CurrentUser, sessio
     if not request.app.state.settings.production_terminal_enabled:
         raise HTTPException(503, "Производственный терминал пока выключен")
     try:
+        await require_demo_resource(session, user.id, request.path_params)
         return user, await stations_for_user(session, user.id)
     except ProductionDenied as error:
         raise HTTPException(403, str(error)) from error
@@ -59,6 +61,7 @@ async def me(auth: Auth, request: Request, session: Session):
         "id": user.id,
         "name": user.first_name or user.email or "Сотрудник",
         "stations": stations,
+        "is_demo": await is_demo_employee(session, user.id),
         "can_administer": getattr(request.state, "production_station", None) == "admin"
         and await can_administer(session, user.id),
     }
@@ -71,7 +74,12 @@ async def projects(
     cursor: int | None = Query(default=None, ge=1),
     limit: int = Query(default=30, ge=1, le=100),
 ):
-    return await ProductionReadService().queue(session, cursor=cursor, limit=limit)
+    return await ProductionReadService().queue(
+        session,
+        cursor=cursor,
+        limit=limit,
+        demo_only=await is_demo_employee(session, _auth[0].id),
+    )
 
 
 @router.get("/projects/{project_id}")

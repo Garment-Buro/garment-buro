@@ -4,7 +4,7 @@ export const currentStage = (unit: Unit) =>
 export const canAct = (stations: Station[], station: Station) =>
     stations.includes('tech') || stations.includes(station);
 export const orderBlocked = (project: Project) =>
-    project.payment_status !== 'paid' ||
+    (!project.is_demo && project.payment_status !== 'paid') ||
     project.order_status !== 'processing' ||
     ['cancelled', 'on_hold'].includes(project.project_status);
 export const matchesStation = (unit: Unit, station: Station) =>

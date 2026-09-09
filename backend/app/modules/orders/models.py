@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -82,6 +83,7 @@ class Order(Base, IntegerIdMixin, TimestampMixin):
         nullable=True,
         index=True,
     )
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     email_normalized: Mapped[str | None] = mapped_column(String(320), nullable=True, index=True)
     phone: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)

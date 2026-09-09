@@ -111,6 +111,7 @@ export function ProductionWorkspace() {
                 <span>
                     <strong>{item.customer}</strong>
                     <small>
+                        {item.is_demo && 'ТЕСТ · '}
                         Заказ №{item.order_id} · {thingsCount(item.units_count)}
                     </small>
                     <em>
@@ -150,13 +151,18 @@ export function ProductionWorkspace() {
                     </div>
                     <div className={styles.account}>
                         <small>Аккаунт · Garment Buro</small>
-                        <strong>{employee?.name ?? 'Сотрудник'}</strong>
+                        <strong title={employee?.name}>
+                            {employee?.name ?? 'Сотрудник'}
+                        </strong>
                     </div>
                     <span className={styles.role}>{stationRoles[station]}</span>
                     {employee?.can_administer && (
-                        <Link href="/production/admin">Администратор</Link>
+                        <Link className={styles.adminLink} href="/production/admin">
+                            Администратор
+                        </Link>
                     )}
                     <button
+                        className={styles.logout}
                         aria-label="Выйти из терминала"
                         disabled={busy || printing}
                         onClick={() => void logout()}
@@ -205,6 +211,13 @@ export function ProductionWorkspace() {
                         ))}
                     </nav>
                     <div aria-live="polite">
+                        {employee?.is_demo && (
+                            <p className={styles.notice}>
+                                Учебный режим. Только тестовые заказы, без оплаты
+                                и реальной отправки. Файлы примеров не являются
+                                производственными лекалами.
+                            </p>
+                        )}
                         {(terminal.error || printError || authError) && (
                             <p className={styles.error} role="alert">
                                 {terminal.error || printError || authError}

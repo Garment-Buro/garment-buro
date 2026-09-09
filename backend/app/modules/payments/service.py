@@ -390,6 +390,8 @@ class PaymentService:
 
     @staticmethod
     def _validate_payable_order(order: Order) -> None:
+        if order.is_demo:
+            raise PaymentStateError("Demo orders cannot create real payments")
         if (
             order.status != OrderStatus.NEW.value
             or order.payment_status != OrderPaymentStatus.PENDING.value

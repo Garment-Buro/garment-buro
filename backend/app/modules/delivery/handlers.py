@@ -67,6 +67,8 @@ class CdekShipmentHandoffHandler:
         )
         if order is None:
             raise FulfillmentHandlerError("order_missing", permanent=True)
+        if order.is_demo:
+            raise FulfillmentHandlerError("demo_order_no_delivery", permanent=True)
         if (
             order.payment_status != OrderPaymentStatus.PAID.value
             or order.status not in PAID_FULFILLMENT_ORDER_STATUSES
