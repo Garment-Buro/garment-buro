@@ -393,7 +393,16 @@ def test_api_denies_customers_and_hides_delivery(tmp_path):
                 transport=ASGITransport(app=app), base_url="https://test"
             ) as client:
                 assert (await client.get("/api/production/me")).status_code == 403
+                assert (await client.get("/api/production/orders/1/project")).status_code == 403
                 current = people[2]
+                lookup = await client.get("/api/production/orders/1/project")
+                assert lookup.status_code == 200
+                assert lookup.json() == {"project_id": 1}
+                assert lookup.headers["cache-control"] == "no-store"
+                assert (await client.get("/api/production/orders/999/project")).status_code == 404
+                queue = (await client.get("/api/production/projects")).json()
+                assert queue["items"][0]["stage_counts"] == {"cut": 1}
+                assert queue["items"][0]["dtf_pending"] == 1
                 response = await client.get("/api/production/projects/1")
                 assert response.status_code == 200, response.text
                 assert response.headers["cache-control"] == "no-store"

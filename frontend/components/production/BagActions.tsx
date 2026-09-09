@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import type { Project, SendCommand, Station } from '@/lib/production/types';
 import { canAct } from '@/lib/production/workflow';
+import { bagCanMove } from '@/lib/production/workspaces';
 import styles from './ProductionTerminal.module.css';
 export function BagActions({
     project,
@@ -41,7 +42,7 @@ export function BagActions({
                     canAct(stations, 'kit') && (
                         <button
                             className={styles.primary}
-                            disabled={busy}
+                            disabled={busy || !bagCanMove(project)}
                             onClick={() => void send({ action: 'send_bag' })}
                         >
                             Мешок проверен — передать в цех

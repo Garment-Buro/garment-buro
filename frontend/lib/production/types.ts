@@ -114,6 +114,8 @@ export interface Unit {
     files: ProductionFile[];
 }
 export interface QueueItem {
+    stage_counts?: Partial<Record<Stage, number>>;
+    dtf_pending?: number;
     project_id: number;
     order_id: number;
     customer: string;

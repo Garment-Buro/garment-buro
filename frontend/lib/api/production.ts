@@ -1,8 +1,17 @@
 import { requestJson } from './http';
 import type { Command, Employee, Project, Queue } from '@/lib/production/types';
 
-const headers = (token: string): Record<string, string> => token ? { Authorization: `Bearer ${token}` } : {};
+const headers = (token: string): Record<string, string> =>
+    token ? { Authorization: `Bearer ${token}` } : {};
 export const productionApi = {
+    resolveOrder: (token: string, id: number) =>
+        requestJson<{ project_id: number }>(
+            `/production/orders/${id}/project`,
+            {
+                headers: headers(token),
+                cache: 'no-store',
+            },
+        ),
     me: (token: string, signal?: AbortSignal) =>
         requestJson<Employee>('/production/me', {
             headers: headers(token),

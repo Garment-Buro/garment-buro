@@ -15,7 +15,7 @@ from app.modules.crm.file_service import (
     CrmFileStorageError,
     UnsupportedCrmFileError,
 )
-from app.modules.crm.models import CrmProductionUnit
+from app.modules.crm.models import CrmOrderProject, CrmProductionUnit
 from app.modules.crm.production_service import (
     CrmProductionConflictError,
     CrmProductionVersionConflictError,
@@ -84,6 +84,17 @@ async def project(project_id: int, auth: Auth, session: Session):
         raise HTTPException(404, str(error)) from error
     except ProductionConflict as error:
         raise HTTPException(409, str(error)) from error
+
+
+@router.get("/orders/{order_id}/project")
+async def project_for_order(order_id: int, _auth: Auth, session: Session):
+    """Resolve a physical bag by order number, including outside the loaded page."""
+    project_id = await session.scalar(
+        select(CrmOrderProject.id).where(CrmOrderProject.order_id == order_id)
+    )
+    if project_id is None:
+        raise HTTPException(404, "Заказ ещё не передан в производство или не найден")
+    return {"project_id": project_id}
 
 
 @router.post("/projects/{project_id}/commands", response_model=CommandReceipt)

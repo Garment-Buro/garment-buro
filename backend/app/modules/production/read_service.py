@@ -12,7 +12,12 @@ from app.modules.production.evidence import (
     order_evidence,
     verify_specification,
 )
-from app.modules.production.models import ProductionBag, ProductionEvent
+from app.modules.production.models import (
+    ProductionBag,
+    ProductionEvent,
+    ProductionSpecification,
+    ProductionWorkItem,
+)
 from app.modules.production.repository import ProductionRepository
 
 
@@ -48,6 +53,27 @@ class ProductionReadService:
                 await session.execute(query.order_by(CrmOrderProject.id.desc()).limit(limit + 1))
             ).all()
         )
+        # One bounded batch for the page, not one request per bag or station.
+        stage_counts = {}
+        dtf_counts = {}
+        bag_ids = [bag.id for _, _, bag in rows[:limit] if bag]
+        if bag_ids:
+            work_rows = await session.execute(
+                select(ProductionWorkItem, ProductionSpecification)
+                .join(
+                    ProductionSpecification,
+                    ProductionSpecification.id == ProductionWorkItem.specification_id,
+                )
+                .where(ProductionWorkItem.bag_id.in_(bag_ids))
+            )
+            for work, spec in work_rows:
+                route = spec.specification["route"]
+                counts = stage_counts.setdefault(work.bag_id, {})
+                if work.stage_index < len(route):
+                    stage = route[work.stage_index]
+                    counts[stage] = counts.get(stage, 0) + 1
+                if spec.specification["print_file_ids"] and not work.dtf_ready:
+                    dtf_counts[work.bag_id] = dtf_counts.get(work.bag_id, 0) + 1
         return {
             "items": [
                 {
@@ -58,6 +84,8 @@ class ProductionReadService:
                     "units_count": project.units_count,
                     "state": bag.state if bag else "inbox",
                     "version": bag.version if bag else 0,
+                    "stage_counts": stage_counts.get(bag.id, {}) if bag else {},
+                    "dtf_pending": dtf_counts.get(bag.id, 0) if bag else 0,
                     "paid_at": project.payment_succeeded_at_snapshot,
                     "blocked": order.payment_status != "paid"
                     or order.status == "cancelled"

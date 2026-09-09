@@ -89,7 +89,7 @@ export function ProductionUnit({
                     ))}
                 </div>
             )}
-            {tech && project.state === 'inbox' && (
+            {tech && station === 'tech' && project.state === 'inbox' && (
                 <SpecificationForm unit={unit} send={send} busy={busy} />
             )}
             {spec && (

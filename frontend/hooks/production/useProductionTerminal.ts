@@ -12,6 +12,7 @@ export function useProductionTerminal() {
     const [queue, setQueue] = useState<Queue>({ items: [], next_cursor: null });
     const [project, setProject] = useState<Project | null>(null);
     const [selected, setSelected] = useState<number | null>(null);
+    const [focusedUnit, setFocusedUnit] = useState<number | null>(null);
     const [loading, setLoading] = useState(true);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState('');
@@ -25,12 +26,15 @@ export function useProductionTerminal() {
             new URLSearchParams(window.location.search).get('project'),
         );
         if (Number.isSafeInteger(id) && id > 0) setSelected(id);
+        const unit = Number(
+            new URLSearchParams(window.location.search).get('unit'),
+        );
+        if (Number.isSafeInteger(unit) && unit > 0) setFocusedUnit(unit);
     }, []);
     useEffect(() => {
         const controller = new AbortController();
         setLoading(true);
         setError('');
-        setProject(null);
         void (async () => {
             try {
                 const me = await run((token) =>
@@ -54,6 +58,7 @@ export function useProductionTerminal() {
                 setProject(detail);
             } catch (error) {
                 if (!controller.signal.aborted) {
+                    setProject(null);
                     setEmployee(null);
                     setQueue({ items: [], next_cursor: null });
                     setError(
@@ -69,14 +74,21 @@ export function useProductionTerminal() {
         return () => controller.abort();
     }, [run, userId, selected, refresh]);
 
-    const select = (id: number) => {
+    const select = (id: number | null, unit?: number) => {
         if (locked.current) return;
         setSelected(id);
+        setFocusedUnit(unit ?? null);
+        reload();
         setNotice('');
-        window.history.replaceState(null, '', `/production?project=${id}`);
+        setProject(null);
+        window.history.replaceState(
+            null,
+            '',
+            `${window.location.pathname}${id ? `?project=${id}${unit ? `&unit=${unit}#unit-${unit}` : ''}` : ''}`,
+        );
     };
     const send = async (command: Command) => {
-        if (!project || locked.current) return false;
+        if (!project || loading || locked.current) return false;
         locked.current = true;
         setBusy(true);
         setError('');
@@ -94,6 +106,7 @@ export function useProductionTerminal() {
                 ),
             );
             setNotice('Действие сохранено в журнале');
+            setLoading(true);
             reload();
             return true;
         } catch (error) {
@@ -142,6 +155,7 @@ export function useProductionTerminal() {
         queue,
         project,
         selected,
+        focusedUnit,
         loading,
         busy,
         error,
