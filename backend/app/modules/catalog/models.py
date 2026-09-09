@@ -80,6 +80,12 @@ class Product(Base, IntegerIdMixin, TimestampMixin):
         default=True,
         server_default="true",
     )
+    is_demo: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+    )
     product_type: Mapped[str] = mapped_column(
         "type",
         String(64),

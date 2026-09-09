@@ -27,13 +27,14 @@ async def ensure_references(session, actor):
             slug="production-demo-hoodie-v1",
             price=0,
             is_active=False,
+            is_demo=True,
             sizes=["M"],
             colors=["navy"],
         )
         session.add(product)
         await session.flush()
-    if product.is_active:
-        raise ValueError("Demo catalog product must remain hidden")
+    if product.is_active or not product.is_demo:
+        raise ValueError("Demo catalog product must remain hidden and explicitly marked")
     service = CrmReferenceService()
     model = await session.scalar(
         select(CrmGarmentModel).where(CrmGarmentModel.code == "DEMO_HOODIE_V1")
