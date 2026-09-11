@@ -10,7 +10,7 @@ from app.modules.identity.models import Role, User, UserRole
 from app.modules.orders.models import Order
 from app.modules.orders.workflow_models import OrderWorkflow
 from app.modules.partners.models import PartnerPayoutRequest, PartnerProfile
-from app.modules.production.models import ProductionDemoEmployee
+from app.modules.production.auth_models import ProductionCredential, ProductionEmployee
 
 
 def money(value):
@@ -99,42 +99,68 @@ class ProductionAdminReads:
             ],
         }
 
-    async def users(self, session, *, q, status, limit, offset):
-        statement = select(User).where(
-            ~select(ProductionDemoEmployee.id)
-            .where(ProductionDemoEmployee.user_id == User.id)
-            .exists(),
-            search(q, [User.id, User.email, User.phone, User.first_name, User.last_name]),
+    async def employees(self, session, *, q, status, limit, offset):
+        statement = (
+            select(ProductionEmployee, User)
+            .join(User, User.id == ProductionEmployee.user_id)
+            .where(
+                search(q, [User.id, User.email, User.phone, User.first_name, User.last_name]),
+            )
         )
         if status:
             statement = statement.where(User.status == status)
-        users = list(
-            await session.scalars(
+        rows = (
+            await session.execute(
                 statement.order_by(User.id.desc()).offset(offset).limit(limit + 1)
             )
-        )
+        ).all()
         roles = {}
-        if users:
+        user_ids = [user.id for _, user in rows]
+        if user_ids:
             for user_id, role in await session.execute(
                 select(UserRole.user_id, Role.name)
                 .join(Role, Role.id == UserRole.role_id)
-                .where(UserRole.user_id.in_([u.id for u in users]))
+                .where(
+                    UserRole.user_id.in_(user_ids),
+                    Role.name.like("production_%"),
+                    Role.name != "production_admin",
+                )
             ):
                 roles.setdefault(user_id, []).append(role)
+        active_codes = {
+            user_id: updated_at
+            for user_id, updated_at in await session.execute(
+                select(ProductionCredential.user_id, ProductionCredential.updated_at).where(
+                    ProductionCredential.user_id.in_(user_ids),
+                    ProductionCredential.active.is_(True),
+                )
+            )
+        }
         return page(
-            users,
+            rows,
             limit,
             offset,
-            lambda u: {
-                "id": u.id,
-                "name": " ".join(x for x in (u.first_name, u.last_name) if x),
-                "email": u.email,
-                "phone": u.phone,
-                "status": u.status,
-                "created_at": u.created_at,
-                "roles": sorted(roles.get(u.id, [])),
+            lambda row: {
+                "id": row[1].id,
+                "first_name": row[1].first_name or "",
+                "last_name": row[1].last_name or "",
+                "name": " ".join(x for x in (row[1].first_name, row[1].last_name) if x),
+                "email": row[1].email,
+                "phone": row[1].phone,
+                "status": row[1].status,
+                "created_at": row[0].created_at,
+                "stations": sorted(
+                    role.removeprefix("production_") for role in roles.get(row[1].id, [])
+                ),
+                "primary_station": row[0].primary_station,
+                "code_active": row[1].id in active_codes,
+                "code_updated_at": active_codes.get(row[1].id),
             },
         )
+
+    async def users(self, session, *, q, status, limit, offset):
+        """Compatibility alias: terminal users are production employees."""
+        return await self.employees(session, q=q, status=status, limit=limit, offset=offset)
 
     def clients_query(self):
         # Registered accounts never merge by contact. Unidentified guests stay distinct.
@@ -276,13 +302,7 @@ class ProductionAdminReads:
             "orders_count": count,
             "orders_total": money(total),
             "paid_orders_total": money(paid),
-            "users_count": await session.scalar(
-                select(func.count(User.id)).where(
-                    ~select(ProductionDemoEmployee.id)
-                    .where(ProductionDemoEmployee.user_id == User.id)
-                    .exists()
-                )
-            ),
+            "employees_count": await session.scalar(select(func.count(ProductionEmployee.id))),
             "clients_count": await session.scalar(
                 select(func.count()).select_from(self.clients_query())
             ),

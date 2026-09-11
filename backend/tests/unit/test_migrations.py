@@ -14,7 +14,8 @@ def test_alembic_has_one_linear_partner_cabinet_head() -> None:
     config = Config(str(backend_dir / "alembic.ini"))
     scripts = ScriptDirectory.from_config(config)
 
-    assert scripts.get_heads() == ["20260909_0040"]
+    assert scripts.get_heads() == ["20260911_0041"]
+    assert scripts.get_revision("20260911_0041").down_revision == "20260909_0040"
     assert scripts.get_revision("20260909_0040").down_revision == "20260909_0039"
     assert scripts.get_revision("20260909_0039").down_revision == "20260909_0038"
     assert scripts.get_revision("20260909_0038").down_revision == "20260909_0037"
@@ -54,6 +55,7 @@ def test_identity_security_tables_share_the_target_metadata() -> None:
         "refresh_sessions",
         "security_audit_events",
         "identity_migration_runs",
+        "production_employees",
     } <= set(Base.metadata.tables)
 
 

@@ -80,6 +80,7 @@ from app.modules.payments.models import (
 from app.modules.payouts.models import Payout
 from app.modules.production.auth_models import (
     ProductionCredential,
+    ProductionEmployee,
     ProductionLoginLimit,
     ProductionSession,
 )
@@ -93,6 +94,7 @@ from app.modules.production.models import (
 
 __all__ = [
     "ProductionCredential",
+    "ProductionEmployee",
     "ProductionSession",
     "ProductionLoginLimit",
     "OrderWorkflow",

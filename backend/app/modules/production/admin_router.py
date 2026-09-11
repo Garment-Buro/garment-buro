@@ -14,6 +14,12 @@ from app.modules.partners.service import (
 )
 from app.modules.production.admin_reads import ProductionAdminReads
 from app.modules.production.auth_router import get_production_user
+from app.modules.production.employee_schemas import EmployeeCodeResponse, EmployeeWrite
+from app.modules.production.employee_service import (
+    EmployeeConflictError,
+    EmployeeNotFoundError,
+    ProductionEmployeeService,
+)
 from app.modules.production.security import can_administer
 
 router = APIRouter(prefix="/admin", tags=["production-admin"])
@@ -67,6 +73,70 @@ async def order(order_id: int, _admin: Admin, session: Session):
 @router.get("/users")
 async def users(_admin: Admin, session: Session, query: Annotated[ListQuery, Query()]):
     return await ProductionAdminReads().users(session, **query.model_dump())
+
+
+@router.get("/employees")
+async def employees(_admin: Admin, session: Session, query: Annotated[ListQuery, Query()]):
+    return await ProductionAdminReads().employees(session, **query.model_dump())
+
+
+def employee_pepper(request: Request) -> str:
+    return request.app.state.settings.require_secret("identity_otp_pepper", "IDENTITY_OTP_PEPPER")
+
+
+@router.post("/employees", response_model=EmployeeCodeResponse)
+async def create_employee(payload: EmployeeWrite, request: Request, admin: Admin, session: Session):
+    try:
+        employee, code = await ProductionEmployeeService().create(
+            session,
+            payload=payload,
+            actor_id=admin.id,
+            pepper=employee_pepper(request),
+        )
+        return {"employee": employee, "code": code}
+    except EmployeeConflictError as error:
+        await session.rollback()
+        raise HTTPException(409, str(error)) from error
+
+
+@router.put("/employees/{user_id}", response_model=EmployeeCodeResponse)
+async def update_employee(
+    user_id: int,
+    payload: EmployeeWrite,
+    request: Request,
+    admin: Admin,
+    session: Session,
+):
+    try:
+        employee, code = await ProductionEmployeeService().update(
+            session,
+            user_id=user_id,
+            payload=payload,
+            actor_id=admin.id,
+            pepper=employee_pepper(request),
+        )
+        return {"employee": employee, "code": code}
+    except EmployeeNotFoundError as error:
+        raise HTTPException(404, "Сотрудник не найден") from error
+    except EmployeeConflictError as error:
+        await session.rollback()
+        raise HTTPException(409, str(error)) from error
+
+
+@router.post("/employees/{user_id}/code", response_model=EmployeeCodeResponse)
+async def rotate_employee_code(user_id: int, request: Request, admin: Admin, session: Session):
+    try:
+        employee, code = await ProductionEmployeeService().rotate_code(
+            session,
+            user_id=user_id,
+            actor_id=admin.id,
+            pepper=employee_pepper(request),
+        )
+        return {"employee": employee, "code": code}
+    except EmployeeNotFoundError as error:
+        raise HTTPException(404, "Сотрудник не найден") from error
+    except EmployeeConflictError as error:
+        raise HTTPException(409, str(error)) from error
 
 
 @router.get("/clients")

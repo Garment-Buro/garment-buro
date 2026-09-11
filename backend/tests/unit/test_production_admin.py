@@ -13,6 +13,7 @@ from app.modules.identity.repository import IdentityRepository
 from app.modules.orders.models import Order
 from app.modules.partners.models import PartnerPayoutRequest, PartnerProfile
 from app.modules.partners.service import PartnerProgramService
+from app.modules.production.auth_models import ProductionCredential, ProductionEmployee
 from app.modules.production.auth_service import issue_code
 from app.modules.production.router import router
 from tests.unit.test_production_auth import PEPPER
@@ -64,6 +65,7 @@ async def admin_app(tmp_path):
             admin_code = await issue_code(
                 session, user_id=person.id, station="admin", pepper=PEPPER
             )
+            session.add(ProductionEmployee(user_id=2, primary_station="cut"))
             cutter_code = await issue_code(session, user_id=2, station="cut", pepper=PEPPER)
             await session.commit()
         yield app, db, admin_code, cutter_code
@@ -77,27 +79,33 @@ def test_administrator_reads_all_sections_without_exposing_secrets(tmp_path):
                 result = await client.post("/api/production/auth/login", json={"code": code})
                 assert result.status_code == 200, result.text
                 assert (await client.get("/api/production/me")).json()["can_administer"]
-                for name in ("stats", "orders", "users", "clients", "payouts", "orders/1"):
+                for name in (
+                    "stats",
+                    "orders",
+                    "employees",
+                    "users",
+                    "clients",
+                    "payouts",
+                    "orders/1",
+                ):
                     response = await client.get(f"/api/production/admin/{name}")
                     assert response.status_code == 200, response.text
                     assert response.headers["cache-control"] == "no-store"
                     assert "code_digest" not in response.text and "ciphertext" not in response.text
                     assert "signing_url" not in response.text and "session" not in response.text
                 stats = (await client.get("/api/production/admin/stats")).json()
-                assert stats["users_count"] == 4 and stats["orders_count"] == 1
+                assert stats["employees_count"] == 1 and stats["orders_count"] == 1
                 assert stats["payout_states"] == [
                     {"status": "requested", "count": 1, "amount": "1250.50"}
                 ]
-                users = (await client.get("/api/production/admin/users?limit=1")).json()
-                assert len(users["items"]) == 1 and users["next_offset"] == 1
-                second = (await client.get("/api/production/admin/users?limit=1&offset=1")).json()
-                assert users["items"][0]["id"] != second["items"][0]["id"]
+                users = (await client.get("/api/production/admin/employees?limit=1")).json()
+                assert len(users["items"]) == 1 and users["next_offset"] is None
                 assert (
-                    await client.get("/api/production/admin/users?q=admin%40example.test")
-                ).json()["items"][0]["email"] == "admin@example.test"
+                    await client.get("/api/production/admin/employees?q=customer%40example.test")
+                ).json()["items"] == []
                 assert (await client.get("/api/production/admin/orders/999")).status_code == 404
                 assert (
-                    await client.get("/api/production/admin/users?limit=10000")
+                    await client.get("/api/production/admin/employees?limit=10000")
                 ).status_code == 422
             async with db.session() as session:
                 # Unpaid orders must not be counted as captured/paid turnover.
@@ -117,7 +125,7 @@ def test_floor_code_cannot_be_used_as_admin_even_after_role_grant(tmp_path):
     async def scenario():
         async with admin_app(tmp_path) as (app, db, _, cutter):
             async with AsyncClient(transport=ASGITransport(app), base_url="https://test") as client:
-                assert (await client.get("/api/production/admin/users")).status_code == 401
+                assert (await client.get("/api/production/admin/employees")).status_code == 401
                 await client.post("/api/production/auth/login", json={"code": cutter})
                 for path in ("stats", "orders", "orders/1", "users", "clients", "payouts"):
                     assert (await client.get(f"/api/production/admin/{path}")).status_code == 403
@@ -126,7 +134,7 @@ def test_floor_code_cannot_be_used_as_admin_even_after_role_grant(tmp_path):
                     session.add(UserRole(user_id=2, role_id=role.id))
                     await session.commit()
                 assert not (await client.get("/api/production/me")).json()["can_administer"]
-                assert (await client.get("/api/production/admin/users")).status_code == 403
+                assert (await client.get("/api/production/admin/employees")).status_code == 403
                 assert (
                     await client.post(
                         "/api/production/admin/payouts/1/review",
@@ -189,5 +197,140 @@ def test_admin_code_is_not_available_to_ordinary_worker(tmp_path):
             async with db.session() as session:
                 with pytest.raises(ValueError):
                     await issue_code(session, user_id=2, station="admin", pepper=PEPPER)
+
+    asyncio.run(scenario())
+
+
+def test_admin_manages_employee_roles_status_and_one_time_codes(tmp_path):
+    async def scenario():
+        async with admin_app(tmp_path) as (app, db, admin_code, _):
+            async with AsyncClient(transport=ASGITransport(app), base_url="https://test") as client:
+                await client.post("/api/production/auth/login", json={"code": admin_code})
+                payload = {
+                    "first_name": "Мария",
+                    "last_name": "Орлова",
+                    "email": None,
+                    "phone": "+375291112233",
+                    "status": "active",
+                    "stations": ["cut", "sewing"],
+                    "primary_station": "cut",
+                }
+                created = await client.post("/api/production/admin/employees", json=payload)
+                assert created.status_code == 200, created.text
+                result = created.json()
+                employee_id = result["employee"]["id"]
+                first_code = result["code"]
+                assert len(first_code) == 6 and first_code.startswith("2")
+                assert result["employee"]["stations"] == ["cut", "sewing"]
+
+                # The raw code is shown once and never appears in a later read.
+                listed = await client.get(f"/api/production/admin/employees?q={employee_id}")
+                assert listed.status_code == 200
+                assert listed.json()["items"][0]["code_active"] is True
+                assert first_code not in listed.text and "code_digest" not in listed.text
+
+                async with AsyncClient(
+                    transport=ASGITransport(app), base_url="https://test"
+                ) as worker:
+                    assert (
+                        await worker.post("/api/production/auth/login", json={"code": first_code})
+                    ).status_code == 200
+                    me = (await worker.get("/api/production/me")).json()
+                    assert me["stations"] == ["cut", "sewing"]
+
+                changed = await client.put(
+                    f"/api/production/admin/employees/{employee_id}",
+                    json=payload
+                    | {
+                        "stations": ["sewing", "packing"],
+                        "primary_station": "sewing",
+                    },
+                )
+                assert changed.status_code == 200, changed.text
+                second_code = changed.json()["code"]
+                assert len(second_code) == 6 and second_code.startswith("5")
+                assert second_code != first_code
+
+                async with AsyncClient(
+                    transport=ASGITransport(app), base_url="https://test"
+                ) as worker:
+                    assert (
+                        await worker.post("/api/production/auth/login", json={"code": first_code})
+                    ).status_code == 401
+                    assert (
+                        await worker.post("/api/production/auth/login", json={"code": second_code})
+                    ).status_code == 200
+                    assert (await worker.get("/api/production/me")).json()["stations"] == [
+                        "sewing",
+                        "packing",
+                    ]
+
+                blocked = await client.put(
+                    f"/api/production/admin/employees/{employee_id}",
+                    json=payload | {"status": "blocked"},
+                )
+                assert blocked.status_code == 200 and blocked.json()["code"] is None
+                assert blocked.json()["employee"]["code_active"] is False
+                assert (
+                    await client.post(f"/api/production/admin/employees/{employee_id}/code")
+                ).status_code == 409
+
+                activated = await client.put(
+                    f"/api/production/admin/employees/{employee_id}", json=payload
+                )
+                third_code = activated.json()["code"]
+                assert activated.status_code == 200 and third_code.startswith("2")
+                rotated = await client.post(f"/api/production/admin/employees/{employee_id}/code")
+                assert rotated.status_code == 200
+                fourth_code = rotated.json()["code"]
+                assert fourth_code != third_code and fourth_code.startswith("2")
+
+                invalid = await client.post(
+                    "/api/production/admin/employees",
+                    json=payload | {"primary_station": "admin", "stations": ["admin"]},
+                )
+                assert invalid.status_code == 422
+                assert (
+                    await client.post(
+                        "/api/production/admin/employees",
+                        json=payload | {"primary_station": "cut", "stations": ["sewing"]},
+                    )
+                ).status_code == 422
+                assert (
+                    await client.post(
+                        "/api/production/admin/employees",
+                        json=payload,
+                        headers={"Origin": "https://evil.test"},
+                    )
+                ).status_code == 403
+
+            async with db.session() as session:
+                employee = await session.scalar(
+                    select(ProductionEmployee).where(ProductionEmployee.user_id == employee_id)
+                )
+                user = await session.get(User, employee_id)
+                credentials = list(
+                    await session.scalars(
+                        select(ProductionCredential).where(
+                            ProductionCredential.user_id == employee_id
+                        )
+                    )
+                )
+                events = list(
+                    await session.scalars(
+                        select(SecurityAuditEvent).where(
+                            SecurityAuditEvent.subject_user_id == employee_id
+                        )
+                    )
+                )
+                assert employee is not None and user.internal_identity.startswith("employee:")
+                assert user.email is None and len(credentials) == 4
+                assert sum(item.active for item in credentials) == 1
+                assert all(len(item.code_digest) == 64 for item in credentials)
+                assert {item.event_type for item in events} >= {
+                    "production.employee_created",
+                    "production.employee_updated",
+                    "production.employee_code_rotated",
+                }
 
     asyncio.run(scenario())

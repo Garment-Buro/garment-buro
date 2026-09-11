@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, IntegerIdMixin, TimestampMixin
@@ -31,3 +31,21 @@ class ProductionLoginLimit(Base):
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     attempts: Mapped[int] = mapped_column(default=0)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class ProductionEmployee(Base, IntegerIdMixin, TimestampMixin):
+    __tablename__ = "production_employees"
+    __table_args__ = (
+        CheckConstraint(
+            "primary_station IN ('tech','kit','cut','dtf','application','sewing','press','qc','packing','shipping')",
+            name="production_employee_station_valid",
+        ),
+    )
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, unique=True, index=True
+    )
+    primary_station: Mapped[str] = mapped_column(String(24), nullable=False)
+    created_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )

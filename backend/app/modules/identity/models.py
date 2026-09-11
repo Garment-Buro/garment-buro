@@ -92,7 +92,8 @@ class User(Base, IntegerIdMixin, TimestampMixin):
     __tablename__ = "users"
     __table_args__ = (
         CheckConstraint(
-            "status = 'deleted' OR email_normalized IS NOT NULL OR telegram_id IS NOT NULL",
+            "status = 'deleted' OR email_normalized IS NOT NULL OR telegram_id IS NOT NULL "
+            "OR internal_identity IS NOT NULL",
             name="user_identifier_present",
         ),
         CheckConstraint(
@@ -125,6 +126,11 @@ class User(Base, IntegerIdMixin, TimestampMixin):
         nullable=True,
         unique=True,
         index=True,
+    )
+    internal_identity: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+        unique=True,
     )
     first_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     last_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
