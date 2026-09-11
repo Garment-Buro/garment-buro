@@ -33,7 +33,7 @@ export function AdminStatistics() {
                     <div className={styles.metrics}>
                         {[
                             ['Заказы', data.orders_count],
-                            ['Пользователи', data.users_count],
+                            ['Сотрудники', data.employees_count],
                             ['Клиенты', data.clients_count],
                             ['Сумма заказов', money(data.orders_total)],
                             [

@@ -2,17 +2,17 @@
 import {
     type AdminSection,
     type AdminOrder,
-    type AdminUser,
+    type AdminEmployee,
     type AdminClient,
     type AdminPayout,
     date,
     money,
     sectionLabels,
     statusLabels,
-    roleLabels,
+    stationLabels,
 } from '@/lib/production/adminTypes';
 import styles from './ProductionAdmin.module.css';
-export type RecordRow = AdminOrder | AdminPayout | AdminUser | AdminClient;
+export type RecordRow = AdminOrder | AdminPayout | AdminEmployee | AdminClient;
 function Contact({
     name,
     email,
@@ -39,11 +39,13 @@ export function AdminRecordsTable({
     items,
     onOrder,
     onPayout,
+    onEmployee,
 }: {
     section: Exclude<AdminSection, 'stats'>;
     items: RecordRow[];
     onOrder: (id: number) => void;
     onPayout: (payout: AdminPayout) => void;
+    onEmployee: (employee: AdminEmployee) => void;
 }) {
     return (
         <table>
@@ -64,56 +66,71 @@ export function AdminRecordsTable({
                     <tbody>
                         {(items as AdminOrder[]).map((row) => (
                             <tr key={row.id}>
-                                <td>
+                                <td data-label="Заказ">
                                     <button onClick={() => onOrder(row.id)}>
                                         №{row.id}
                                     </button>
                                     <small>{date(row.created_at)}</small>
                                 </td>
-                                <td>
+                                <td data-label="Покупатель">
                                     <Contact {...row} />
                                 </td>
-                                <td>
+                                <td data-label="Этап">
                                     <Status
                                         value={row.workflow_state || row.status}
                                     />
                                 </td>
-                                <td>
+                                <td data-label="Оплата">
                                     <Status value={row.payment_status} />
                                 </td>
-                                <td>{money(row.total)}</td>
+                                <td data-label="Сумма">{money(row.total)}</td>
                             </tr>
                         ))}
                     </tbody>
                 </>
             )}
-            {section === 'users' && (
+            {section === 'employees' && (
                 <>
                     <thead>
                         <tr>
-                            <th>Аккаунт</th>
-                            <th>Контакты</th>
-                            <th>Роли</th>
-                            <th>Статус</th>
-                            <th>Регистрация</th>
+                            <th>Сотрудник</th>
+                            <th>Участки</th>
+                            <th>Доступ</th>
+                            <th>Добавлен</th>
+                            <th>Управление</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {(items as AdminUser[]).map((row) => (
+                        {(items as AdminEmployee[]).map((row) => (
                             <tr key={row.id}>
-                                <td>№{row.id}</td>
-                                <td>
+                                <td data-label="Сотрудник">
                                     <Contact {...row} />
+                                    <small>Сотрудник №{row.id}</small>
                                 </td>
-                                <td>
-                                    {row.roles
-                                        .map((role) => roleLabels[role] || role)
-                                        .join(', ') || 'Без ролей'}
+                                <td data-label="Участки">
+                                    <strong>
+                                        Основной: {stationLabels[row.primary_station]}
+                                    </strong>
+                                    <small>
+                                        {row.stations
+                                            .map((station) => stationLabels[station])
+                                            .join(', ')}
+                                    </small>
                                 </td>
-                                <td>
+                                <td data-label="Доступ">
                                     <Status value={row.status} />
+                                    <small>
+                                        {row.code_active
+                                            ? 'Личный код действует'
+                                            : 'Действующего кода нет'}
+                                    </small>
                                 </td>
-                                <td>{date(row.created_at)}</td>
+                                <td data-label="Добавлен">{date(row.created_at)}</td>
+                                <td data-label="Управление">
+                                    <button onClick={() => onEmployee(row)}>
+                                        Изменить
+                                    </button>
+                                </td>
                             </tr>
                         ))}
                     </tbody>
@@ -133,7 +150,7 @@ export function AdminRecordsTable({
                     <tbody>
                         {(items as AdminClient[]).map((row) => (
                             <tr key={row.key}>
-                                <td>
+                                <td data-label="Клиент">
                                     <Contact {...row} />
                                     <small>
                                         {row.user_id
@@ -141,10 +158,12 @@ export function AdminRecordsTable({
                                             : 'Гостевые заказы'}
                                     </small>
                                 </td>
-                                <td>{row.orders_count}</td>
-                                <td>{money(row.orders_total)}</td>
-                                <td>{money(row.paid_orders_total)}</td>
-                                <td>
+                                <td data-label="Заказов">{row.orders_count}</td>
+                                <td data-label="Сумма заказов">{money(row.orders_total)}</td>
+                                <td data-label="Оплаченные заказы">
+                                    {money(row.paid_orders_total)}
+                                </td>
+                                <td data-label="Последний заказ">
                                     <button
                                         onClick={() =>
                                             onOrder(row.last_order_id)
@@ -173,16 +192,16 @@ export function AdminRecordsTable({
                     <tbody>
                         {(items as AdminPayout[]).map((row) => (
                             <tr key={row.id}>
-                                <td>
+                                <td data-label="Заявка">
                                     №{row.id}
                                     <small>{date(row.created_at)}</small>
                                 </td>
-                                <td>
+                                <td data-label="Партнёр">
                                     {row.partner}
                                     <small>Партнёр №{row.partner_id}</small>
                                 </td>
-                                <td>{money(row.amount)}</td>
-                                <td>
+                                <td data-label="Сумма">{money(row.amount)}</td>
+                                <td data-label="Состояние">
                                     <Status value={row.status} />
                                     <small>
                                         {row.bank_state
@@ -191,7 +210,7 @@ export function AdminRecordsTable({
                                     </small>
                                     {row.note && <small>{row.note}</small>}
                                 </td>
-                                <td>
+                                <td data-label="Решение">
                                     {!row.bank_state &&
                                     ['requested', 'approved'].includes(
                                         row.status,

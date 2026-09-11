@@ -19,7 +19,7 @@ const icons = {
     stats: PiChartBar,
     orders: PiPackage,
     payouts: PiWallet,
-    users: PiUsers,
+    employees: PiUsers,
     clients: PiUserCircle,
 };
 export function ProductionAdminTerminal() {

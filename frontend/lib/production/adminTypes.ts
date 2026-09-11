@@ -1,4 +1,9 @@
-export type AdminSection = 'stats' | 'orders' | 'payouts' | 'users' | 'clients';
+export type AdminSection =
+    | 'stats'
+    | 'orders'
+    | 'payouts'
+    | 'employees'
+    | 'clients';
 export interface Page<T> {
     items: T[];
     next_offset: number | null;
@@ -31,14 +36,45 @@ export interface AdminOrderDetail extends AdminOrder {
         customization: Record<string, unknown> | null;
     }[];
 }
-export interface AdminUser {
+export const productionStations = [
+    'tech',
+    'kit',
+    'cut',
+    'dtf',
+    'application',
+    'sewing',
+    'press',
+    'qc',
+    'packing',
+    'shipping',
+] as const;
+export type ProductionStation = (typeof productionStations)[number];
+export interface AdminEmployee {
     id: number;
+    first_name: string;
+    last_name: string;
     name: string;
     email: string | null;
     phone: string | null;
-    status: string;
+    status: 'active' | 'blocked';
     created_at: string;
-    roles: string[];
+    stations: ProductionStation[];
+    primary_station: ProductionStation;
+    code_active: boolean;
+    code_updated_at: string | null;
+}
+export interface AdminEmployeeWrite {
+    first_name: string;
+    last_name: string;
+    email: string | null;
+    phone: string | null;
+    status: 'active' | 'blocked';
+    stations: ProductionStation[];
+    primary_station: ProductionStation;
+}
+export interface AdminEmployeeCodeResponse {
+    employee: AdminEmployee;
+    code: string | null;
 }
 export interface AdminClient {
     key: string;
@@ -69,7 +105,7 @@ export interface AdminStats {
     orders_count: number;
     orders_total: string;
     paid_orders_total: string;
-    users_count: number;
+    employees_count: number;
     clients_count: number;
     order_states: { status: string; count: number }[];
     payout_states: { status: string; count: number; amount: string }[];
@@ -78,25 +114,20 @@ export const sectionLabels: Record<AdminSection, string> = {
     stats: 'Статистика',
     orders: 'Все заказы',
     payouts: 'Заявки на выплаты',
-    users: 'Пользователи',
+    employees: 'Сотрудники',
     clients: 'Клиенты',
 };
-export const roleLabels: Record<string, string> = {
-    customer: 'Покупатель',
-    partner: 'Партнёр',
-    manager: 'Менеджер',
-    admin: 'Администратор платформы',
-    production_admin: 'Администратор терминала',
-    production_tech: 'Технолог',
-    production_kit: 'Комплектовка',
-    production_cut: 'Раскрой',
-    production_dtf: 'Печать DTF',
-    production_application: 'Нанесение',
-    production_sewing: 'Пошив',
-    production_press: 'ВТО',
-    production_qc: 'ОТК',
-    production_packing: 'Упаковка',
-    production_shipping: 'Отправка',
+export const stationLabels: Record<ProductionStation, string> = {
+    tech: 'Технолог',
+    kit: 'Комплектовка',
+    cut: 'Раскрой',
+    dtf: 'Печать DTF',
+    application: 'Нанесение',
+    sewing: 'Пошив',
+    press: 'ВТО',
+    qc: 'ОТК',
+    packing: 'Упаковка',
+    shipping: 'Отправка',
 };
 export const statusLabels: Record<string, string> = {
     new: 'Новый',

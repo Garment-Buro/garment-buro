@@ -2,6 +2,8 @@
 import { useState } from 'react';
 import { useAdminResource } from '@/hooks/production/useAdminResource';
 import {
+    type AdminEmployee,
+    type AdminEmployeeCodeResponse,
     type AdminSection,
     type Page,
     type AdminPayout,
@@ -9,6 +11,8 @@ import {
     statusLabels,
 } from '@/lib/production/adminTypes';
 import { AdminOrderDetails } from './AdminOrderDetails';
+import { AdminEmployeeAccessCode } from './AdminEmployeeAccessCode';
+import { AdminEmployeeEditor } from './AdminEmployeeEditor';
 import { AdminPayoutReview } from './AdminPayoutReview';
 import { AdminRecordsTable, type RecordRow } from './AdminRecordsTable';
 import styles from './ProductionAdmin.module.css';
@@ -30,7 +34,7 @@ const filters: Record<Section, string[]> = {
         'attention',
     ],
     payouts: ['requested', 'approved', 'paid', 'rejected', 'canceled'],
-    users: ['active', 'blocked', 'deleted'],
+    employees: ['active', 'blocked'],
     clients: [],
 };
 export function AdminRecords({ section }: { section: Section }) {
@@ -40,6 +44,11 @@ export function AdminRecords({ section }: { section: Section }) {
     const [offset, setOffset] = useState(0);
     const [orderId, setOrderId] = useState<number | null>(null);
     const [payout, setPayout] = useState<AdminPayout | null>(null);
+    const [employeeEditor, setEmployeeEditor] = useState<
+        AdminEmployee | null | undefined
+    >(undefined);
+    const [accessCode, setAccessCode] =
+        useState<AdminEmployeeCodeResponse | null>(null);
     const [notice, setNotice] = useState('');
     const params = new URLSearchParams({
         q: query,
@@ -54,15 +63,22 @@ export function AdminRecords({ section }: { section: Section }) {
         <section aria-busy={loading}>
             <div className={styles.sectionHeading}>
                 <h2>{sectionLabels[section]}</h2>
-                <button
-                    disabled={loading}
-                    onClick={() => {
-                        setPayout(null);
-                        reload();
-                    }}
-                >
-                    Обновить
-                </button>
+                <div className={styles.headingActions}>
+                    {section === 'employees' && (
+                        <button onClick={() => setEmployeeEditor(null)}>
+                            Добавить сотрудника
+                        </button>
+                    )}
+                    <button
+                        disabled={loading}
+                        onClick={() => {
+                            setPayout(null);
+                            reload();
+                        }}
+                    >
+                        Обновить
+                    </button>
+                </div>
             </div>
             <form
                 className={styles.toolbar}
@@ -119,6 +135,12 @@ export function AdminRecords({ section }: { section: Section }) {
                     подтверждённое совпадение личности.
                 </p>
             )}
+            {section === 'employees' && (
+                <p className={styles.muted}>
+                    Здесь только работники производства. Покупатели и их заказы
+                    находятся в разделе «Клиенты».
+                </p>
+            )}
             {section === 'payouts' && (
                 <p className={styles.muted}>
                     Одобрение заявки не отправляет деньги. Создание платёжки и
@@ -153,6 +175,10 @@ export function AdminRecords({ section }: { section: Section }) {
                         onOrder={setOrderId}
                         onPayout={(row) => {
                             setPayout(row);
+                            setNotice('');
+                        }}
+                        onEmployee={(row) => {
+                            setEmployeeEditor(row);
                             setNotice('');
                         }}
                     />
@@ -199,6 +225,24 @@ export function AdminRecords({ section }: { section: Section }) {
                         setNotice('Решение сохранено. Деньги не отправлены.');
                         reload();
                     }}
+                />
+            )}
+            {employeeEditor !== undefined && (
+                <AdminEmployeeEditor
+                    employee={employeeEditor}
+                    onClose={() => setEmployeeEditor(undefined)}
+                    onSaved={(result, message) => {
+                        setEmployeeEditor(undefined);
+                        setNotice(message);
+                        if (result.code) setAccessCode(result);
+                        reload();
+                    }}
+                />
+            )}
+            {accessCode && (
+                <AdminEmployeeAccessCode
+                    result={accessCode}
+                    onClose={() => setAccessCode(null)}
                 />
             )}
         </section>
