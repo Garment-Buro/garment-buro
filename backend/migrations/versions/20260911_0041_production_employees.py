@@ -14,9 +14,9 @@ STATIONS_SQL = "'tech','kit','cut','dtf','application','sewing','press','qc','pa
 def upgrade():
     op.add_column("users", sa.Column("internal_identity", sa.String(64), nullable=True))
     op.create_unique_constraint("uq_users_internal_identity", "users", ["internal_identity"])
-    op.drop_constraint("ck_users_user_identifier_present", "users", type_="check")
+    op.drop_constraint(op.f("ck_users_user_identifier_present"), "users", type_="check")
     op.create_check_constraint(
-        "ck_users_user_identifier_present",
+        op.f("ck_users_user_identifier_present"),
         "users",
         "status = 'deleted' OR email_normalized IS NOT NULL OR telegram_id IS NOT NULL "
         "OR internal_identity IS NOT NULL",
@@ -41,7 +41,7 @@ def upgrade():
         ),
         sa.CheckConstraint(
             f"primary_station IN ({STATIONS_SQL})",
-            name="ck_production_employees_production_employee_station_valid",
+            name=op.f("ck_production_employees_production_employee_station_valid"),
         ),
         sa.ForeignKeyConstraint(
             ["user_id"],
@@ -89,9 +89,9 @@ def downgrade():
         raise RuntimeError("Archive internal production employees before schema downgrade")
     op.drop_index("ix_production_employees_user_id", table_name="production_employees")
     op.drop_table("production_employees")
-    op.drop_constraint("ck_users_user_identifier_present", "users", type_="check")
+    op.drop_constraint(op.f("ck_users_user_identifier_present"), "users", type_="check")
     op.create_check_constraint(
-        "ck_users_user_identifier_present",
+        op.f("ck_users_user_identifier_present"),
         "users",
         "status = 'deleted' OR email_normalized IS NOT NULL OR telegram_id IS NOT NULL",
     )
