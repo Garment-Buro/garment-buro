@@ -11,7 +11,7 @@
     "check": "npm run lint && npm test && npm run build"
   },
   "dependencies": {
-    "@aejkatappaja/phantom-ui": "^0.9.0",
+    "@aejkatappaja/phantom-ui": "^1.6.1",
     "jsqr": "1.4.0",
     "konva": "^10.2.3",
     "motion": "^12.38.0",
