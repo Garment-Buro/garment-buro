@@ -121,10 +121,33 @@ async def execute(db, service, action, *, actor=1, version=None, key=None, **pay
         )
 
 
+async def preserve_legacy_bag(db):
+    """Model a pre-migration bag and explicitly assigned multi-role operator."""
+    async with db.session() as session:
+        bag = await session.scalar(select(ProductionBag))
+        bag.flow_version = 1
+        repo = IdentityRepository()
+        for station in (
+            "kit",
+            "cut",
+            "dtf",
+            "application",
+            "sewing",
+            "press",
+            "qc",
+            "packing",
+            "shipping",
+        ):
+            role = await repo.get_role(session, RoleName(f"production_{station}"))
+            session.add(UserRole(user_id=1, role_id=role.id))
+        await session.commit()
+
+
 def test_full_flow_persists_dtf_pocket_quality_and_order_shipment(tmp_path):
     async def scenario():
         async with setup(tmp_path) as (db, service, spec):
             await execute(db, service, "plan", unit_id=1, specification=spec)
+            await preserve_legacy_bag(db)
             with pytest.raises(ProductionConflict, match="Подтвердите"):
                 await execute(db, service, "release")
             await execute(db, service, "confirm_documents", unit_id=1)
@@ -209,6 +232,7 @@ def test_mixed_routes_share_one_bag_and_wait_for_dtf_together(tmp_path):
     async def scenario():
         async with setup(tmp_path, quantity=2) as (db, service, spec):
             await execute(db, service, "plan", unit_id=1, specification=spec)
+            await preserve_legacy_bag(db)
             # Individual document preparation does not depend on other unfinished specs.
             await execute(db, service, "confirm_documents", unit_id=1)
             with pytest.raises(ProductionConflict, match="всех вещей"):

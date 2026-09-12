@@ -33,6 +33,7 @@ class ProductionBag(Base, IntegerIdMixin, TimestampMixin):
     __tablename__ = "production_bags"
     __table_args__ = (
         CheckConstraint("version > 0", name="production_bag_version_positive"),
+        CheckConstraint("flow_version IN (1,2)", name="production_flow_version_valid"),
         CheckConstraint(
             "state IN ('inbox','kitting','workshop','waiting_dtf','packed','dispatched')",
             name="production_bag_state_valid",
@@ -44,6 +45,8 @@ class ProductionBag(Base, IntegerIdMixin, TimestampMixin):
     version: Mapped[int] = mapped_column(Integer, default=1)
     state: Mapped[str] = mapped_column(String(24), default="inbox", index=True)
     tracking_number: Mapped[str | None] = mapped_column(String(100))
+    flow_version: Mapped[int] = mapped_column(Integer, default=2, server_default="2")
+    public_token: Mapped[str | None] = mapped_column(String(64), unique=True)
 
 
 class ProductionSpecification(Base, IntegerIdMixin):
@@ -66,7 +69,13 @@ class ProductionSpecification(Base, IntegerIdMixin):
 
 class ProductionWorkItem(Base, IntegerIdMixin, TimestampMixin):
     __tablename__ = "production_work_items"
-    __table_args__ = (CheckConstraint("stage_index >= 0", name="work_item_stage_nonnegative"),)
+    __table_args__ = (
+        CheckConstraint("stage_index >= 0", name="work_item_stage_nonnegative"),
+        CheckConstraint(
+            "lane IS NULL OR lane IN ('cut','kit','waiting_dtf','workshop','packing','done')",
+            name="production_lane_valid",
+        ),
+    )
     bag_id: Mapped[int] = mapped_column(
         ForeignKey("production_bags.id", ondelete="RESTRICT"), index=True
     )
@@ -82,6 +91,9 @@ class ProductionWorkItem(Base, IntegerIdMixin, TimestampMixin):
     dtf_inserted: Mapped[bool] = mapped_column(Boolean, default=False)
     stage_index: Mapped[int] = mapped_column(Integer, default=0)
     issue: Mapped[str | None] = mapped_column(Text)
+    lane: Mapped[str | None] = mapped_column(String(24), index=True)
+    public_token: Mapped[str | None] = mapped_column(String(64), unique=True)
+    dtf_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class ProductionEvent(Base, IntegerIdMixin):

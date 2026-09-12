@@ -46,17 +46,17 @@ def test_demo_seed_is_idempotent_private_and_has_each_workstation(tmp_path):
             secret = tmp_path / "private" / "demo.json"
             rows = await provision(db, files, secret, _webp())
             codes = json.loads(secret.read_text())
-            assert len(rows) == len(codes) == 10
+            assert len(rows) == len(codes) == 11
             assert secret.stat().st_mode & 0o777 == 0o600
-            assert len({row["code"] for row in codes.values()}) == 10
+            assert len({row["code"] for row in codes.values()}) == 11
             assert all(len(row["code"]) == 6 for row in codes.values())
             assert await provision(db, files, secret, _webp()) == rows
             assert json.loads(secret.read_text()) == codes
             async with db.session() as session:
                 assert await session.scalar(select(func.count(Payment.id))) == 0
                 assert await session.scalar(select(func.count(FulfillmentJob.id))) == 0
-                assert await session.scalar(select(func.count(ProductionDemoEmployee.id))) == 10
-                assert await session.scalar(select(func.count(User.id))) == 10
+                assert await session.scalar(select(func.count(ProductionDemoEmployee.id))) == 11
+                assert await session.scalar(select(func.count(User.id))) == 11
                 assert (await ProductionAdminReads().stats(session))["orders_count"] == 0
                 assert (await ProductionAdminReads().stats(session))["employees_count"] == 0
                 assert (await ProductionAdminReads().stats(session))["clients_count"] == 0
@@ -70,7 +70,7 @@ def test_demo_seed_is_idempotent_private_and_has_each_workstation(tmp_path):
                 )
                 assert legacy_rows == []
                 queue = await ProductionReadService().queue(session, demo_only=True)
-                assert len(queue["items"]) == 10
+                assert len(queue["items"]) == 11
                 by_id = {row["project_id"]: row for row in queue["items"]}
                 for row in rows:
                     item = by_id[row["project_id"]]
@@ -79,10 +79,18 @@ def test_demo_seed_is_idempotent_private_and_has_each_workstation(tmp_path):
                         session, project_id=row["project_id"], stations=["tech"]
                     )
                     assert not detail["units"][0]["blockers"]
-                    if row["station"] in {"cut", "application", "sewing", "press", "qc", "packing"}:
+                    if row["station"] in {
+                        "cut",
+                        "application",
+                        "sewing",
+                        "press",
+                        "qc",
+                        "packing",
+                        "workshop",
+                    }:
                         assert item["stage_counts"][row["station"]] == 1
                     if row["station"] == "dtf":
-                        assert item["state"] == "waiting_dtf" and item["dtf_pending"] == 1
+                        assert item["stage_counts"]["waiting_dtf"] == 1 and item["dtf_pending"] == 1
                 order = await session.get(Order, rows[0]["order_id"])
                 with pytest.raises(PaymentStateError, match="Demo orders"):
                     PaymentService._validate_payable_order(order)

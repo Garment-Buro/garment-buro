@@ -14,6 +14,7 @@ STATIONS = {
     "kit": "Комплектовщик",
     "cut": "Раскрой",
     "dtf": "DTF печать",
+    "workshop": "Цех",
     "application": "Нанесение",
     "sewing": "Пошив",
     "press": "ВТО",

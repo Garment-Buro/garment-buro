@@ -8,6 +8,7 @@ Station = Literal[
     "kit",
     "cut",
     "dtf",
+    "workshop",
     "application",
     "sewing",
     "press",
@@ -25,7 +26,8 @@ class EmployeeWrite(BaseModel):
     email: str | None = Field(default=None, max_length=320)
     phone: str | None = Field(default=None, max_length=64)
     status: Literal["active", "blocked"] = "active"
-    stations: list[Station] = Field(min_length=1, max_length=10)
+    availability: Literal["available", "sick", "vacation", "absent"] = "available"
+    stations: list[Station] = Field(min_length=1, max_length=11)
     primary_station: Station
 
     @model_validator(mode="after")
@@ -45,6 +47,7 @@ class EmployeeRead(BaseModel):
     email: str | None
     phone: str | None
     status: Literal["active", "blocked"]
+    availability: Literal["available", "sick", "vacation", "absent"] = "available"
     created_at: datetime
     stations: list[Station]
     primary_station: Station

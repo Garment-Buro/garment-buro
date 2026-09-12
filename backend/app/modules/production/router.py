@@ -27,6 +27,7 @@ from app.modules.production.auth_router import get_production_user
 from app.modules.production.auth_router import router as auth_router
 from app.modules.production.demo_access import is_demo_employee, require_demo_resource
 from app.modules.production.evidence import ProductionConflict, ProductionNotFound
+from app.modules.production.label_router import router as label_router
 from app.modules.production.models import ProductionSpecificationFile
 from app.modules.production.read_service import ProductionReadService
 from app.modules.production.schemas import CommandReceipt, ProductionCommand
@@ -36,6 +37,7 @@ from app.modules.production.service import ProductionService
 router = APIRouter(prefix="/api/production", tags=["production-terminal"])
 router.include_router(auth_router, prefix="")
 router.include_router(admin_router)
+router.include_router(label_router)
 Session = Annotated[AsyncSession, Depends(get_database_session)]
 CurrentUser = Annotated[User, Depends(get_production_user)]
 
@@ -52,6 +54,13 @@ async def access(request: Request, response: Response, user: CurrentUser, sessio
 
 
 Auth = Annotated[tuple[User, list[str]], Depends(access)]
+
+
+def active_roles(auth, station):
+    selected = station or (auth[1][0] if auth[1] else None)
+    if selected not in auth[1]:
+        raise HTTPException(403, "Этот участок не назначен сотруднику")
+    return [selected]
 
 
 @router.get("/me")
@@ -83,10 +92,10 @@ async def projects(
 
 
 @router.get("/projects/{project_id}")
-async def project(project_id: int, auth: Auth, session: Session):
+async def project(project_id: int, auth: Auth, session: Session, station: str | None = None):
     try:
         return await ProductionReadService().detail(
-            session, project_id=project_id, stations=auth[1]
+            session, project_id=project_id, stations=active_roles(auth, station)
         )
     except ProductionNotFound as error:
         raise HTTPException(404, str(error)) from error
@@ -113,11 +122,17 @@ async def command(
     idempotency_key: Annotated[str, Header(alias="Idempotency-Key")],
     auth: Auth,
     session: Session,
+    station: str | None = None,
 ):
     try:
         key = normalize_crm_idempotency_key(idempotency_key)
         return await ProductionService(request.app.state.settings).execute(
-            session, project_id=project_id, actor_id=auth[0].id, key=key, command=payload
+            session,
+            project_id=project_id,
+            actor_id=auth[0].id,
+            key=key,
+            command=payload,
+            active_station=active_roles(auth, station)[0],
         )
     except ProductionDenied as error:
         raise HTTPException(403, str(error)) from error
@@ -189,20 +204,32 @@ async def upload(
 
 
 @router.get("/files/{attachment_id}/download")
-async def download(attachment_id: int, request: Request, auth: Auth, session: Session):
+async def download(
+    attachment_id: int, request: Request, auth: Auth, session: Session, station: str | None = None
+):
+    auth = (auth[0], active_roles(auth, station))
     attachment = await session.get(CrmFileAttachment, attachment_id)
     if attachment is None:
         raise HTTPException(404, "Файл не найден")
-    if not set(auth[1]) & {"tech", "cut", "dtf", "application"}:
+    if not set(auth[1]) & {
+        "tech",
+        "cut",
+        "dtf",
+        "application",
+        "workshop",
+        "sewing",
+        "press",
+        "qc",
+    }:
         raise HTTPException(403, "Файлы доступны участкам раскроя и печати")
     if "tech" in auth[1]:
         if attachment.production_unit_id is None and attachment.tech_card_revision_id is None:
             raise HTTPException(404, "Файл не относится к производственной вещи")
     else:
         roles = []
-        if "cut" in auth[1]:
+        if set(auth[1]) & {"cut", "workshop", "sewing", "press", "qc"}:
             roles.append("pattern")
-        if set(auth[1]) & {"dtf", "application"}:
+        if set(auth[1]) & {"dtf", "application", "workshop"}:
             roles.append("print")
         if not await session.scalar(
             select(ProductionSpecificationFile.id).where(

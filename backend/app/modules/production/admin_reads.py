@@ -78,8 +78,18 @@ class ProductionAdminReads:
         if row is None:
             return None
         order = row[0]
+        flow = await session.scalar(select(OrderWorkflow).where(OrderWorkflow.order_id == order.id))
         return {
             **order_row(row),
+            "moderation": {
+                "version": flow.version,
+                "state": flow.state,
+                "hold_expires_at": flow.hold_expires_at,
+                "decision": flow.decision,
+                "attention": flow.attention_code,
+            }
+            if flow
+            else None,
             "delivery_city": order.delivery_city,
             "delivery_address": order.delivery_address,
             "delivery_method": order.delivery_method,
@@ -142,6 +152,7 @@ class ProductionAdminReads:
             offset,
             lambda row: {
                 "id": row[1].id,
+                "availability": row[0].availability,
                 "first_name": row[1].first_name or "",
                 "last_name": row[1].last_name or "",
                 "name": " ".join(x for x in (row[1].first_name, row[1].last_name) if x),

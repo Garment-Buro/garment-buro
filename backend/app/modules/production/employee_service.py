@@ -45,6 +45,7 @@ class ProductionEmployeeService:
         employee = ProductionEmployee(
             user_id=user.id,
             primary_station=payload.primary_station,
+            availability=payload.availability,
             created_by_user_id=actor_id,
         )
         session.add(employee)
@@ -52,7 +53,7 @@ class ProductionEmployeeService:
             session, user_id=user.id, stations=payload.stations, actor_id=actor_id
         )
         code = None
-        if payload.status == "active":
+        if payload.status == "active" and payload.availability == "available":
             code = await issue_code(
                 session, user_id=user.id, station=payload.primary_station, pepper=pepper
             )
@@ -90,6 +91,7 @@ class ProductionEmployeeService:
         user.phone = payload.phone or None
         user.status = payload.status
         employee.primary_station = payload.primary_station
+        employee.availability = payload.availability
         await self._replace_roles(
             session, user_id=user.id, stations=payload.stations, actor_id=actor_id
         )
@@ -100,7 +102,7 @@ class ProductionEmployeeService:
             )
         )
         code = None
-        if payload.status == "blocked":
+        if payload.status == "blocked" or payload.availability != "available":
             await revoke_code(session, user_id=user.id)
         elif primary_changed or active_credential is None:
             code = await issue_code(
@@ -119,6 +121,7 @@ class ProductionEmployeeService:
                     "stations": payload.stations,
                     "primary_station": payload.primary_station,
                     "status": payload.status,
+                    "availability": payload.availability,
                     "code_rotated": code is not None,
                 },
             )
@@ -133,7 +136,7 @@ class ProductionEmployeeService:
         user = await session.get(User, user_id)
         if employee is None or user is None:
             raise EmployeeNotFoundError()
-        if user.status != "active":
+        if user.status != "active" or employee.availability != "available":
             raise EmployeeConflictError("Сначала активируйте сотрудника")
         code = await issue_code(
             session, user_id=user.id, station=employee.primary_station, pepper=pepper
@@ -188,6 +191,7 @@ class ProductionEmployeeService:
             "email": user.email,
             "phone": user.phone,
             "status": user.status,
+            "availability": employee.availability,
             "created_at": employee.created_at,
             "stations": [role.removeprefix("production_") for role in roles],
             "primary_station": employee.primary_station,

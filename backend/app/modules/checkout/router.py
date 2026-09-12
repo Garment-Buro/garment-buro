@@ -49,6 +49,13 @@ from app.modules.payments.service import (
 router = APIRouter(prefix="/api/orders", tags=["checkout"])
 
 
+@router.get("/checkout/options")
+async def checkout_options(request: Request, response: Response):
+    response.headers["Cache-Control"] = "no-store"
+    hold = request.app.state.settings.order_moderation_enabled
+    return {"hold_required": hold, "payment_methods": ["card"] if hold else ["card", "qr"]}
+
+
 def get_checkout_service(request: Request) -> CheckoutService:
     service = request.app.state.checkout_service
     if not isinstance(service, CheckoutService):

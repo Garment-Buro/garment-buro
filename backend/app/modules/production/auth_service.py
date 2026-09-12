@@ -23,6 +23,7 @@ PREFIXES = {
     "kit": "1",
     "cut": "2",
     "dtf": "3",
+    "workshop": "4",
     "application": "4",
     "sewing": "5",
     "press": "6",

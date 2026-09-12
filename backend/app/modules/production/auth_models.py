@@ -37,7 +37,11 @@ class ProductionEmployee(Base, IntegerIdMixin, TimestampMixin):
     __tablename__ = "production_employees"
     __table_args__ = (
         CheckConstraint(
-            "primary_station IN ('tech','kit','cut','dtf','application','sewing','press','qc','packing','shipping')",
+            "availability IN ('available','sick','vacation','absent')",
+            name="production_availability_valid",
+        ),
+        CheckConstraint(
+            "primary_station IN ('tech','kit','cut','dtf','workshop','application','sewing','press','qc','packing','shipping')",
             name="production_employee_station_valid",
         ),
     )
@@ -46,6 +50,9 @@ class ProductionEmployee(Base, IntegerIdMixin, TimestampMixin):
         ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, unique=True, index=True
     )
     primary_station: Mapped[str] = mapped_column(String(24), nullable=False)
+    availability: Mapped[str] = mapped_column(
+        String(24), default="available", server_default="available"
+    )
     created_by_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )

@@ -18,21 +18,13 @@ from app.modules.production.models import (
     ProductionSpecification,
     ProductionWorkItem,
 )
+from app.modules.production.projections import bag_display_state, floor_customization, project_unit
 from app.modules.production.repository import ProductionRepository
 
 
 def floor_evidence(item):
     data = order_evidence(item)
-    if data["customization"]:
-        custom = dict(data["customization"])
-        custom.pop("totalPrice", None)
-        if isinstance(custom.get("decorations"), list):
-            custom["decorations"] = [
-                {k: v for k, v in x.items() if k != "price"}
-                for x in custom["decorations"]
-                if isinstance(x, dict)
-            ]
-        data["customization"] = custom
+    data["customization"] = floor_customization(data["customization"])
     return data
 
 
@@ -72,9 +64,13 @@ class ProductionReadService:
                 route = spec.specification["route"]
                 counts = stage_counts.setdefault(work.bag_id, {})
                 if work.stage_index < len(route):
-                    stage = route[work.stage_index]
+                    stage = work.lane or route[work.stage_index]
                     counts[stage] = counts.get(stage, 0) + 1
-                if spec.specification["print_file_ids"] and not work.dtf_ready:
+                if (
+                    spec.specification["print_file_ids"]
+                    and not work.dtf_ready
+                    and (work.lane in {"kit", "waiting_dtf"} or work.lane is None)
+                ):
                     dtf_counts[work.bag_id] = dtf_counts.get(work.bag_id, 0) + 1
         return {
             "items": [
@@ -82,10 +78,13 @@ class ProductionReadService:
                     "project_id": project.id,
                     "order_id": order.id,
                     "is_demo": order.is_demo,
-                    "customer": " ".join(filter(None, [order.first_name, order.last_name]))
-                    or f"Заказ №{order.id}",
+                    "customer": f"Заказ №{order.id}",
+                    "flow_version": bag.flow_version if bag else 2,
                     "units_count": project.units_count,
                     "state": bag.state if bag else "inbox",
+                    "display_state": bag_display_state(
+                        bag, stage_counts.get(bag.id, {}) if bag else []
+                    ),
                     "version": bag.version if bag else 0,
                     "stage_counts": stage_counts.get(bag.id, {}) if bag else {},
                     "dtf_pending": dtf_counts.get(bag.id, 0) if bag else 0,
@@ -186,6 +185,10 @@ class ProductionReadService:
                     "checks": row.component_checks if row else {},
                     "dtf_ready": row.dtf_ready if row else False,
                     "dtf_inserted": row.dtf_inserted if row else False,
+                    "requires_dtf": bool(spec and spec.specification["print_file_ids"]),
+                    "lane": row.lane if row else None,
+                    "public_token": row.public_token if row else None,
+                    "dtf_due_at": row.dtf_due_at if row else None,
                     "issue": row.issue if row else None,
                     "blockers": blockers,
                     "sizes": sizes,
@@ -216,7 +219,7 @@ class ProductionReadService:
             else []
         )
         delivery = None
-        if set(stations) & {"tech", "shipping"}:
+        if set(stations) & {"packing", "shipping"}:
             delivery = {
                 "recipient": " ".join(
                     filter(None, [order.last_name, order.first_name, order.patronymic])
@@ -233,8 +236,10 @@ class ProductionReadService:
             "is_demo": order.is_demo,
             "version": bag.version if bag else 0,
             "state": bag.state if bag else "inbox",
-            "customer": " ".join(filter(None, [order.first_name, order.last_name]))
-            or f"Заказ №{order.id}",
+            "flow_version": bag.flow_version if bag else 2,
+            "display_state": bag_display_state(bag, [row.lane for row in work]),
+            "public_token": bag.public_token if bag else None,
+            "customer": f"Заказ №{order.id}",
             "units_count": project.units_count,
             "paid_at": project.payment_succeeded_at_snapshot,
             "order_status": order.status,
@@ -242,7 +247,7 @@ class ProductionReadService:
             "project_status": project.status,
             "delivery": delivery,
             "tracking_number": bag.tracking_number if bag else None,
-            "units": result,
+            "units": [project_unit(row, stations) for row in result],
             "events": [
                 {
                     "id": x.id,
@@ -251,7 +256,9 @@ class ProductionReadService:
                     "unit_id": x.unit_id,
                     "actor_id": x.actor_user_id,
                     "at": x.occurred_at,
-                    "note": x.evidence.get("command", {}).get("note"),
+                    "note": x.evidence.get("command", {}).get("note")
+                    if "tech" in stations
+                    else None,
                 }
                 for x in events
             ],

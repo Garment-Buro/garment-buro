@@ -31,6 +31,7 @@ from app.modules.production.models import (
 from app.modules.production.repository import ProductionRepository
 from app.modules.production.schemas import CommandReceipt, ProductionCommand
 from app.modules.production.security import require_station, stations_for_user
+from app.modules.production.unit_flow import apply_unit_flow
 
 
 class ProductionService:
@@ -41,9 +42,19 @@ class ProductionService:
         self.projects = CrmProjectService()
 
     async def execute(
-        self, session, *, project_id: int, actor_id: int, key: str, command: ProductionCommand
+        self,
+        session,
+        *,
+        project_id: int,
+        actor_id: int,
+        key: str,
+        command: ProductionCommand,
+        active_station: str | None = None,
     ):
         stations = await stations_for_user(session, actor_id)
+        if active_station is not None:
+            require_station(stations, active_station)
+            stations = [active_station]
         await require_demo_project(session, actor_id, project_id)
         fingerprint = digest(
             {"actor": actor_id, "project": project_id, "command": command.model_dump(mode="json")}
@@ -125,6 +136,10 @@ class ProductionService:
             "report_issue",
             "resolve_issue",
             "rework",
+            "issue_unit_label",
+            "send_unit",
+            "complete_workshop",
+            "set_dtf_deadline",
         }
         if command.action in unit_actions and (unit is None or item is None):
             raise ProductionConflict("Выберите вещь из этого мешка")
@@ -135,7 +150,7 @@ class ProductionService:
             await self._plan(session, unit, item, command.specification, actor_id, now)
         else:
             # Preparing one item must not require every other item to be planned.
-            evidence_rows = [item] if command.action == "confirm_documents" else work
+            evidence_rows = [item] if command.action in unit_actions else work
             if command.action in {"report_issue", "resolve_issue"}:
                 evidence_rows = []  # A data-integrity problem must itself be reportable.
             for row in evidence_rows:
@@ -174,6 +189,9 @@ class ProductionService:
                 "command": command.model_dump(mode="json"),
                 "bag_state": bag.state,
                 "specification_id": item.specification_id if item else None,
+                "unit_lane": item.lane if item else None,
+                "dtf_ready": item.dtf_ready if item else None,
+                "dtf_inserted": item.dtf_inserted if item else None,
             },
             occurred_at=now,
         )
@@ -192,6 +210,18 @@ class ProductionService:
             or not source.color_snapshot
         ):
             raise ProductionConflict("В заказе отсутствует название, размер или цвет изделия")
+        decorations = (source.customization_snapshot or {}).get("decorations", [])
+        if (
+            isinstance(decorations, list)
+            and any(
+                isinstance(x, dict) and (x.get("categoryId") == "prints" or x.get("text"))
+                for x in decorations
+            )
+            and not payload.print_file_ids
+        ):
+            raise ProductionConflict(
+                "В заказе есть печать: закрепите оригиналы DTF и этап нанесения"
+            )
         files = await validate_files(
             session,
             unit_id=unit.id,
@@ -245,6 +275,10 @@ class ProductionService:
         self, session, bag, work, specs, units, unit, item, project, order, command, stations, actor
     ):
         action = command.action
+        if bag.flow_version == 2 and await apply_unit_flow(
+            self, session, bag, work, specs, units, unit, item, project, command, stations, actor
+        ):
+            return
         active_spec = specs.get(item.specification_id) if item else None
         spec = active_spec.specification if active_spec else None
         if action == "confirm_documents":
@@ -362,6 +396,13 @@ class ProductionService:
                 if bag.state != "workshop"
                 else {"tech", "dtf", spec["route"][min(item.stage_index, len(spec["route"]) - 1)]}
             )
+            if bag.flow_version == 2:
+                allowed = {
+                    "tech",
+                    "dtf",
+                    item.lane,
+                    "kit" if item.lane == "waiting_dtf" else item.lane,
+                }
             if not set(stations) & allowed:
                 require_station(stations, "tech")
             item.issue = command.note
@@ -380,6 +421,8 @@ class ProductionService:
                         "Некорректный этап переделки; закрытую вещь нельзя менять"
                     )
                 item.stage_index = spec["route"].index(command.stage)
+                if bag.flow_version == 2:
+                    item.lane = "cut" if command.stage == "cut" else "kit"
                 if command.stage in {"cut", "application"} and spec["print_file_ids"]:
                     item.dtf_ready = False
                     item.dtf_inserted = False

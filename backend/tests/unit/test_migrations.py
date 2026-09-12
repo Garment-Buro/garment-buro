@@ -14,7 +14,8 @@ def test_alembic_has_one_linear_partner_cabinet_head() -> None:
     config = Config(str(backend_dir / "alembic.ini"))
     scripts = ScriptDirectory.from_config(config)
 
-    assert scripts.get_heads() == ["20260911_0041"]
+    assert scripts.get_heads() == ["20260912_0042"]
+    assert scripts.get_revision("20260912_0042").down_revision == "20260911_0041"
     assert scripts.get_revision("20260911_0041").down_revision == "20260909_0040"
     assert scripts.get_revision("20260909_0040").down_revision == "20260909_0039"
     assert scripts.get_revision("20260909_0039").down_revision == "20260909_0038"

@@ -12,6 +12,7 @@ STATIONS = (
     "kit",
     "cut",
     "dtf",
+    "workshop",
     "application",
     "sewing",
     "press",
@@ -24,6 +25,7 @@ STAGE_LABELS = {
     "kit": "Комплектовка",
     "cut": "Раскрой",
     "dtf": "DTF печать",
+    "workshop": "Цех",
     "application": "Нанесение",
     "sewing": "Пошив",
     "press": "ВТО",
@@ -95,6 +97,10 @@ class ProductionCommand(StrictModel):
         "rework",
         "pack_bag",
         "dispatch",
+        "issue_unit_label",
+        "send_unit",
+        "complete_workshop",
+        "set_dtf_deadline",
     ]
     unit_id: int | None = Field(default=None, gt=0)
     specification: SpecificationWrite | None = None
@@ -104,10 +110,15 @@ class ProductionCommand(StrictModel):
     quality_confirmed: list[int] = Field(default_factory=list, max_length=30)
     note: str | None = Field(default=None, min_length=1, max_length=1000)
     tracking_number: str | None = Field(default=None, min_length=3, max_length=100)
+    due_at: str | None = Field(default=None, max_length=40)
 
     @model_validator(mode="after")
     def command_scope(self):
         fields = {
+            "issue_unit_label": {"unit_id"},
+            "send_unit": {"unit_id"},
+            "complete_workshop": {"unit_id", "quality_confirmed"},
+            "set_dtf_deadline": {"unit_id", "due_at"},
             "plan": {"unit_id", "specification"},
             "confirm_documents": {"unit_id"},
             "check_component": {"unit_id", "component_key", "checked"},

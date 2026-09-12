@@ -1,6 +1,6 @@
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -43,6 +43,43 @@ async def require_admin(
 
 
 Admin = Annotated[User, Depends(require_admin)]
+
+
+class ModerationDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    expected_version: int = Field(ge=1)
+    decision: Literal["approve", "reject"]
+    note: str = Field(min_length=1, max_length=2000)
+
+
+@router.post("/orders/{order_id}/moderation")
+async def moderate_order(
+    order_id: int,
+    payload: ModerationDecision,
+    request: Request,
+    admin: Admin,
+    session: Session,
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key")],
+):
+    from app.modules.orders.workflow import OrderModerationService, OrderWorkflowConflict
+
+    try:
+        flow = await OrderModerationService(request.app.state.settings).decide(
+            session,
+            order_id=order_id,
+            expected_version=payload.expected_version,
+            actor_user_id=admin.id,
+            decision=payload.decision,
+            key=idempotency_key,
+            note=payload.note,
+        )
+        await session.commit()
+        return {"state": flow.state, "version": flow.version}
+    except OrderWorkflowConflict as error:
+        await session.rollback()
+        raise HTTPException(409, str(error)) from error
+    except PermissionError as error:
+        raise HTTPException(403, str(error)) from error
 
 
 class ListQuery(BaseModel):
