@@ -35,7 +35,9 @@ export function BagActions({
                         }
                         onClick={() => void send({ action: 'release' })}
                     >
-                        Передать на комплектовку
+                        {project.flow_version === 2
+                            ? 'Подтвердить и передать закройщику'
+                            : 'Передать на комплектовку'}
                     </button>
                 )}
                 {['kitting', 'waiting_dtf'].includes(project.state) &&
@@ -48,14 +50,18 @@ export function BagActions({
                             Мешок проверен — передать в цех
                         </button>
                     )}
-                {project.state === 'workshop' && canAct(stations, 'kit') && (
-                    <button
-                        disabled={busy}
-                        onClick={() => void send({ action: 'return_to_dtf' })}
-                    >
-                        Вернуть весь мешок на стол ожидания DTF
-                    </button>
-                )}
+                {project.flow_version !== 2 &&
+                    project.state === 'workshop' &&
+                    canAct(stations, 'kit') && (
+                        <button
+                            disabled={busy}
+                            onClick={() =>
+                                void send({ action: 'return_to_dtf' })
+                            }
+                        >
+                            Вернуть весь мешок на стол ожидания DTF
+                        </button>
+                    )}
                 {project.state === 'workshop' &&
                     canAct(stations, 'packing') && (
                         <button

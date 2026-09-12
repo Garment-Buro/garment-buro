@@ -23,8 +23,8 @@ export const productionApi = {
             `/production/projects${cursor ? `?cursor=${cursor}` : ''}`,
             { headers: headers(token), cache: 'no-store', signal },
         ),
-    project: (token: string, id: number, signal?: AbortSignal) =>
-        requestJson<Project>(`/production/projects/${id}`, {
+    project: (token: string, id: number, signal?: AbortSignal, station?: string) =>
+        requestJson<Project>(`/production/projects/${id}${station ? `?station=${station}` : ''}`, {
             headers: headers(token),
             cache: 'no-store',
             signal,
@@ -35,9 +35,10 @@ export const productionApi = {
         version: number,
         key: string,
         command: Command,
+        station?: string,
     ) =>
         requestJson<{ version: number }>(
-            `/production/projects/${id}/commands`,
+            `/production/projects/${id}/commands${station ? `?station=${station}` : ''}`,
             {
                 method: 'POST',
                 headers: {
@@ -62,9 +63,9 @@ export const productionApi = {
             body,
         });
     },
-    download: (token: string, id: number) =>
+    download: (token: string, id: number, station?: string) =>
         requestJson<{ url: string; filename: string }>(
-            `/production/files/${id}/download`,
+            `/production/files/${id}/download${station ? `?station=${station}` : ''}`,
             { headers: headers(token), cache: 'no-store' },
         ),
 };

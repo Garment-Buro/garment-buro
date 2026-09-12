@@ -10,6 +10,7 @@ export const stationRoles: Record<Station, string> = {
     kit: 'Комплектовщик',
     cut: 'Закройщик',
     dtf: 'DTF-печатник',
+    workshop: 'Цех',
     application: 'Нанесение',
     sewing: 'Швея',
     press: 'ВТО',
@@ -21,7 +22,11 @@ export const stationGuides: Record<Station, { task: string; result: string }> =
     {
         tech: {
             task: 'Проверить заказ, закрепить техкарту и оригиналы. Выпустить QR мешка и листы вещей.',
-            result: 'Все вещи одобрены, лекала и QR подготовлены. Мешок передан на комплектовку.',
+            result: 'Техкарты подтверждены. QR мешка заказа напечатан, заказ передан закройщику.',
+        },
+        workshop: {
+            task: 'Выполнить нанесение, пошив и ВТО по закреплённой техкарте. Работа учитывается за общим цехом.',
+            result: 'Качество проверено, изделие передано упаковщику.',
         },
         kit: {
             task: 'Вложить ткань и комплектующие каждой вещи. Отдельно подтвердить вложение готовой DTF-печати.',
@@ -86,12 +91,22 @@ export function bagCanMove(project: Project): boolean {
 export function parseBagReference(
     value: string,
     origin: string,
-): { kind: 'project' | 'order'; id: number; unit?: number } | null {
+):
+    | { kind: 'project' | 'order'; id: number; unit?: number }
+    | { kind: 'label'; token: string }
+    | null {
     const number = value.trim().replace(/^#/, '');
     if (/^[1-9]\d*$/.test(number) && Number.isSafeInteger(Number(number)))
         return { kind: 'order', id: Number(number) };
     try {
         const url = new URL(value.trim(), origin);
+        if (
+            url.origin === origin &&
+            url.pathname === '/production/label' &&
+            /^[A-Za-z0-9_-]{43}$/.test(url.searchParams.get('token') ?? '')
+        ) {
+            return { kind: 'label', token: url.searchParams.get('token')! };
+        }
         if (
             url.origin !== origin ||
             !['/production', '/production/floor'].includes(url.pathname)

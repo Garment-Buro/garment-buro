@@ -63,8 +63,17 @@ test('whole bag transfer requires every component and every waiting DTF, not one
         false,
     );
 });
-test('the complete cycle covers all ten workstations including separate application', () => {
-    assert.equal(Object.keys(stationGuides).length, 10);
+test('the cycle documents the shared workshop and preserves legacy stations', () => {
+    assert.equal(Object.keys(stationGuides).length, 11);
+    assert.ok(stationGuides.workshop);
     assert.ok(stationGuides.application);
     assert.match(stationGuides.dtf.result, /комплектовщик/);
+});
+
+test('public labels only accept local random tokens', () => {
+    const origin = 'https://production.garment-buro.ru';
+    const token = 'a'.repeat(43);
+    assert.deepEqual(parseBagReference(`${origin}/production/label?token=${token}`, origin), {kind:'label',token});
+    assert.equal(parseBagReference(`${origin}/production/label?token=1`, origin), null);
+    assert.equal(parseBagReference(`https://evil.test/production/label?token=${token}`, origin), null);
 });

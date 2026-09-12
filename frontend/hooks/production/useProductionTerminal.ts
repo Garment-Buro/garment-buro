@@ -5,7 +5,7 @@ import { productionApi } from '@/lib/api/production';
 import { useProductionAuthStore } from '@/store/productionAuthStore';
 import type { Command, Employee, Project, Queue } from '@/lib/production/types';
 
-export function useProductionTerminal() {
+export function useProductionTerminal(station?: string) {
     const run = useProductionAuthStore((state) => state.runAuthenticated);
     const userId = useProductionAuthStore((state) => state.user?.id);
     const [employee, setEmployee] = useState<Employee | null>(null);
@@ -34,6 +34,7 @@ export function useProductionTerminal() {
     useEffect(() => {
         const controller = new AbortController();
         setLoading(true);
+        setProject(null);
         setError('');
         void (async () => {
             try {
@@ -49,6 +50,7 @@ export function useProductionTerminal() {
                               token,
                               selected,
                               controller.signal,
+                              station,
                           ),
                       )
                     : null;
@@ -72,7 +74,7 @@ export function useProductionTerminal() {
             }
         })();
         return () => controller.abort();
-    }, [run, userId, selected, refresh]);
+    }, [run, userId, selected, refresh, station]);
 
     const select = (id: number | null, unit?: number) => {
         if (locked.current) return;
@@ -103,6 +105,7 @@ export function useProductionTerminal() {
                     project.version,
                     key,
                     command,
+                    station,
                 ),
             );
             setNotice('Действие сохранено в журнале');

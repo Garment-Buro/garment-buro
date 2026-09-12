@@ -47,7 +47,7 @@ export function ProductionBag({
     const blocked = orderBlocked(project);
     const wide = station === 'tech' || station === 'dtf';
     const localStations = canAct(employee.stations, station) ? [station] : [];
-    const qr = `/api/qr-code?surface=production&size=256&path=${encodeURIComponent(`/production?project=${project.project_id}`)}`;
+    const qr = `/api/qr-code?surface=production&size=256&path=${encodeURIComponent(project.public_token ? `/production/label?token=${project.public_token}` : `/production?project=${project.project_id}`)}`;
     return (
         <div className={styles.bagBody}>
             <div className={styles.bagSummary}>
@@ -62,19 +62,36 @@ export function ProductionBag({
                     </p>
                     <div className={styles.meta}>
                         <span>
-                            Статус<strong>{stateLabels[project.state]}</strong>
+                            Статус
+                            <strong>
+                                {
+                                    stateLabels[
+                                        project.display_state || project.state
+                                    ]
+                                }
+                            </strong>
                         </span>
                         <span>
                             Версия<strong>{project.version}</strong>
                         </span>
                     </div>
-                    {(station === 'tech' || station === 'dtf') &&
+                    {(station === 'tech' ||
+                        station === 'dtf' ||
+                        station === 'cut') &&
                         canAct(employee.stations, station) && (
                             <button
                                 disabled={
                                     busy ||
                                     printing ||
-                                    !project.units.every((u) => u.specification)
+                                    !project.units.every(
+                                        (u) => u.specification,
+                                    ) ||
+                                    (project.flow_version === 2 &&
+                                        (station === 'cut'
+                                            ? !project.units.some(
+                                                  (u) => u.public_token,
+                                              )
+                                            : !project.public_token))
                                 }
                                 onClick={print}
                             >
@@ -82,23 +99,26 @@ export function ProductionBag({
                                 {printing
                                     ? 'Готовим…'
                                     : station === 'tech'
-                                      ? 'QR мешка и листы вещей'
-                                      : 'Печать QR мешка'}
+                                      ? 'Печать QR мешка заказа'
+                                      : station === 'cut'
+                                        ? 'Печать QR мешков изделий'
+                                        : 'Печать QR мешка'}
                             </button>
                         )}
                 </div>
-                {wide && (
-                    <div className={styles.qr}>
-                        <img
-                            src={qr}
-                            alt={`QR мешка заказа ${project.order_id}`}
-                            width={112}
-                            height={112}
-                        />
-                        <strong>QR заказа</strong>
-                        <small>Мешок №{project.order_id}</small>
-                    </div>
-                )}
+                {wide &&
+                    (project.flow_version !== 2 || project.public_token) && (
+                        <div className={styles.qr}>
+                            <img
+                                src={qr}
+                                alt={`QR мешка заказа ${project.order_id}`}
+                                width={112}
+                                height={112}
+                            />
+                            <strong>QR заказа</strong>
+                            <small>Мешок №{project.order_id}</small>
+                        </div>
+                    )}
             </div>
             {blocked && (
                 <p className={styles.error} role="alert">
@@ -161,7 +181,9 @@ export function ProductionBag({
                                     {unit.issue
                                         ? 'Проблема'
                                         : stage
-                                          ? labels[stage]
+                                          ? unit.lane
+                                              ? stateLabels[unit.lane]
+                                              : labels[stage]
                                           : unit.specification
                                             ? 'Готово'
                                             : 'Нужна техкарта'}

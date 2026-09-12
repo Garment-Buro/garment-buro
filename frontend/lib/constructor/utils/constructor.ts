@@ -173,6 +173,7 @@ export const buildConstructorCustomization = ({
                 view,
                 uid: item.uid,
                 variantId: item.variantId,
+                ...(hardware?.categoryId ? { categoryId: hardware.categoryId } : {}),
                 name: hardware?.name || "",
                 price: getPlacedItemPrice(item, hardware),
                 image: hardware?.src || "",

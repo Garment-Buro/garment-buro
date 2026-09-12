@@ -41,6 +41,7 @@ export interface PlacedHardware {
 export type PlacedItemsByView = Record<ModelView, PlacedHardware[]>;
 
 export type ConstructorDecoration = {
+    categoryId?: HardwareCategory;
     text?: TextDecoration;
     originalWidth?: number;
     originalHeight?: number;

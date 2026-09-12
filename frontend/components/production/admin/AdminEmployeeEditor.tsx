@@ -19,6 +19,7 @@ const emptyEmployee: AdminEmployeeWrite = {
     email: null,
     phone: null,
     status: 'active',
+    availability: 'available',
     stations: ['tech'],
     primary_station: 'tech',
 };
@@ -31,6 +32,7 @@ function values(employee: AdminEmployee | null): AdminEmployeeWrite {
         email: employee.email,
         phone: employee.phone,
         status: employee.status,
+        availability: employee.availability ?? 'available',
         stations: employee.stations,
         primary_station: employee.primary_station,
     };
@@ -121,7 +123,9 @@ export function AdminEmployeeEditor({
                     <div>
                         <p className={styles.eyebrow}>ДОСТУП К ТЕРМИНАЛУ</p>
                         <h2 id="employee-editor-title">
-                            {employee ? 'Изменить сотрудника' : 'Новый сотрудник'}
+                            {employee
+                                ? 'Изменить сотрудника'
+                                : 'Новый сотрудник'}
                         </h2>
                     </div>
                     <button type="button" disabled={busy} onClick={onClose}>
@@ -213,15 +217,20 @@ export function AdminEmployeeEditor({
                     <fieldset className={styles.roleFieldset}>
                         <legend>Доступные участки</legend>
                         <p className={styles.muted}>
-                            Можно выбрать несколько участков. Административная роль
-                            здесь не выдаётся.
+                            Можно выбрать несколько участков. Административная
+                            роль здесь не выдаётся.
                         </p>
                         <div className={styles.roleGrid}>
                             {productionStations.map((station) => (
-                                <label key={station} className={styles.roleOption}>
+                                <label
+                                    key={station}
+                                    className={styles.roleOption}
+                                >
                                     <input
                                         type="checkbox"
-                                        checked={form.stations.includes(station)}
+                                        checked={form.stations.includes(
+                                            station,
+                                        )}
                                         onChange={() => toggleStation(station)}
                                     />
                                     <span>{stationLabels[station]}</span>
@@ -249,7 +258,9 @@ export function AdminEmployeeEditor({
                                     </option>
                                 ))}
                             </select>
-                            <small>По нему формируется первая цифра личного кода.</small>
+                            <small>
+                                По нему формируется первая цифра личного кода.
+                            </small>
                         </label>
                         <label>
                             Доступ
@@ -267,7 +278,9 @@ export function AdminEmployeeEditor({
                                 <option value="active">Активен</option>
                                 <option value="blocked">Заблокирован</option>
                             </select>
-                            <small>Блокировка сразу отзывает код и текущие сессии.</small>
+                            <small>
+                                Блокировка сразу отзывает код и текущие сессии.
+                            </small>
                         </label>
                     </div>
 
@@ -277,33 +290,56 @@ export function AdminEmployeeEditor({
                         </p>
                     )}
                     <div className={styles.editorActions}>
-                        <button type="submit" disabled={busy || !form.first_name.trim()}>
+                        <button
+                            type="submit"
+                            disabled={busy || !form.first_name.trim()}
+                        >
                             {busy ? 'Сохраняем…' : 'Сохранить'}
                         </button>
-                        {employee && employee.status === 'active' && (
-                            <button
-                                type="button"
-                                disabled={busy}
-                                onClick={async () => {
-                                    if (busy) return;
-                                    setBusy(true);
-                                    setError('');
-                                    try {
-                                        await rotate();
-                                    } catch (failure) {
-                                        setError(
-                                            failure instanceof Error
-                                                ? failure.message
-                                                : 'Не удалось заменить код',
-                                        );
-                                    } finally {
-                                        setBusy(false);
-                                    }
-                                }}
+                        <label>
+                            Доступность сотрудника
+                            <select
+                                value={form.availability}
+                                onChange={(e) =>
+                                    setForm((old) => ({
+                                        ...old,
+                                        availability: e.target
+                                            .value as AdminEmployeeWrite['availability'],
+                                    }))
+                                }
                             >
-                                Выдать новый код
-                            </button>
-                        )}
+                                <option value="available">На работе</option>
+                                <option value="sick">Болеет</option>
+                                <option value="vacation">В отпуске</option>
+                                <option value="absent">Отсутствует</option>
+                            </select>
+                        </label>
+                        {employee &&
+                            employee.status === 'active' &&
+                            form.availability === 'available' && (
+                                <button
+                                    type="button"
+                                    disabled={busy}
+                                    onClick={async () => {
+                                        if (busy) return;
+                                        setBusy(true);
+                                        setError('');
+                                        try {
+                                            await rotate();
+                                        } catch (failure) {
+                                            setError(
+                                                failure instanceof Error
+                                                    ? failure.message
+                                                    : 'Не удалось заменить код',
+                                            );
+                                        } finally {
+                                            setBusy(false);
+                                        }
+                                    }}
+                                >
+                                    Выдать новый код
+                                </button>
+                            )}
                     </div>
                 </form>
             </section>

@@ -11,6 +11,7 @@ import {
 import { formatCartPrice } from '@/lib/cart/utils/cartAction';
 
 import { CartChoiceOption } from './CartChoiceOption';
+import { CartSbpOption } from './CartSbpOption';
 
 type CartCouponSectionProps = {
     isOpen: boolean;
@@ -238,13 +239,9 @@ export const CartGrandTotalSection = ({
                 className="flex justify-between gap-[clamp(3px,0.811vw,5px)]"
                 style={{ paddingInline: 'max(0px, calc(clamp(28px, 7.568vw, 48px) - 5px))' }}
             >
-                <CartChoiceOption
-                    variant="payment"
+                <CartSbpOption
                     active={paymentMethod === 'qr'}
                     onSelect={() => setPaymentMethod('qr')}
-                    label="Оплата по QR-коду"
-                    primary="СБП"
-                    secondary="без комиссии"
                 />
                 <CartChoiceOption
                     variant="payment"

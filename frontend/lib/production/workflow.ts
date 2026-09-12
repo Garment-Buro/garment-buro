@@ -2,7 +2,7 @@ import type { Project, Station, Unit } from './types';
 export const currentStage = (unit: Unit) =>
     unit.specification?.route[unit.stage_index] ?? null;
 export const canAct = (stations: Station[], station: Station) =>
-    stations.includes('tech') || stations.includes(station);
+    stations.includes(station);
 export const orderBlocked = (project: Project) =>
     (!project.is_demo && project.payment_status !== 'paid') ||
     project.order_status !== 'processing' ||
@@ -12,8 +12,8 @@ export const matchesStation = (unit: Unit, station: Station) =>
     station === 'kit' ||
     station === 'shipping' ||
     (station === 'dtf'
-        ? Boolean(unit.specification?.print_file_ids.length)
-        : currentStage(unit) === station);
+        ? Boolean(unit.requires_dtf ?? unit.specification?.print_file_ids.length)
+        : (unit.lane || currentStage(unit)) === station);
 export function safeImage(value: unknown): string | null {
     if (typeof value !== 'string' || !value) return null;
     if (value.startsWith('/') && !value.startsWith('//')) return value;

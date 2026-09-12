@@ -11,6 +11,7 @@ const cartActionBarSource = [
     path.join(root, "components", "cart", "CartAddProductCard.tsx"),
     path.join(root, "components", "cart", "CartChoiceOption.tsx"),
     path.join(root, "components", "cart", "CartCheckoutSections.tsx"),
+    path.join(root, "components", "cart", "CartSbpOption.tsx"),
     path.join(root, "components", "cart", "CartExpandedContent.tsx"),
     path.join(root, "components", "cart", "CartGuestAuthPrompt.tsx"),
     path.join(root, "components", "cart", "CartItemDetailsPopup.tsx"),
@@ -531,7 +532,7 @@ test("cart details popup follows the Figma detailed product overlay", () => {
 });
 
 test("expanded cart footer starts the selected payment instead of opening legacy checkout", () => {
-    assert.match(cartActionBarSource, /const \[paymentMethod, setPaymentMethod\] = useState<CartPaymentMethod>\('qr'\)/);
+    assert.match(cartActionBarSource, /const \[paymentMethod, setPaymentMethod\] = useState<CartPaymentMethod>\('card'\)/);
     assert.match(cartActionBarSource, /onSelect=\{\(\) => setPaymentMethod\('qr'\)\}/);
     assert.match(cartActionBarSource, /onSelect=\{\(\) => setPaymentMethod\('card'\)\}/);
     assert.equal((cartActionBarSource.match(/variant="payment"/g) ?? []).length, 2);

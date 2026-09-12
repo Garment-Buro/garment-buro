@@ -11,7 +11,6 @@ import { useProductionAuthStore } from '@/store/productionAuthStore';
 import { useProductionTerminal } from '@/hooks/production/useProductionTerminal';
 import {
     labels,
-    stations,
     stateLabels,
     type QueueItem,
     type Station,
@@ -25,10 +24,10 @@ import styles from './ProductionFlow.module.css';
 import legacy from '../ProductionTerminal.module.css';
 
 export function ProductionWorkspace() {
-    const terminal = useProductionTerminal();
+    const [chosen, setChosen] = useState<Station | null>(null);
+    const terminal = useProductionTerminal(chosen ?? undefined);
     const logout = useProductionAuthStore((s) => s.logout);
     const authError = useProductionAuthStore((s) => s.error);
-    const [chosen, setChosen] = useState<Station | null>(null);
     const [cycle, setCycle] = useState(false);
     const [pocket, setPocket] = useState('work');
     const [query, setQuery] = useState('');
@@ -65,9 +64,25 @@ export function ProductionWorkspace() {
     };
     const relevant = (item: QueueItem) => {
         if (pocket === 'all') return true;
-        if (pocket === 'holds') return item.state === 'waiting_dtf';
+        if (pocket === 'holds')
+            return (
+                item.state === 'waiting_dtf' ||
+                Boolean(item.stage_counts?.waiting_dtf)
+            );
         if (pocket === 'done')
             return ['packed', 'dispatched'].includes(item.state);
+        if (
+            item.flow_version === 2 &&
+            station !== 'tech' &&
+            station !== 'shipping'
+        ) {
+            if (station === 'dtf') return (item.dtf_pending ?? 0) > 0;
+            if (station === 'kit')
+                return Boolean(
+                    item.stage_counts?.kit || item.stage_counts?.waiting_dtf,
+                );
+            return Boolean(item.stage_counts?.[station]);
+        }
         if (station === 'tech') return item.state === 'inbox';
         if (station === 'kit') return item.state === 'kitting';
         if (station === 'shipping') return item.state === 'packed';
@@ -117,7 +132,7 @@ export function ProductionWorkspace() {
                     <em>
                         {item.blocked
                             ? 'Работа остановлена'
-                            : stateLabels[item.state]}
+                            : stateLabels[item.display_state || item.state]}
                     </em>
                 </span>
                 <PiCaretDown aria-hidden />
@@ -157,7 +172,10 @@ export function ProductionWorkspace() {
                     </div>
                     <span className={styles.role}>{stationRoles[station]}</span>
                     {employee?.can_administer && (
-                        <Link className={styles.adminLink} href="/production/admin">
+                        <Link
+                            className={styles.adminLink}
+                            href="/production/admin"
+                        >
                             Администратор
                         </Link>
                     )}
@@ -196,7 +214,7 @@ export function ProductionWorkspace() {
                         className={styles.processNav}
                         aria-label="Производственный контур"
                     >
-                        {stations.map((s, i) => (
+                        {(employee?.stations ?? []).map((s, i) => (
                             <button
                                 key={s}
                                 aria-current={
@@ -213,9 +231,9 @@ export function ProductionWorkspace() {
                     <div aria-live="polite">
                         {employee?.is_demo && (
                             <p className={styles.notice}>
-                                Учебный режим. Только тестовые заказы, без оплаты
-                                и реальной отправки. Файлы примеров не являются
-                                производственными лекалами.
+                                Учебный режим. Только тестовые заказы, без
+                                оплаты и реальной отправки. Файлы примеров не
+                                являются производственными лекалами.
                             </p>
                         )}
                         {(terminal.error || printError || authError) && (
@@ -227,6 +245,14 @@ export function ProductionWorkspace() {
                             <p className={styles.notice}>{terminal.notice}</p>
                         )}
                     </div>
+                    <BagScanner
+                        disabled={busy || printing}
+                        station={station}
+                        onOpen={(id, unit) => {
+                            setCycle(false);
+                            terminal.select(id, unit);
+                        }}
+                    />
                     {cycle ? (
                         <ProductionCycle
                             assigned={employee?.stations ?? []}
@@ -234,12 +260,6 @@ export function ProductionWorkspace() {
                         />
                     ) : (
                         <>
-                            {(station === 'cut' || station === 'shipping') && (
-                                <BagScanner
-                                    disabled={busy || printing}
-                                    onOpen={terminal.select}
-                                />
-                            )}
                             <div className={styles.layout}>
                                 <section className={styles.queue}>
                                     <div className={styles.queueHeading}>
@@ -374,12 +394,14 @@ export function ProductionWorkspace() {
             {project &&
                 employee &&
                 (employee.stations.includes('tech') ||
-                    employee.stations.includes('dtf')) && (
+                    employee.stations.includes('dtf') ||
+                    employee.stations.includes('cut')) && (
                     <PrintSheet
                         project={project}
                         unitSheets={
-                            station === 'tech' &&
-                            employee.stations.includes('tech')
+                            project.flow_version === 2
+                                ? station === 'cut'
+                                : station === 'tech'
                         }
                     />
                 )}

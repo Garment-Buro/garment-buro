@@ -10,10 +10,11 @@ test('explicit demo orders do not need payment but still respect production stop
     assert.equal(orderBlocked({ ...demo, project_status: 'on_hold' }), true);
 });
 
-test('floor roles cannot act at another station; tech supervises the cycle', () => {
+test('floor actions require an explicitly assigned role including technologists', () => {
     assert.equal(canAct(['cut'], 'shipping'), false);
     assert.equal(canAct(['cut'], 'cut'), true);
-    assert.equal(canAct(['tech'], 'shipping'), true);
+    assert.equal(canAct(['tech'], 'shipping'), false);
+    assert.equal(canAct(['tech', 'packing'], 'packing'), true);
     assert.equal(
         currentStage({
             specification: { route: ['cut', 'qc', 'packing'] },

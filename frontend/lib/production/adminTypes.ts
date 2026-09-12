@@ -21,6 +21,13 @@ export interface AdminOrder {
     workflow_state: string | null;
 }
 export interface AdminOrderDetail extends AdminOrder {
+    moderation: {
+        version: number;
+        state: string;
+        hold_expires_at: string | null;
+        decision: string | null;
+        attention: string | null;
+    } | null;
     delivery_city: string | null;
     delivery_address: string | null;
     delivery_method: string | null;
@@ -41,6 +48,7 @@ export const productionStations = [
     'kit',
     'cut',
     'dtf',
+    'workshop',
     'application',
     'sewing',
     'press',
@@ -50,6 +58,7 @@ export const productionStations = [
 ] as const;
 export type ProductionStation = (typeof productionStations)[number];
 export interface AdminEmployee {
+    availability: 'available' | 'sick' | 'vacation' | 'absent';
     id: number;
     first_name: string;
     last_name: string;
@@ -64,6 +73,7 @@ export interface AdminEmployee {
     code_updated_at: string | null;
 }
 export interface AdminEmployeeWrite {
+    availability: 'available' | 'sick' | 'vacation' | 'absent';
     first_name: string;
     last_name: string;
     email: string | null;
@@ -122,6 +132,7 @@ export const stationLabels: Record<ProductionStation, string> = {
     kit: 'Комплектовка',
     cut: 'Раскрой',
     dtf: 'Печать DTF',
+    workshop: 'Цех (нанесение, пошив, ВТО)',
     application: 'Нанесение',
     sewing: 'Пошив',
     press: 'ВТО',

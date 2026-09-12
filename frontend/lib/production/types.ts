@@ -3,6 +3,7 @@ export const stations = [
     'kit',
     'cut',
     'dtf',
+    'workshop',
     'application',
     'sewing',
     'press',
@@ -31,6 +32,7 @@ export const labels: Record<Station, string> = {
     kit: 'Комплектовка',
     cut: 'Раскрой',
     dtf: 'DTF печать',
+    workshop: 'Цех',
     application: 'Нанесение',
     sewing: 'Пошив',
     press: 'ВТО',
@@ -45,6 +47,11 @@ export const stateLabels: Record<string, string> = {
     waiting_dtf: 'Ожидает DTF',
     packed: 'Упакован',
     dispatched: 'Отправлен',
+    cut: 'Раскрой',
+    kit: 'Комплектация',
+    packing: 'Упаковка',
+    done: 'Готово',
+    in_production: 'В работе на участках',
 };
 export const actionLabels: Record<string, string> = {
     plan: 'Закреплена спецификация',
@@ -61,6 +68,10 @@ export const actionLabels: Record<string, string> = {
     rework: 'Назначена переделка',
     pack_bag: 'Мешок упакован',
     dispatch: 'Передан перевозчику',
+    issue_unit_label: 'Выпущен QR мешка изделия',
+    send_unit: 'Изделие передано в цех',
+    complete_workshop: 'Цех завершил работу и ВТО',
+    set_dtf_deadline: 'Назначен срок DTF',
 };
 export interface Component {
     key: string;
@@ -88,6 +99,10 @@ export interface ProductionFile {
     card_id: number | null;
 }
 export interface Unit {
+    lane?: string | null;
+    public_token?: string | null;
+    requires_dtf?: boolean;
+    dtf_due_at?: string | null;
     id: number;
     number: number;
     crm_status: string;
@@ -114,8 +129,11 @@ export interface Unit {
     files: ProductionFile[];
 }
 export interface QueueItem {
+    display_state?: string;
     is_demo?: boolean;
-    stage_counts?: Partial<Record<Stage, number>>;
+    stage_counts?: Partial<Record<Station | 'waiting_dtf', number>>;
+    flow_version?: number;
+    public_token?: string | null;
     dtf_pending?: number;
     project_id: number;
     order_id: number;
@@ -163,6 +181,10 @@ export interface Employee {
 }
 export interface Command {
     action:
+        | 'issue_unit_label'
+        | 'send_unit'
+        | 'complete_workshop'
+        | 'set_dtf_deadline'
         | 'plan'
         | 'confirm_documents'
         | 'release'
@@ -185,5 +207,6 @@ export interface Command {
     quality_confirmed?: number[];
     note?: string;
     tracking_number?: string;
+    due_at?: string;
 }
 export type SendCommand = (command: Command) => Promise<boolean>;

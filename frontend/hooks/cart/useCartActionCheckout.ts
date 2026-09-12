@@ -25,7 +25,7 @@ export const useCartActionCheckout = ({ items, isAuthenticated }: CartActionChec
     const [quoteLoading, setQuoteLoading] = useState(false);
     const [quoteAttempt, setQuoteAttempt] = useState(0);
     const [deliveryMethod, setDeliveryMethod] = useState<CartDeliveryMethod>('pickup');
-    const [paymentMethod, setPaymentMethod] = useState<CartPaymentMethod>('qr');
+    const [paymentMethod, setPaymentMethod] = useState<CartPaymentMethod>('card');
     const [isPaymentSubmitting, setIsPaymentSubmitting] = useState(false);
     const [isCouponOpen, setIsCouponOpen] = useState(false);
     const [pendingCoupon, setPendingCoupon] = useState<CartActionCoupon | null>(null);
@@ -64,7 +64,7 @@ export const useCartActionCheckout = ({ items, isAuthenticated }: CartActionChec
 
     const resetCheckout = useCallback(() => {
         setDeliveryMethod('pickup');
-        setPaymentMethod('qr');
+        setPaymentMethod('card');
         setIsPaymentSubmitting(false);
         setIsCouponOpen(false);
         setPendingCoupon(null);

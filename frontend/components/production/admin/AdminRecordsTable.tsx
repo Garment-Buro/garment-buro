@@ -109,23 +109,39 @@ export function AdminRecordsTable({
                                 </td>
                                 <td data-label="Участки">
                                     <strong>
-                                        Основной: {stationLabels[row.primary_station]}
+                                        Основной:{' '}
+                                        {stationLabels[row.primary_station]}
                                     </strong>
                                     <small>
                                         {row.stations
-                                            .map((station) => stationLabels[station])
+                                            .map(
+                                                (station) =>
+                                                    stationLabels[station],
+                                            )
                                             .join(', ')}
                                     </small>
                                 </td>
                                 <td data-label="Доступ">
                                     <Status value={row.status} />
                                     <small>
+                                        {
+                                            {
+                                                available: 'На работе',
+                                                sick: 'Болеет',
+                                                vacation: 'В отпуске',
+                                                absent: 'Отсутствует',
+                                            }[row.availability || 'available']
+                                        }
+                                    </small>
+                                    <small>
                                         {row.code_active
                                             ? 'Личный код действует'
                                             : 'Действующего кода нет'}
                                     </small>
                                 </td>
-                                <td data-label="Добавлен">{date(row.created_at)}</td>
+                                <td data-label="Добавлен">
+                                    {date(row.created_at)}
+                                </td>
                                 <td data-label="Управление">
                                     <button onClick={() => onEmployee(row)}>
                                         Изменить
@@ -159,7 +175,9 @@ export function AdminRecordsTable({
                                     </small>
                                 </td>
                                 <td data-label="Заказов">{row.orders_count}</td>
-                                <td data-label="Сумма заказов">{money(row.orders_total)}</td>
+                                <td data-label="Сумма заказов">
+                                    {money(row.orders_total)}
+                                </td>
                                 <td data-label="Оплаченные заказы">
                                     {money(row.paid_orders_total)}
                                 </td>

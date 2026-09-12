@@ -7,6 +7,7 @@ import {
     statusLabels,
 } from '@/lib/production/adminTypes';
 import styles from './ProductionAdmin.module.css';
+import { AdminOrderModeration } from './AdminOrderModeration';
 
 export function AdminOrderDetails({
     id,
@@ -39,6 +40,7 @@ export function AdminOrderDetails({
             )}
             {data && (
                 <>
+                    <AdminOrderModeration order={data} reload={reload} />
                     <p>
                         {data.name || 'Имя не указано'} ·{' '}
                         {data.email || 'Без почты'} ·{' '}

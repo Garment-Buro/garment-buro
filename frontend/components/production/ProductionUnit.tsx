@@ -13,6 +13,7 @@ import { productionApi } from '@/lib/api/production';
 import { useProductionAuthStore } from '@/store/productionAuthStore';
 import { SpecificationForm } from './SpecificationForm';
 import { OrderEvidence } from './OrderEvidence';
+import { UnitHandoff } from './UnitHandoff';
 import styles from './ProductionTerminal.module.css';
 
 export function ProductionUnit({
@@ -39,7 +40,10 @@ export function ProductionUnit({
     );
     const [error, setError] = useState('');
     const [downloading, setDownloading] = useState(false);
-    const stage = currentStage(unit),
+    const stage =
+            project.flow_version === 2 && unit.lane === 'cut'
+                ? 'cut'
+                : currentStage(unit),
         spec = unit.specification,
         tech = stations.includes('tech');
     const download = async (id: number) => {
@@ -47,7 +51,7 @@ export function ProductionUnit({
         setError('');
         try {
             const file = await run((token) =>
-                productionApi.download(token, id),
+                productionApi.download(token, id, station),
             );
             const link = document.createElement('a');
             link.href = file.url;
@@ -82,6 +86,14 @@ export function ProductionUnit({
                 </span>
             </div>
             <OrderEvidence unit={unit} />
+            {project.flow_version === 2 && (
+                <UnitHandoff
+                    unit={unit}
+                    station={station}
+                    send={send}
+                    busy={busy}
+                />
+            )}
             {unit.blockers.length > 0 && (
                 <div className={styles.warning}>
                     {unit.blockers.map((text) => (
@@ -133,7 +145,11 @@ export function ProductionUnit({
                                     )}
                                     disabled={
                                         busy ||
-                                        project.state !== 'kitting' ||
+                                        (project.flow_version === 2
+                                            ? !['kit', 'waiting_dtf'].includes(
+                                                  unit.lane ?? '',
+                                              )
+                                            : project.state !== 'kitting') ||
                                         !canAct(stations, 'kit')
                                     }
                                     onChange={(event) =>
@@ -173,7 +189,8 @@ export function ProductionUnit({
                             </p>
                         </div>
                     )}
-                    {(canAct(stations, 'cut') ||
+                    {(tech || canAct(stations, 'cut') ||
+                        canAct(stations, 'workshop') ||
                         canAct(stations, 'dtf') ||
                         canAct(stations, 'application')) && (
                         <details className={styles.section}>
@@ -181,14 +198,20 @@ export function ProductionUnit({
                             {unit.files
                                 .filter(
                                     (file) =>
+                                        tech ||
                                         (spec.pattern_file_ids.includes(
                                             file.id,
                                         ) &&
-                                            canAct(stations, 'cut')) ||
+                                            (canAct(stations, 'cut') ||
+                                                canAct(
+                                                    stations,
+                                                    'workshop',
+                                                ))) ||
                                         (spec.print_file_ids.includes(
                                             file.id,
                                         ) &&
                                             (canAct(stations, 'dtf') ||
+                                                canAct(stations, 'workshop') ||
                                                 canAct(
                                                     stations,
                                                     'application',
@@ -233,7 +256,7 @@ export function ProductionUnit({
                                         })
                                     }
                                 >
-                                    Лекала сверены, QR и листы напечатаны
+                                    Техкарта и лекала проверены
                                 </button>
                             )}
                         {unit.documents_confirmed &&
@@ -242,9 +265,10 @@ export function ProductionUnit({
                                     Документы подтверждены технологом
                                 </span>
                             )}
-                        {['kitting', 'workshop', 'waiting_dtf'].includes(
-                            project.state,
-                        ) &&
+                        {project.flow_version !== 2 &&
+                            ['kitting', 'workshop', 'waiting_dtf'].includes(
+                                project.state,
+                            ) &&
                             spec.print_file_ids.length > 0 &&
                             !unit.dtf_ready &&
                             canAct(stations, 'dtf') && (
@@ -260,7 +284,10 @@ export function ProductionUnit({
                                     DTF напечатан, нарезан и подписан
                                 </button>
                             )}
-                        {['kitting', 'waiting_dtf'].includes(project.state) &&
+                        {project.flow_version !== 2 &&
+                            ['kitting', 'waiting_dtf'].includes(
+                                project.state,
+                            ) &&
                             unit.dtf_ready &&
                             !unit.dtf_inserted &&
                             canAct(stations, 'kit') && (
@@ -279,6 +306,7 @@ export function ProductionUnit({
                     </div>
                     {project.state === 'workshop' &&
                         stage &&
+                        (project.flow_version !== 2 || unit.lane === stage) &&
                         canAct(stations, stage) && (
                             <div className={styles.section}>
                                 {stage === 'qc' &&
