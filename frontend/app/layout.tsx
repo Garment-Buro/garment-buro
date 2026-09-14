@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import type { Metadata, Viewport } from "next";
 import { Alumni_Sans_SC, IBM_Plex_Mono, Inter, Manrope, Questrial, Michroma } from "next/font/google";
 import "./globals.css";
@@ -72,6 +73,7 @@ import { CookieConsent } from "@/components/shared/CookieConsent";
 import { CartSyncBootstrap } from "@/components/cart/CartSyncBootstrap";
 import { PhantomUiBootstrap } from "@/components/runtime/PhantomUiBootstrap";
 import { PwaRegistration } from "@/components/pwa/PwaRegistration";
+import { YandexMetrika } from "@/components/analytics/YandexMetrika";
 
 export default function RootLayout({
   children,
@@ -86,6 +88,9 @@ export default function RootLayout({
         className={`${manrope.variable} ${questrial.variable} ${michroma.variable} ${inter.variable} ${alumniSansSc.variable} ${ibmPlexMono.variable} font-manrope antialiased min-h-screen flex flex-col relative`}
       >
         <AppEnvironmentProvider>
+          <Suspense fallback={null}>
+            <YandexMetrika />
+          </Suspense>
           <AuthSessionBootstrap />
           <PwaRegistration />
           <SplashBoundary>
