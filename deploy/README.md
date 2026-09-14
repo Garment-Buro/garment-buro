@@ -8,12 +8,15 @@ projects, databases, Redis data, MinIO data and host ports.
 | production | `main` | `garment-buro.ru` | 3000 | 8000 | 9000 |
 | development | `develop` | `dev.garment-buro.ru` | 3100 | 8100 | 9100 |
 
-`partner.garment-buro.ru` uses the development frontend and backend until the
-partner program is promoted separately. `widget.garment-buro.ru` is served by
-the standalone widget deployment in the legacy Docker network.
+`partner.garment-buro.ru` and `production.garment-buro.ru` use the production
+frontend and backend deployed from `main`. Host-based routing in the frontend
+opens `/partner` and `/production` respectively. `widget.garment-buro.ru` is a
+separate application with its own repository and deployment from that
+repository's `main` branch.
 
-Before the first development deployment, enable the partner feature and expose
-the rootless development ports only on the Docker bridge address:
+Before the first development deployment, enable the partner feature for testing
+through `dev.garment-buro.ru` and expose the rootless development ports only on
+the Docker bridge address:
 
 ```bash
 bash deploy/scripts/enable-partner-development.sh
