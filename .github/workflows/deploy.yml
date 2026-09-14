@@ -75,6 +75,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     needs: build
+    concurrency:
+      group: garment-buro-server-cutover
+      cancel-in-progress: false
     environment:
       name: ${{ github.ref_name == 'main' && 'production' || 'development' }}
       url: ${{ github.ref_name == 'main' && 'https://garment-buro.ru' || 'https://dev.garment-buro.ru' }}
