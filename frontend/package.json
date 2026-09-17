@@ -23,7 +23,7 @@
     "react-konva": "^19.2.3",
     "swiper": "^12.1.2",
     "use-image": "^1.1.4",
-    "zustand": "^5.0.11"
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
