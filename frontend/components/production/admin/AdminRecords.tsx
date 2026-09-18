@@ -13,11 +13,12 @@ import {
 import { AdminOrderDetails } from './AdminOrderDetails';
 import { AdminEmployeeAccessCode } from './AdminEmployeeAccessCode';
 import { AdminEmployeeEditor } from './AdminEmployeeEditor';
+import { AdminInboxDetails } from './AdminInboxDetails';
 import { AdminPayoutReview } from './AdminPayoutReview';
 import { AdminRecordsTable, type RecordRow } from './AdminRecordsTable';
 import styles from './ProductionAdmin.module.css';
 
-type Section = Exclude<AdminSection, 'stats'>;
+type Section = Exclude<AdminSection, 'stats' | 'assortment'>;
 
 const filters: Record<Section, string[]> = {
     orders: [
@@ -36,11 +37,14 @@ const filters: Record<Section, string[]> = {
     payouts: ['requested', 'approved', 'paid', 'rejected', 'canceled'],
     employees: ['active', 'blocked'],
     clients: [],
+    problems: ['new', 'in_progress', 'resolved', 'closed'],
+    support: ['new', 'in_progress', 'resolved', 'closed'],
 };
 export function AdminRecords({ section }: { section: Section }) {
     const [search, setSearch] = useState('');
     const [query, setQuery] = useState('');
     const [status, setStatus] = useState('');
+    const [priority, setPriority] = useState('');
     const [offset, setOffset] = useState(0);
     const [orderId, setOrderId] = useState<number | null>(null);
     const [payout, setPayout] = useState<AdminPayout | null>(null);
@@ -50,14 +54,18 @@ export function AdminRecords({ section }: { section: Section }) {
     const [accessCode, setAccessCode] =
         useState<AdminEmployeeCodeResponse | null>(null);
     const [notice, setNotice] = useState('');
+    const [inboxId, setInboxId] = useState<number | null>(null);
+    const isInbox = section === 'problems' || section === 'support';
     const params = new URLSearchParams({
         q: query,
         status,
         offset: String(offset),
         limit: '30',
     });
+    if (isInbox) params.set('priority', priority);
     const { data, loading, error, reload } = useAdminResource<Page<RecordRow>>(
         `${section}?${params}`,
+        30_000,
     );
     return (
         <section aria-busy={loading}>
@@ -73,6 +81,7 @@ export function AdminRecords({ section }: { section: Section }) {
                         disabled={loading}
                         onClick={() => {
                             setPayout(null);
+                            setInboxId(null);
                             reload();
                         }}
                     >
@@ -88,6 +97,7 @@ export function AdminRecords({ section }: { section: Section }) {
                     setQuery(search.trim());
                     setOrderId(null);
                     setPayout(null);
+                    setInboxId(null);
                 }}
             >
                 <label className={styles.search}>
@@ -98,7 +108,11 @@ export function AdminRecords({ section }: { section: Section }) {
                         placeholder={
                             section === 'payouts'
                                 ? 'Номер заявки или партнёр'
-                                : 'Номер, имя, почта или телефон'
+                                : isInbox
+                                  ? 'Номер, тема, текст или автор'
+                                : section === 'employees'
+                                  ? 'Имя, телефон, почта или код сотрудника'
+                                  : 'Номер, имя, почта или телефон'
                         }
                         onChange={(event) => setSearch(event.target.value)}
                     />
@@ -113,6 +127,7 @@ export function AdminRecords({ section }: { section: Section }) {
                                 setOffset(0);
                                 setPayout(null);
                                 setOrderId(null);
+                                setInboxId(null);
                             }}
                         >
                             <option value="">Все статусы</option>
@@ -121,6 +136,25 @@ export function AdminRecords({ section }: { section: Section }) {
                                     {statusLabels[value]}
                                 </option>
                             ))}
+                        </select>
+                    </label>
+                )}
+                {isInbox && (
+                    <label>
+                        Приоритет
+                        <select
+                            value={priority}
+                            onChange={(event) => {
+                                setPriority(event.target.value);
+                                setOffset(0);
+                                setInboxId(null);
+                            }}
+                        >
+                            <option value="">Все приоритеты</option>
+                            <option value="critical">Критический</option>
+                            <option value="high">Высокий</option>
+                            <option value="normal">Обычный</option>
+                            <option value="low">Низкий</option>
                         </select>
                     </label>
                 )}
@@ -137,14 +171,28 @@ export function AdminRecords({ section }: { section: Section }) {
             )}
             {section === 'employees' && (
                 <p className={styles.muted}>
-                    Здесь только работники производства. Покупатели и их заказы
-                    находятся в разделе «Клиенты».
+                    Здесь показаны сотрудники и тестовые доступы производства.
+                    Тестовые доступы отмечены отдельно и не входят в статистику
+                    сотрудников. Искать можно в том числе по действующему личному
+                    коду. Покупатели и их заказы находятся в разделе «Клиенты».
                 </p>
             )}
             {section === 'payouts' && (
                 <p className={styles.muted}>
                     Одобрение заявки не отправляет деньги. Создание платёжки и
                     подпись в Точке выполняются отдельно.
+                </p>
+            )}
+            {section === 'support' && (
+                <p className={styles.muted}>
+                    Сообщения пользователей о заказах, оплате и работе сайта.
+                    Ответы пользователям добавим на этапе клиентской роли.
+                </p>
+            )}
+            {section === 'problems' && (
+                <p className={styles.muted}>
+                    Сбои и препятствия на производстве с привязкой к участку,
+                    проекту или единице изделия.
                 </p>
             )}
             {notice && <p role="status">{notice}</p>}
@@ -181,6 +229,10 @@ export function AdminRecords({ section }: { section: Section }) {
                             setEmployeeEditor(row);
                             setNotice('');
                         }}
+                        onInbox={(row) => {
+                            setInboxId(row.id);
+                            setNotice('');
+                        }}
                     />
                 </div>
             )}
@@ -191,6 +243,7 @@ export function AdminRecords({ section }: { section: Section }) {
                         setOffset(Math.max(0, offset - 30));
                         setOrderId(null);
                         setPayout(null);
+                        setInboxId(null);
                     }}
                 >
                     Назад
@@ -203,6 +256,7 @@ export function AdminRecords({ section }: { section: Section }) {
                             setOffset(data.next_offset);
                         setOrderId(null);
                         setPayout(null);
+                        setInboxId(null);
                     }}
                 >
                     Далее
@@ -243,6 +297,18 @@ export function AdminRecords({ section }: { section: Section }) {
                 <AdminEmployeeAccessCode
                     result={accessCode}
                     onClose={() => setAccessCode(null)}
+                />
+            )}
+            {inboxId !== null && isInbox && (
+                <AdminInboxDetails
+                    section={section}
+                    id={inboxId}
+                    onClose={() => setInboxId(null)}
+                    onSaved={() => {
+                        setInboxId(null);
+                        setNotice('Обращение обновлено.');
+                        reload();
+                    }}
                 />
             )}
         </section>

@@ -24,7 +24,6 @@ from app.modules.crm.models import CrmOrderProject, CrmProductionUnit, CrmProjec
 from app.modules.crm.production_models import CrmProductionPlanRevision
 from app.modules.crm.read_service import CrmReadService
 from app.modules.crm.reference_models import (
-    CrmCatalogProductModelLink,
     CrmFabric,
     CrmGarmentModel,
     CrmGarmentSize,
@@ -280,12 +279,9 @@ async def _seed(database: DatabaseManager) -> tuple[User, User]:
             created_at=NOW,
             updated_at=NOW,
         )
-        link = CrmCatalogProductModelLink(
-            garment_model_id=model.id,
-            catalog_product_id=101,
-            created_by_user_id=actor.id,
-            created_at=NOW,
-        )
+        linked_product = await session.get(Product, 101)
+        assert linked_product is not None
+        linked_product.garment_model_id = model.id
         card = CrmTechCard(
             garment_model_id=model.id,
             code="TC_DRESS_01",
@@ -294,7 +290,7 @@ async def _seed(database: DatabaseManager) -> tuple[User, User]:
             created_at=NOW,
             updated_at=NOW,
         )
-        session.add_all([size, link, card])
+        session.add_all([size, card])
         await session.flush()
         revision = CrmTechCardRevision(
             tech_card_id=card.id,

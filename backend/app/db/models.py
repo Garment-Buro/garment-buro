@@ -9,7 +9,17 @@ from app.modules.catalog.models import (
     CatalogDocumentRevision,
     CatalogMigrationRun,
     Product,
+    ProductCategory,
     ProductVariant,
+)
+from app.modules.crm.assortment_models import (
+    CrmAccessory,
+    CrmAccessoryCategory,
+    CrmGarmentAccessoryRequirement,
+    CrmGarmentFabricRequirement,
+    CrmGarmentPackagingRule,
+    CrmGarmentPattern,
+    CrmPackagingBox,
 )
 from app.modules.crm.command_models import CrmAssignmentEvent, CrmStaffCommand
 from app.modules.crm.file_models import CrmFileAccessEvent, CrmFileAttachment
@@ -24,7 +34,6 @@ from app.modules.crm.production_models import (
     CrmProductionUnitEvent,
 )
 from app.modules.crm.reference_models import (
-    CrmCatalogProductModelLink,
     CrmFabric,
     CrmGarmentModel,
     CrmGarmentSize,
@@ -64,6 +73,7 @@ from app.modules.orders.workflow_models import OrderWorkflow, OrderWorkflowEvent
 from app.modules.partners.models import (
     PartnerCommission,
     PartnerLanding,
+    PartnerLandingProduct,
     PartnerOrderAttribution,
     PartnerPayoutRequest,
     PartnerProfile,
@@ -84,6 +94,7 @@ from app.modules.production.auth_models import (
     ProductionLoginLimit,
     ProductionSession,
 )
+from app.modules.production.inbox_models import AdminInboxItem
 from app.modules.production.models import (
     ProductionBag,
     ProductionEvent,
@@ -97,6 +108,7 @@ __all__ = [
     "ProductionEmployee",
     "ProductionSession",
     "ProductionLoginLimit",
+    "AdminInboxItem",
     "OrderWorkflow",
     "OrderWorkflowEvent",
     "OrderWorkflowJob",
@@ -115,11 +127,17 @@ __all__ = [
     "CrmFabric",
     "CrmGarmentModel",
     "CrmGarmentSize",
-    "CrmCatalogProductModelLink",
     "CrmTechCard",
     "CrmTechCardRevision",
     "CrmTechCardCheckpoint",
     "CrmReferenceEvent",
+    "CrmGarmentPattern",
+    "CrmGarmentFabricRequirement",
+    "CrmAccessoryCategory",
+    "CrmAccessory",
+    "CrmGarmentAccessoryRequirement",
+    "CrmPackagingBox",
+    "CrmGarmentPackagingRule",
     "CrmProductionPlanRevision",
     "CrmProductionUnitEvent",
     "CrmMaterialBalance",
@@ -163,12 +181,14 @@ __all__ = [
     "Payout",
     "PartnerCommission",
     "PartnerLanding",
+    "PartnerLandingProduct",
     "PartnerOrderAttribution",
     "PartnerPayoutRequest",
     "PartnerProfile",
     "PartnerRequisites",
     "PartnerVisit",
     "Product",
+    "ProductCategory",
     "ProductMedia",
     "ProductVariant",
     "ProductVariantMedia",

@@ -3,7 +3,10 @@ export type AdminSection =
     | 'orders'
     | 'payouts'
     | 'employees'
-    | 'clients';
+    | 'clients'
+    | 'assortment'
+    | 'problems'
+    | 'support';
 export interface Page<T> {
     items: T[];
     next_offset: number | null;
@@ -60,6 +63,7 @@ export type ProductionStation = (typeof productionStations)[number];
 export interface AdminEmployee {
     availability: 'available' | 'sick' | 'vacation' | 'absent';
     id: number;
+    is_demo: boolean;
     first_name: string;
     last_name: string;
     name: string;
@@ -110,6 +114,30 @@ export interface AdminPayout {
     reviewed_at: string | null;
     paid_at: string | null;
 }
+export type AdminInboxStatus = 'new' | 'in_progress' | 'resolved' | 'closed';
+export type AdminInboxPriority = 'low' | 'normal' | 'high' | 'critical';
+export interface AdminInboxItem {
+    id: number;
+    kind: 'support' | 'production_problem';
+    status: AdminInboxStatus;
+    priority: AdminInboxPriority;
+    subject: string;
+    message: string;
+    reporter_user_id: number | null;
+    reporter_name: string | null;
+    reporter_email: string | null;
+    reporter_phone: string | null;
+    order_id: number | null;
+    project_id: number | null;
+    production_unit_id: number | null;
+    station: string | null;
+    assigned_to_user_id: number | null;
+    admin_note: string | null;
+    version: number;
+    resolved_at: string | null;
+    created_at: string;
+    updated_at: string;
+}
 export interface AdminStats {
     as_of: string;
     orders_count: number;
@@ -117,6 +145,8 @@ export interface AdminStats {
     paid_orders_total: string;
     employees_count: number;
     clients_count: number;
+    support_open_count: number;
+    problems_open_count: number;
     order_states: { status: string; count: number }[];
     payout_states: { status: string; count: number; amount: string }[];
 }
@@ -126,6 +156,9 @@ export const sectionLabels: Record<AdminSection, string> = {
     payouts: 'Заявки на выплаты',
     employees: 'Сотрудники',
     clients: 'Клиенты',
+    assortment: 'Товары и склад',
+    problems: 'Проблемы',
+    support: 'Поддержка',
 };
 export const stationLabels: Record<ProductionStation, string> = {
     tech: 'Технолог',
@@ -162,9 +195,18 @@ export const statusLabels: Record<string, string> = {
     active: 'Активен',
     blocked: 'Заблокирован',
     deleted: 'Удалён',
+    in_progress: 'В работе',
+    resolved: 'Решено',
+    closed: 'Закрыто',
     awaiting_signature: 'На подписи в банке',
     submitting: 'Создание платёжки',
     unknown: 'Нужна сверка с банком',
+};
+export const priorityLabels: Record<AdminInboxPriority, string> = {
+    low: 'Низкий',
+    normal: 'Обычный',
+    high: 'Высокий',
+    critical: 'Критический',
 };
 export const money = (amount: string) =>
     new Intl.NumberFormat('ru-RU', {

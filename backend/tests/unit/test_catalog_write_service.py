@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from decimal import Decimal
 from pathlib import Path
 
 from sqlalchemy import func, select
@@ -9,8 +10,16 @@ from app.core.config import AppEnvironment, Settings
 from app.db.base import Base
 from app.db.session import DatabaseManager
 from app.modules.catalog.models import CatalogAuditEvent, Product
-from app.modules.catalog.schemas import ProductWriteRequest
+from app.modules.catalog.schemas import ProductCategoryWrite, ProductWriteRequest
 from app.modules.catalog.service import CatalogWriteService, UnknownCatalogMediaError
+from app.modules.crm.assortment_schemas import CrmGarmentFabricRequirementWrite
+from app.modules.crm.assortment_service import CrmAssortmentService
+from app.modules.crm.reference_schemas import (
+    CrmFabricWrite,
+    CrmGarmentModelWrite,
+    CrmGarmentSizeWrite,
+)
+from app.modules.crm.reference_service import CrmReferenceService
 from app.modules.identity.models import User
 from app.modules.media.models import MediaObject, MediaStatus
 
@@ -28,10 +37,21 @@ def _settings(database_path: Path) -> Settings:
     )
 
 
-def _payload(*, title: str, media_url: str) -> ProductWriteRequest:
+def _payload(
+    *,
+    title: str,
+    media_url: str,
+    category_id: int | None = None,
+    garment_model_id: int | None = None,
+    garment_size_id: int | None = None,
+    fabric_id: int | None = None,
+) -> ProductWriteRequest:
     return ProductWriteRequest.model_validate(
         {
             "title": title,
+            "slug": "base-product",
+            "category_id": category_id,
+            "garment_model_id": garment_model_id,
             "price": 12000,
             "old_price": 15000,
             "description": "Description",
@@ -44,6 +64,8 @@ def _payload(*, title: str, media_url: str) -> ProductWriteRequest:
                 {
                     "id": 999,
                     "size": "M",
+                    "garment_size_id": garment_size_id,
+                    "fabric_id": fabric_id,
                     "color": "black",
                     "color_hex": "#1A1A1A",
                     "stock_quantity": 2,
@@ -92,13 +114,53 @@ def test_catalog_write_service_replaces_normalized_children_and_keeps_audit(
                     status=MediaStatus.READY.value,
                 )
                 session.add_all([actor, first, second])
+                service = CatalogWriteService(settings)
+                await service.create_category(
+                    session,
+                    payload=ProductCategoryWrite(slug="t-shirts", name="T-shirts"),
+                )
+                references = CrmReferenceService()
+                fabric = await references.create_fabric(
+                    session,
+                    payload=CrmFabricWrite(
+                        code="FABRIC_BLACK",
+                        name="Black fabric",
+                        color_name="Black",
+                        width_cm=Decimal("150"),
+                    ),
+                    actor_user_id=actor.id,
+                )
+                model = await references.create_garment_model(
+                    session,
+                    payload=CrmGarmentModelWrite(
+                        code="TSHIRT",
+                        name="T-shirt",
+                        sizes=[CrmGarmentSizeWrite(code="M")],
+                    ),
+                    actor_user_id=actor.id,
+                )
+                await CrmAssortmentService().create_fabric_requirement(
+                    session,
+                    CrmGarmentFabricRequirementWrite(
+                        garment_model_id=model.id,
+                        fabric_id=fabric.id,
+                        meters_per_unit=Decimal("1.2"),
+                    ),
+                )
                 await session.commit()
 
             service = CatalogWriteService(settings)
             async with database.session() as session:
                 created = await service.create_product(
                     session,
-                    payload=_payload(title="Created", media_url="/uploads/first.webp"),
+                    payload=_payload(
+                        title="Created",
+                        media_url="/uploads/first.webp",
+                        category_id=1,
+                        garment_model_id=1,
+                        garment_size_id=1,
+                        fabric_id=1,
+                    ),
                     actor_user_id=10,
                 )
                 await session.commit()
@@ -114,13 +176,27 @@ def test_catalog_write_service_replaces_normalized_children_and_keeps_audit(
                 updated = await service.update_product(
                     session,
                     product_id=product_id,
-                    payload=_payload(title="Updated", media_url=second_url),
+                    payload=_payload(
+                        title="Updated",
+                        media_url=second_url,
+                        category_id=1,
+                        garment_model_id=1,
+                        garment_size_id=1,
+                        fabric_id=1,
+                    ),
                     actor_user_id=10,
                 )
                 await session.commit()
                 assert updated.title == "Updated"
                 assert updated.mobile_card_image == "/uploads/second.webp"
                 assert len(updated.variants) == 1
+                product = await session.get(Product, product_id)
+                assert product is not None
+                assert product.slug == "base-product"
+                assert product.category_id == 1
+                assert product.garment_model_id == 1
+                assert product.variants[0].garment_size_id == 1
+                assert product.variants[0].fabric_id == 1
 
             async with database.session() as session:
                 await service.delete_product(

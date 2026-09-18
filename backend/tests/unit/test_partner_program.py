@@ -10,10 +10,11 @@ from sqlalchemy import func, select
 from app.core.config import AppEnvironment, Settings
 from app.db.base import Base
 from app.db.session import DatabaseManager
+from app.modules.catalog.models import Product
 from app.modules.identity.models import RoleName, User, UserRole
 from app.modules.identity.repository import IdentityRepository
 from app.modules.orders.models import Order
-from app.modules.partners.models import PartnerVisit
+from app.modules.partners.models import PartnerLandingProduct, PartnerVisit
 from app.modules.partners.schemas import (
     PartnerCreateRequest,
     PartnerLandingCreateRequest,
@@ -25,6 +26,7 @@ from app.modules.partners.security import (
     PartnerAttributionSecurity,
 )
 from app.modules.partners.service import (
+    PartnerLandingProductNotFoundError,
     PartnerPayoutBalanceError,
     PartnerPayoutRequisitesError,
     PartnerProgramService,
@@ -99,6 +101,28 @@ def test_partner_lifecycle_tracks_paid_order_and_reserves_payout(tmp_path) -> No
                 "partner@example.test",
             )
             assert partner_user is not None
+            session.add_all(
+                [
+                    Product(id=1, title="Футболка", price=Decimal("1000.00")),
+                    Product(id=2, title="Худи", price=Decimal("2000.00")),
+                ]
+            )
+            await session.flush()
+            with pytest.raises(PartnerLandingProductNotFoundError) as missing_product:
+                await service.create_landing(
+                    session,
+                    partner_id=partner.id,
+                    payload=PartnerLandingCreateRequest(
+                        slug="missing-product",
+                        title="Некорректная подборка",
+                        headline="Несуществующий товар",
+                        description="Проверка ссылочной целостности.",
+                        cta_label="Смотреть",
+                        cta_href="/",
+                        product_ids=[999],
+                    ),
+                )
+            assert missing_product.value.product_ids == [999]
             landing = await service.create_landing(
                 session,
                 partner_id=partner.id,
@@ -119,6 +143,10 @@ def test_partner_lifecycle_tracks_paid_order_and_reserves_payout(tmp_path) -> No
                 ),
                 now=observed_at,
             )
+            assert [(link.product_id, link.position) for link in landing.product_links] == [
+                (1, 0),
+                (2, 1),
+            ]
             token, _ = await service.register_visit(
                 session,
                 slug=landing.slug,
@@ -136,6 +164,14 @@ def test_partner_lifecycle_tracks_paid_order_and_reserves_payout(tmp_path) -> No
             )
             assert updated_landing.content["model_heading"] == "Выберите основу"
             assert updated_landing.product_ids == [2]
+            stored_links = list(
+                await session.scalars(
+                    select(PartnerLandingProduct).where(
+                        PartnerLandingProduct.landing_id == landing.id
+                    )
+                )
+            )
+            assert [(link.product_id, link.position) for link in stored_links] == [(2, 0)]
             assert updated_landing.published_at is None
             updated_landing = await service.update_landing(
                 session,

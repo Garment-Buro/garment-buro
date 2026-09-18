@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { ProductionTerminal } from '@/components/production/ProductionTerminal';
+import { permanentRedirect } from 'next/navigation';
 
 export const metadata: Metadata = {
     title: 'Администратор · Garment Buro',
@@ -7,5 +7,5 @@ export const metadata: Metadata = {
     manifest: '/production/manifest.webmanifest',
 };
 export default function ProductionAdminPage() {
-    return <ProductionTerminal mode="admin" />;
+    permanentRedirect('/production');
 }

@@ -14,7 +14,10 @@ def test_alembic_has_one_linear_partner_cabinet_head() -> None:
     config = Config(str(backend_dir / "alembic.ini"))
     scripts = ScriptDirectory.from_config(config)
 
-    assert scripts.get_heads() == ["20260912_0042"]
+    assert scripts.get_heads() == ["20260918_0045"]
+    assert scripts.get_revision("20260918_0045").down_revision == "20260918_0044"
+    assert scripts.get_revision("20260918_0044").down_revision == "20260914_0043"
+    assert scripts.get_revision("20260914_0043").down_revision == "20260912_0042"
     assert scripts.get_revision("20260912_0042").down_revision == "20260911_0041"
     assert scripts.get_revision("20260911_0041").down_revision == "20260909_0040"
     assert scripts.get_revision("20260909_0040").down_revision == "20260909_0039"
@@ -60,10 +63,16 @@ def test_identity_security_tables_share_the_target_metadata() -> None:
     } <= set(Base.metadata.tables)
 
 
+def test_admin_inbox_table_shares_the_target_metadata() -> None:
+    assert "admin_inbox_items" in Base.metadata.tables
+    assert "problem_inbox_item_id" in Base.metadata.tables["production_work_items"].columns
+
+
 def test_partner_program_tables_share_the_target_metadata() -> None:
     assert {
         "partner_profiles",
         "partner_landings",
+        "partner_landing_products",
         "partner_visits",
         "partner_order_attributions",
         "partner_commissions",
@@ -72,6 +81,10 @@ def test_partner_program_tables_share_the_target_metadata() -> None:
         "partner_bank_payments",
         "partner_bank_payment_events",
     } <= set(Base.metadata.tables)
+    assert "product_ids" not in Base.metadata.tables["partner_landings"].c
+    assert {"landing_id", "product_id", "position"} <= set(
+        Base.metadata.tables["partner_landing_products"].c.keys()
+    )
 
 
 def test_notification_tables_share_the_target_metadata() -> None:
@@ -213,7 +226,6 @@ def test_crm_reference_data_shares_the_target_metadata() -> None:
         "crm_fabrics",
         "crm_garment_models",
         "crm_garment_sizes",
-        "crm_catalog_product_model_links",
         "crm_tech_cards",
         "crm_tech_card_revisions",
         "crm_tech_card_checkpoints",
@@ -228,6 +240,30 @@ def test_crm_reference_data_shares_the_target_metadata() -> None:
         "published_by_user_id",
         "published_at",
     } <= set(revision_columns.keys())
+
+
+def test_product_assortment_foundation_shares_the_target_metadata() -> None:
+    assert {
+        "crm_garment_patterns",
+        "crm_garment_fabric_requirements",
+        "crm_accessory_categories",
+        "crm_accessories",
+        "crm_garment_accessory_requirements",
+        "crm_packaging_boxes",
+        "crm_garment_packaging_rules",
+        "product_categories",
+    } <= set(Base.metadata.tables)
+    assert "minimum_stock_meters" in Base.metadata.tables["crm_fabrics"].c
+    assert "size_chart_media_object_id" in Base.metadata.tables["crm_garment_models"].c
+    assert {
+        "min_sleeve_length_cm",
+        "max_sleeve_length_cm",
+    } <= set(Base.metadata.tables["crm_garment_sizes"].c.keys())
+    assert "role_code" in Base.metadata.tables["crm_tech_card_checkpoints"].c
+    assert {"category_id", "garment_model_id"} <= set(Base.metadata.tables["products"].c.keys())
+    assert {"garment_size_id", "fabric_id"} <= set(
+        Base.metadata.tables["product_variants"].c.keys()
+    )
 
 
 def test_crm_production_workflow_shares_the_target_metadata() -> None:

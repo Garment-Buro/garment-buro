@@ -66,6 +66,10 @@ class CrmFabric(Base, IntegerIdMixin, TimestampMixin):
             "cost_per_meter IS NULL OR cost_per_meter >= 0",
             name="crm_fabric_cost_nonnegative",
         ),
+        CheckConstraint(
+            "minimum_stock_meters >= 0",
+            name="crm_fabric_minimum_stock_nonnegative",
+        ),
         CheckConstraint("currency = 'RUB'", name="crm_fabric_currency_rub"),
         CheckConstraint("version > 0", name="crm_fabric_version_positive"),
     )
@@ -78,6 +82,12 @@ class CrmFabric(Base, IntegerIdMixin, TimestampMixin):
     density_gsm: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     width_cm: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     cost_per_meter: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    minimum_stock_meters: Mapped[Decimal] = mapped_column(
+        Numeric(14, 3),
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
     currency: Mapped[str] = mapped_column(
         String(3),
         nullable=False,
@@ -125,6 +135,11 @@ class CrmGarmentModel(Base, IntegerIdMixin, TimestampMixin):
     base_length_cm: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     base_width_cm: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     base_weight_g: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    size_chart_media_object_id: Mapped[int | None] = mapped_column(
+        ForeignKey("media_objects.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     is_active: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
@@ -140,14 +155,34 @@ class CrmGarmentModel(Base, IntegerIdMixin, TimestampMixin):
         passive_deletes=True,
         order_by="(CrmGarmentSize.sort_order, CrmGarmentSize.id)",
     )
-    catalog_links: Mapped[list[CrmCatalogProductModelLink]] = relationship(
-        back_populates="garment_model",
-        passive_deletes=True,
-        order_by="CrmCatalogProductModelLink.id",
-    )
     tech_card: Mapped[CrmTechCard | None] = relationship(
         back_populates="garment_model",
         uselist=False,
+        passive_deletes=True,
+    )
+    size_chart_media = relationship("MediaObject")
+    patterns = relationship(
+        "CrmGarmentPattern",
+        back_populates="garment_model",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    fabric_requirements = relationship(
+        "CrmGarmentFabricRequirement",
+        back_populates="garment_model",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    accessory_requirements = relationship(
+        "CrmGarmentAccessoryRequirement",
+        back_populates="garment_model",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    packaging_rules = relationship(
+        "CrmGarmentPackagingRule",
+        back_populates="garment_model",
+        cascade="all, delete-orphan",
         passive_deletes=True,
     )
 
@@ -196,6 +231,19 @@ class CrmGarmentSize(Base, IntegerIdMixin, TimestampMixin):
             name="crm_garment_size_width_range_valid",
         ),
         CheckConstraint(
+            "min_sleeve_length_cm IS NULL OR min_sleeve_length_cm > 0",
+            name="crm_garment_size_min_sleeve_positive",
+        ),
+        CheckConstraint(
+            "max_sleeve_length_cm IS NULL OR max_sleeve_length_cm > 0",
+            name="crm_garment_size_max_sleeve_positive",
+        ),
+        CheckConstraint(
+            "min_sleeve_length_cm IS NULL OR max_sleeve_length_cm IS NULL "
+            "OR min_sleeve_length_cm <= max_sleeve_length_cm",
+            name="crm_garment_size_sleeve_range_valid",
+        ),
+        CheckConstraint(
             "extra_width_price_per_cm IS NULL OR extra_width_price_per_cm >= 0",
             name="crm_garment_size_extra_width_price_nonnegative",
         ),
@@ -225,6 +273,8 @@ class CrmGarmentSize(Base, IntegerIdMixin, TimestampMixin):
     max_length_cm: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     min_width_cm: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     max_width_cm: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    min_sleeve_length_cm: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    max_sleeve_length_cm: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     extra_width_price_per_cm: Mapped[Decimal | None] = mapped_column(
         Numeric(12, 2),
         nullable=True,
@@ -245,38 +295,6 @@ class CrmGarmentSize(Base, IntegerIdMixin, TimestampMixin):
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
 
     garment_model: Mapped[CrmGarmentModel] = relationship(back_populates="sizes")
-
-
-class CrmCatalogProductModelLink(Base, IntegerIdMixin):
-    __tablename__ = "crm_catalog_product_model_links"
-    __table_args__ = (
-        UniqueConstraint(
-            "catalog_product_id",
-            name="uq_crm_catalog_product_model_link_product",
-        ),
-    )
-
-    garment_model_id: Mapped[int] = mapped_column(
-        ForeignKey("crm_garment_models.id", ondelete="RESTRICT"),
-        nullable=False,
-        index=True,
-    )
-    catalog_product_id: Mapped[int] = mapped_column(
-        ForeignKey("products.id", ondelete="RESTRICT"),
-        nullable=False,
-        index=True,
-    )
-    created_by_user_id: Mapped[int | None] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-    )
-
-    garment_model: Mapped[CrmGarmentModel] = relationship(back_populates="catalog_links")
 
 
 class CrmTechCard(Base, IntegerIdMixin, TimestampMixin):
@@ -433,6 +451,10 @@ class CrmTechCardCheckpoint(Base, IntegerIdMixin):
             name="crm_tech_card_checkpoint_stage_nonempty",
         ),
         CheckConstraint(
+            "length(trim(role_code)) > 0",
+            name="crm_tech_card_checkpoint_role_nonempty",
+        ),
+        CheckConstraint(
             "length(trim(name)) > 0",
             name="crm_tech_card_checkpoint_name_nonempty",
         ),
@@ -454,6 +476,7 @@ class CrmTechCardCheckpoint(Base, IntegerIdMixin):
     )
     position: Mapped[int] = mapped_column(Integer, nullable=False)
     stage_code: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    role_code: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     standard_minutes: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)

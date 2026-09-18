@@ -21,7 +21,13 @@ from app.modules.media.models import MediaObject
 from app.modules.orders.models import Order, OrderItem
 from app.modules.production.auth_router import get_production_user
 from app.modules.production.evidence import ProductionConflict
-from app.modules.production.models import ProductionBag, ProductionEvent, ProductionSpecification
+from app.modules.production.inbox_models import AdminInboxItem, AdminInboxStatus
+from app.modules.production.models import (
+    ProductionBag,
+    ProductionEvent,
+    ProductionSpecification,
+    ProductionWorkItem,
+)
 from app.modules.production.read_service import ProductionReadService
 from app.modules.production.router import router
 from app.modules.production.schemas import ProductionCommand, SpecificationWrite
@@ -363,6 +369,38 @@ def test_versions_permissions_tamper_and_legacy_bypass_are_blocked(tmp_path):
             # Integrity failures must still be reportable and audited.
             await execute(db, service, "report_issue", unit_id=1, note="Wrong file checksum")
             async with db.session() as session:
+                work = await session.scalar(
+                    select(ProductionWorkItem).where(ProductionWorkItem.unit_id == 1)
+                )
+                inbox = await session.get(AdminInboxItem, work.problem_inbox_item_id)
+                assert inbox is not None
+                assert inbox.kind == "production_problem"
+                assert inbox.status == AdminInboxStatus.NEW.value
+                assert inbox.message == "Wrong file checksum"
+                assert inbox.project_id == 1 and inbox.production_unit_id == 1
+            with pytest.raises(ProductionConflict, match="открытая проблема"):
+                await execute(
+                    db,
+                    service,
+                    "report_issue",
+                    unit_id=1,
+                    note="Duplicate report",
+                )
+            await execute(
+                db,
+                service,
+                "resolve_issue",
+                unit_id=1,
+                note="File restored",
+            )
+            async with db.session() as session:
+                work = await session.scalar(
+                    select(ProductionWorkItem).where(ProductionWorkItem.unit_id == 1)
+                )
+                inbox = await session.get(AdminInboxItem, work.problem_inbox_item_id)
+                assert work.issue is None
+                assert inbox.status == AdminInboxStatus.RESOLVED.value
+                assert inbox.resolved_at is not None
                 media = await session.get(MediaObject, 2)
                 media.checksum_sha256 = "2" * 64
                 item = await session.get(OrderItem, 1)

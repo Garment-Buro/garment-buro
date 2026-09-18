@@ -23,7 +23,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, IntegerIdMixin, TimestampMixin
 
-PARTNER_PRODUCT_IDS_TYPE = JSON().with_variant(JSONB, "postgresql")
 PARTNER_LANDING_CONTENT_TYPE = JSON().with_variant(JSONB, "postgresql")
 
 
@@ -124,10 +123,12 @@ class PartnerLanding(Base, IntegerIdMixin, TimestampMixin):
         nullable=False,
         default=dict,
     )
-    product_ids: Mapped[list[int]] = mapped_column(
-        PARTNER_PRODUCT_IDS_TYPE,
-        nullable=False,
-        default=list,
+    product_links: Mapped[list[PartnerLandingProduct]] = relationship(
+        back_populates="landing",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="PartnerLandingProduct.position",
+        lazy="selectin",
     )
     status: Mapped[str] = mapped_column(
         String(16),
@@ -144,6 +145,41 @@ class PartnerLanding(Base, IntegerIdMixin, TimestampMixin):
     partner: Mapped[PartnerProfile] = relationship(back_populates="landings")
     visits: Mapped[list[PartnerVisit]] = relationship(back_populates="landing")
     attributions: Mapped[list[PartnerOrderAttribution]] = relationship(back_populates="landing")
+
+    @property
+    def product_ids(self) -> list[int]:
+        return [link.product_id for link in self.product_links]
+
+
+class PartnerLandingProduct(Base, IntegerIdMixin, TimestampMixin):
+    __tablename__ = "partner_landing_products"
+    __table_args__ = (
+        UniqueConstraint(
+            "landing_id",
+            "product_id",
+            name="uq_partner_landing_product_identity",
+        ),
+        UniqueConstraint(
+            "landing_id",
+            "position",
+            name="uq_partner_landing_product_position",
+        ),
+        CheckConstraint("position >= 0", name="partner_landing_product_position_nonnegative"),
+    )
+
+    landing_id: Mapped[int] = mapped_column(
+        ForeignKey("partner_landings.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    product_id: Mapped[int] = mapped_column(
+        ForeignKey("products.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    landing: Mapped[PartnerLanding] = relationship(back_populates="product_links")
 
 
 class PartnerVisit(Base, IntegerIdMixin):

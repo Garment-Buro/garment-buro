@@ -62,6 +62,25 @@ export function ProductionWorkspace() {
         setCycle(false);
         setPocket('work');
     };
+    if (employee && employee.stations.length === 0) {
+        return (
+            <main className={legacy.login}>
+                <section className={legacy.panel}>
+                    <p className={legacy.eyebrow}>GARMENT BURO · ПРОИЗВОДСТВО</p>
+                    <h1>Нет назначенного участка</h1>
+                    <p>
+                        Администраторская роль открывает управление, но не даёт
+                        права выполнять операции цеха. Назначьте себе участок в
+                        разделе сотрудников, если нужен доступ к рабочему
+                        терминалу.
+                    </p>
+                    {employee.can_administer && (
+                        <Link href="/production">Вернуться в админку</Link>
+                    )}
+                </section>
+            </main>
+        );
+    }
     const relevant = (item: QueueItem) => {
         if (pocket === 'all') return true;
         if (pocket === 'holds')
@@ -174,7 +193,7 @@ export function ProductionWorkspace() {
                     {employee?.can_administer && (
                         <Link
                             className={styles.adminLink}
-                            href="/production/admin"
+                            href="/production"
                         >
                             Администратор
                         </Link>

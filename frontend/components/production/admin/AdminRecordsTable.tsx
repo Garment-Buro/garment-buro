@@ -5,14 +5,21 @@ import {
     type AdminEmployee,
     type AdminClient,
     type AdminPayout,
+    type AdminInboxItem,
     date,
     money,
+    priorityLabels,
     sectionLabels,
     statusLabels,
     stationLabels,
 } from '@/lib/production/adminTypes';
 import styles from './ProductionAdmin.module.css';
-export type RecordRow = AdminOrder | AdminPayout | AdminEmployee | AdminClient;
+export type RecordRow =
+    | AdminOrder
+    | AdminPayout
+    | AdminEmployee
+    | AdminClient
+    | AdminInboxItem;
 function Contact({
     name,
     email,
@@ -40,12 +47,14 @@ export function AdminRecordsTable({
     onOrder,
     onPayout,
     onEmployee,
+    onInbox,
 }: {
     section: Exclude<AdminSection, 'stats'>;
     items: RecordRow[];
     onOrder: (id: number) => void;
     onPayout: (payout: AdminPayout) => void;
     onEmployee: (employee: AdminEmployee) => void;
+    onInbox: (item: AdminInboxItem) => void;
 }) {
     return (
         <table>
@@ -66,13 +75,13 @@ export function AdminRecordsTable({
                     <tbody>
                         {(items as AdminOrder[]).map((row) => (
                             <tr key={row.id}>
-                                <td data-label="Заказ">
+                                <td data-label="Заказ" data-primary="true">
                                     <button onClick={() => onOrder(row.id)}>
                                         №{row.id}
                                     </button>
                                     <small>{date(row.created_at)}</small>
                                 </td>
-                                <td data-label="Покупатель">
+                                <td data-label="Покупатель" data-wide="true">
                                     <Contact {...row} />
                                 </td>
                                 <td data-label="Этап">
@@ -83,7 +92,9 @@ export function AdminRecordsTable({
                                 <td data-label="Оплата">
                                     <Status value={row.payment_status} />
                                 </td>
-                                <td data-label="Сумма">{money(row.total)}</td>
+                                <td data-label="Сумма" data-tail="true">
+                                    {money(row.total)}
+                                </td>
                             </tr>
                         ))}
                     </tbody>
@@ -103,8 +114,13 @@ export function AdminRecordsTable({
                     <tbody>
                         {(items as AdminEmployee[]).map((row) => (
                             <tr key={row.id}>
-                                <td data-label="Сотрудник">
+                                <td data-label="Сотрудник" data-primary="true">
                                     <Contact {...row} />
+                                    {row.is_demo && (
+                                        <span className={styles.demoBadge}>
+                                            Тестовый доступ
+                                        </span>
+                                    )}
                                     <small>Сотрудник №{row.id}</small>
                                 </td>
                                 <td data-label="Участки">
@@ -139,13 +155,19 @@ export function AdminRecordsTable({
                                             : 'Действующего кода нет'}
                                     </small>
                                 </td>
-                                <td data-label="Добавлен">
+                                <td data-label="Добавлен" data-tail="true">
                                     {date(row.created_at)}
                                 </td>
-                                <td data-label="Управление">
-                                    <button onClick={() => onEmployee(row)}>
-                                        Изменить
-                                    </button>
+                                <td data-label="Управление" data-action="true">
+                                    {row.is_demo ? (
+                                        <small>
+                                            Управляется тестовым сценарием
+                                        </small>
+                                    ) : (
+                                        <button onClick={() => onEmployee(row)}>
+                                            Изменить
+                                        </button>
+                                    )}
                                 </td>
                             </tr>
                         ))}
@@ -166,7 +188,7 @@ export function AdminRecordsTable({
                     <tbody>
                         {(items as AdminClient[]).map((row) => (
                             <tr key={row.key}>
-                                <td data-label="Клиент">
+                                <td data-label="Клиент" data-primary="true">
                                     <Contact {...row} />
                                     <small>
                                         {row.user_id
@@ -178,10 +200,10 @@ export function AdminRecordsTable({
                                 <td data-label="Сумма заказов">
                                     {money(row.orders_total)}
                                 </td>
-                                <td data-label="Оплаченные заказы">
+                                <td data-label="Оплаченные заказы" data-tail="true">
                                     {money(row.paid_orders_total)}
                                 </td>
-                                <td data-label="Последний заказ">
+                                <td data-label="Последний заказ" data-action="true">
                                     <button
                                         onClick={() =>
                                             onOrder(row.last_order_id)
@@ -210,11 +232,11 @@ export function AdminRecordsTable({
                     <tbody>
                         {(items as AdminPayout[]).map((row) => (
                             <tr key={row.id}>
-                                <td data-label="Заявка">
+                                <td data-label="Заявка" data-primary="true">
                                     №{row.id}
                                     <small>{date(row.created_at)}</small>
                                 </td>
-                                <td data-label="Партнёр">
+                                <td data-label="Партнёр" data-wide="true">
                                     {row.partner}
                                     <small>Партнёр №{row.partner_id}</small>
                                 </td>
@@ -228,7 +250,7 @@ export function AdminRecordsTable({
                                     </small>
                                     {row.note && <small>{row.note}</small>}
                                 </td>
-                                <td data-label="Решение">
+                                <td data-label="Решение" data-action="true">
                                     {!row.bank_state &&
                                     ['requested', 'approved'].includes(
                                         row.status,
@@ -243,6 +265,85 @@ export function AdminRecordsTable({
                                     ) : (
                                         'Решение недоступно'
                                     )}
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </>
+            )}
+            {(section === 'support' || section === 'problems') && (
+                <>
+                    <thead>
+                        <tr>
+                            <th>Обращение</th>
+                            <th>
+                                {section === 'support' ? 'Пользователь' : 'Производство'}
+                            </th>
+                            <th>Приоритет</th>
+                            <th>Статус</th>
+                            <th>Создано</th>
+                            <th>Управление</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {(items as AdminInboxItem[]).map((row) => (
+                            <tr key={row.id}>
+                                <td data-label="Обращение" data-primary="true">
+                                    <strong>{row.subject}</strong>
+                                    <small>№{row.id}</small>
+                                </td>
+                                <td
+                                    data-wide="true"
+                                    data-label={
+                                        section === 'support'
+                                            ? 'Пользователь'
+                                            : 'Производство'
+                                    }
+                                >
+                                    <strong>{row.reporter_name || 'Не указан'}</strong>
+                                    <small>
+                                        {section === 'support'
+                                            ? row.order_id
+                                                ? `Заказ №${row.order_id}`
+                                                : row.reporter_email || 'Без контактов'
+                                            : [
+                                                  row.station && stationLabels[
+                                                      row.station as keyof typeof stationLabels
+                                                  ],
+                                                  row.project_id && `Проект №${row.project_id}`,
+                                              ]
+                                                  .filter(Boolean)
+                                                  .join(' · ') || 'Без привязки'}
+                                    </small>
+                                </td>
+                                <td data-label="Приоритет">
+                                    <span
+                                        className={`${styles.badge} ${
+                                            row.priority === 'critical'
+                                                ? styles.criticalBadge
+                                                : row.priority === 'high'
+                                                  ? styles.highBadge
+                                                  : ''
+                                        }`}
+                                    >
+                                        {priorityLabels[row.priority]}
+                                    </span>
+                                </td>
+                                <td data-label="Статус">
+                                    <Status value={row.status} />
+                                    <small>
+                                        {row.assigned_to_user_id
+                                            ? `Ответственный №${row.assigned_to_user_id}`
+                                            : 'Без ответственного'}
+                                    </small>
+                                </td>
+                                <td data-label="Создано" data-tail="true">
+                                    {date(row.created_at)}
+                                </td>
+                                <td data-label="Управление" data-action="true">
+                                    <button onClick={() => onInbox(row)}>
+                                        Открыть
+                                    </button>
                                 </td>
                             </tr>
                         ))}

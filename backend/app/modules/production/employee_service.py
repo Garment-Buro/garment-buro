@@ -55,7 +55,12 @@ class ProductionEmployeeService:
         code = None
         if payload.status == "active" and payload.availability == "available":
             code = await issue_code(
-                session, user_id=user.id, station=payload.primary_station, pepper=pepper
+                session,
+                user_id=user.id,
+                station=payload.primary_station,
+                pepper=pepper,
+                actor_user_id=actor_id,
+                audit_source="admin_ui",
             )
         session.add(
             SecurityAuditEvent(
@@ -103,10 +108,20 @@ class ProductionEmployeeService:
         )
         code = None
         if payload.status == "blocked" or payload.availability != "available":
-            await revoke_code(session, user_id=user.id)
+            await revoke_code(
+                session,
+                user_id=user.id,
+                actor_user_id=actor_id,
+                audit_source="admin_ui",
+            )
         elif primary_changed or active_credential is None:
             code = await issue_code(
-                session, user_id=user.id, station=payload.primary_station, pepper=pepper
+                session,
+                user_id=user.id,
+                station=payload.primary_station,
+                pepper=pepper,
+                actor_user_id=actor_id,
+                audit_source="admin_ui",
             )
         try:
             await session.flush()
@@ -139,7 +154,12 @@ class ProductionEmployeeService:
         if user.status != "active" or employee.availability != "available":
             raise EmployeeConflictError("Сначала активируйте сотрудника")
         code = await issue_code(
-            session, user_id=user.id, station=employee.primary_station, pepper=pepper
+            session,
+            user_id=user.id,
+            station=employee.primary_station,
+            pepper=pepper,
+            actor_user_id=actor_id,
+            audit_source="admin_ui",
         )
         session.add(
             SecurityAuditEvent(
@@ -185,6 +205,7 @@ class ProductionEmployeeService:
         employee, user = row
         return {
             "id": user.id,
+            "is_demo": False,
             "first_name": user.first_name or "",
             "last_name": user.last_name or "",
             "name": " ".join(x for x in (user.first_name, user.last_name) if x),

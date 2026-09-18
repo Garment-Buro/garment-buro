@@ -7,8 +7,8 @@ from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.catalog.models import Product
 from app.modules.crm.reference_models import (
-    CrmCatalogProductModelLink,
     CrmFabric,
     CrmGarmentModel,
     CrmGarmentSize,
@@ -108,6 +108,7 @@ class CrmReferenceService:
         actor_user_id: int | None,
         now: datetime | None = None,
     ) -> CrmGarmentModel:
+        await self._validate_size_chart_media(session, payload.size_chart_media_object_id)
         garment_model = CrmGarmentModel(version=1)
         self._apply_garment_model(garment_model, payload)
         garment_model.sizes.extend(self._new_size(size) for size in payload.sizes)
@@ -142,6 +143,7 @@ class CrmReferenceService:
         if garment_model is None:
             raise CrmReferenceNotFoundError("CRM garment model was not found")
         self._require_version(garment_model.version, expected_version)
+        await self._validate_size_chart_media(session, payload.size_chart_media_object_id)
         self._apply_garment_model(garment_model, payload)
 
         existing_by_code = {size.code: size for size in garment_model.sizes}
@@ -185,7 +187,7 @@ class CrmReferenceService:
         catalog_product_id: int,
         actor_user_id: int | None,
         now: datetime | None = None,
-    ) -> CrmCatalogProductModelLink:
+    ) -> Product:
         if catalog_product_id <= 0:
             raise CrmReferenceNotFoundError("Catalog product was not found")
         garment_model = await self.repository.get_garment_model_for_update(
@@ -194,34 +196,24 @@ class CrmReferenceService:
         )
         if garment_model is None:
             raise CrmReferenceNotFoundError("CRM garment model was not found")
-        if not await self.repository.catalog_product_exists(
-            session,
-            catalog_product_id=catalog_product_id,
-        ):
-            raise CrmReferenceNotFoundError("Catalog product was not found")
-        existing = await self.repository.get_catalog_link_for_update(
-            session,
-            catalog_product_id=catalog_product_id,
+        product = await self.repository.get_catalog_product_for_update(
+            session, catalog_product_id=catalog_product_id
         )
-        if existing is not None:
-            if existing.garment_model_id == garment_model.id:
-                return existing
+        if product is None:
+            raise CrmReferenceNotFoundError("Catalog product was not found")
+        if product.garment_model_id not in {None, garment_model.id}:
             raise CrmReferenceConflictError(
                 "Catalog product is already linked to another CRM garment model"
             )
-
         occurred_at = self._now(now)
-        link = CrmCatalogProductModelLink(
-            garment_model_id=garment_model.id,
-            catalog_product_id=catalog_product_id,
-            created_by_user_id=actor_user_id,
-            created_at=occurred_at,
-        )
-        await self.repository.add(session, link)
+        if product.garment_model_id == garment_model.id:
+            return product
+        product.garment_model_id = garment_model.id
+        await session.flush()
         await self._audit(
             session,
             entity_type=CrmReferenceEntityType.CATALOG_PRODUCT_LINK,
-            entity_id=link.id,
+            entity_id=product.id,
             entity_version=1,
             action=CrmReferenceAction.LINKED,
             actor_user_id=actor_user_id,
@@ -232,7 +224,7 @@ class CrmReferenceService:
             details={},
             now=occurred_at,
         )
-        return link
+        return product
 
     async def create_tech_card(
         self,
@@ -288,6 +280,17 @@ class CrmReferenceService:
             now=occurred_at,
         )
         return card
+
+    async def list_tech_cards(
+        self,
+        session: AsyncSession,
+        *,
+        garment_model_id: int | None = None,
+    ) -> list[CrmTechCard]:
+        return await self.repository.list_tech_cards(
+            session,
+            garment_model_id=garment_model_id,
+        )
 
     async def create_tech_card_revision(
         self,
@@ -447,6 +450,7 @@ class CrmReferenceService:
         fabric.density_gsm = payload.density_gsm
         fabric.width_cm = payload.width_cm
         fabric.cost_per_meter = payload.cost_per_meter
+        fabric.minimum_stock_meters = payload.minimum_stock_meters
         fabric.currency = payload.currency
         fabric.is_active = payload.is_active
 
@@ -462,6 +466,7 @@ class CrmReferenceService:
         garment_model.base_length_cm = payload.base_length_cm
         garment_model.base_width_cm = payload.base_width_cm
         garment_model.base_weight_g = payload.base_weight_g
+        garment_model.size_chart_media_object_id = payload.size_chart_media_object_id
         garment_model.is_active = payload.is_active
 
     @classmethod
@@ -481,6 +486,8 @@ class CrmReferenceService:
         size.max_length_cm = payload.max_length_cm
         size.min_width_cm = payload.min_width_cm
         size.max_width_cm = payload.max_width_cm
+        size.min_sleeve_length_cm = payload.min_sleeve_length_cm
+        size.max_sleeve_length_cm = payload.max_sleeve_length_cm
         size.extra_width_price_per_cm = payload.extra_width_price_per_cm
         size.currency = payload.currency
 
@@ -505,6 +512,7 @@ class CrmReferenceService:
                 CrmTechCardCheckpoint(
                     position=checkpoint.position,
                     stage_code=checkpoint.stage_code,
+                    role_code=checkpoint.role_code or checkpoint.stage_code,
                     name=checkpoint.name,
                     description=checkpoint.description,
                     standard_minutes=checkpoint.standard_minutes,
@@ -528,6 +536,7 @@ class CrmReferenceService:
                 {
                     "position": checkpoint.position,
                     "stage_code": checkpoint.stage_code,
+                    "role_code": checkpoint.role_code,
                     "name": checkpoint.name,
                     "description": checkpoint.description,
                     "standard_minutes": CrmReferenceService._decimal(checkpoint.standard_minutes),
@@ -562,6 +571,17 @@ class CrmReferenceService:
             details=details,
             occurred_at=self._now(now),
         )
+
+    async def _validate_size_chart_media(
+        self,
+        session: AsyncSession,
+        media_object_id: int | None,
+    ) -> None:
+        if media_object_id is not None and not await self.repository.public_ready_media_exists(
+            session,
+            media_object_id=media_object_id,
+        ):
+            raise CrmReferenceConflictError("Garment size chart must reference ready public media")
 
     @staticmethod
     def _require_version(actual: int, expected: int) -> None:

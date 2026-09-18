@@ -45,7 +45,7 @@ async def upload_catalog_media(
     user: Annotated[User, Depends(require_catalog_writer)],
     session: Annotated[AsyncSession, Depends(get_database_session)],
     service: Annotated[MediaService, Depends(get_media_service)],
-) -> dict[str, str]:
+) -> dict[str, str | int]:
     limit = request.app.state.settings.media_max_upload_bytes
     data = await file.read(limit + 1)
     if len(data) > limit:
@@ -61,4 +61,4 @@ async def upload_catalog_media(
         raise HTTPException(status_code=415, detail=str(error)) from error
     except ValueError as error:
         raise HTTPException(status_code=413, detail=str(error)) from error
-    return {"url": uploaded.public_url}
+    return {"id": uploaded.media_id, "url": uploaded.public_url}

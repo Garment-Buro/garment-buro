@@ -12,11 +12,13 @@ from app.modules.crm.file_service import CrmFileService
 from app.modules.crm.read_repository import CrmReadRepository
 from app.modules.fulfillment.models import FulfillmentJob
 from app.modules.fulfillment.service import FulfillmentOutboxService
-from app.modules.identity.models import User
+from app.modules.identity.models import RoleName, User, UserRole
+from app.modules.identity.repository import IdentityRepository
 from app.modules.orders.models import Order
 from app.modules.payments.models import Payment
 from app.modules.payments.service import PaymentService, PaymentStateError
 from app.modules.production.admin_reads import ProductionAdminReads
+from app.modules.production.auth_models import ProductionEmployee
 from app.modules.production.auth_service import PREFIXES
 from app.modules.production.demo_access import require_demo_resource
 from app.modules.production.models import ProductionDemoEmployee
@@ -61,10 +63,51 @@ def test_demo_seed_is_idempotent_private_and_has_each_workstation(tmp_path):
                 assert (await ProductionAdminReads().stats(session))["employees_count"] == 0
                 assert (await ProductionAdminReads().stats(session))["clients_count"] == 0
                 users = await ProductionAdminReads().users(
-                    session, q="", status="", limit=30, offset=0
+                    session,
+                    q="",
+                    status="",
+                    limit=30,
+                    offset=0,
+                    pepper="demo-test-pepper",
                 )
                 clients = await ProductionAdminReads().clients(session, q="", limit=30, offset=0)
-                assert users["items"] == clients["items"] == []
+                assert len(users["items"]) == 11
+                assert all(user["is_demo"] for user in users["items"])
+                found_by_code = await ProductionAdminReads().users(
+                    session,
+                    q=codes["tech"]["code"],
+                    status="",
+                    limit=30,
+                    offset=0,
+                    pepper="demo-test-pepper",
+                )
+                assert [user["id"] for user in found_by_code["items"]] == [codes["tech"]["user_id"]]
+                assert clients["items"] == []
+                real_employee = User(
+                    internal_identity="employee:real-tech",
+                    first_name="Real",
+                    status="active",
+                )
+                session.add(real_employee)
+                await session.flush()
+                tech_role = await IdentityRepository().get_role(session, RoleName.PRODUCTION_TECH)
+                session.add_all(
+                    [
+                        UserRole(user_id=real_employee.id, role_id=tech_role.id),
+                        ProductionEmployee(
+                            user_id=real_employee.id,
+                            primary_station="tech",
+                        ),
+                    ]
+                )
+                await session.flush()
+                assert (await ProductionReadService().queue(session))["items"] == []
+                with pytest.raises(ProductionDenied, match="Учебные заказы"):
+                    await require_demo_resource(
+                        session,
+                        real_employee.id,
+                        {"project_id": rows[0]["project_id"]},
+                    )
                 legacy_rows, _ = await CrmReadRepository().list_projects(
                     session, status=None, assigned_to_user_id=None, cursor=None, limit=30
                 )

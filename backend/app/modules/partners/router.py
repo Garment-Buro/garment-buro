@@ -35,6 +35,7 @@ from app.modules.partners.schemas import (
 from app.modules.partners.service import (
     PartnerConflictError,
     PartnerLandingNotFoundError,
+    PartnerLandingProductNotFoundError,
     PartnerNotFoundError,
     PartnerPayoutBalanceError,
     PartnerPayoutRequisitesError,
@@ -364,6 +365,12 @@ async def create_partner_landing(
     except PartnerNotFoundError as error:
         await session.rollback()
         raise HTTPException(status_code=404, detail="Partner profile was not found") from error
+    except PartnerLandingProductNotFoundError as error:
+        await session.rollback()
+        raise HTTPException(
+            status_code=422,
+            detail={"message": "Catalog products were not found", "product_ids": error.product_ids},
+        ) from error
     except (PartnerConflictError, IntegrityError) as error:
         await session.rollback()
         raise HTTPException(status_code=409, detail="Landing slug is already used") from error
@@ -406,6 +413,12 @@ async def update_partner_landing(
     except PartnerLandingNotFoundError as error:
         await session.rollback()
         raise HTTPException(status_code=404, detail="Partner landing was not found") from error
+    except PartnerLandingProductNotFoundError as error:
+        await session.rollback()
+        raise HTTPException(
+            status_code=422,
+            detail={"message": "Catalog products were not found", "product_ids": error.product_ids},
+        ) from error
     return PartnerLandingResponse.model_validate(landing)
 
 

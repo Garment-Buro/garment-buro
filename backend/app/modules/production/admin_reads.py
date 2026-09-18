@@ -11,6 +11,9 @@ from app.modules.orders.models import Order
 from app.modules.orders.workflow_models import OrderWorkflow
 from app.modules.partners.models import PartnerPayoutRequest, PartnerProfile
 from app.modules.production.auth_models import ProductionCredential, ProductionEmployee
+from app.modules.production.auth_service import code_digest
+from app.modules.production.inbox_models import AdminInboxItem
+from app.modules.production.models import ProductionDemoEmployee
 
 
 def money(value):
@@ -109,12 +112,48 @@ class ProductionAdminReads:
             ],
         }
 
-    async def employees(self, session, *, q, status, limit, offset):
-        statement = (
-            select(ProductionEmployee, User)
-            .join(User, User.id == ProductionEmployee.user_id)
+    async def employees(self, session, *, q, status, limit, offset, pepper):
+        q = q.strip()
+        active_station = (
+            select(ProductionCredential.station)
             .where(
-                search(q, [User.id, User.email, User.phone, User.first_name, User.last_name]),
+                ProductionCredential.user_id == User.id,
+                ProductionCredential.active.is_(True),
+                ProductionCredential.station != "admin",
+            )
+            .order_by(ProductionCredential.updated_at.desc(), ProductionCredential.id.desc())
+            .limit(1)
+            .correlate(User)
+            .scalar_subquery()
+        )
+        search_conditions = [
+            search(q, [User.id, User.email, User.phone, User.first_name, User.last_name])
+        ]
+        if q.isdigit() and len(q) in {6, 8}:
+            search_conditions.append(
+                User.id.in_(
+                    select(ProductionCredential.user_id).where(
+                        ProductionCredential.code_digest == code_digest(q, pepper),
+                        ProductionCredential.active.is_(True),
+                    )
+                )
+            )
+        statement = (
+            select(
+                User,
+                ProductionEmployee,
+                ProductionDemoEmployee,
+                active_station.label("credential_station"),
+            )
+            .outerjoin(ProductionEmployee, ProductionEmployee.user_id == User.id)
+            .outerjoin(ProductionDemoEmployee, ProductionDemoEmployee.user_id == User.id)
+            .where(
+                or_(
+                    ProductionEmployee.id.is_not(None),
+                    ProductionDemoEmployee.id.is_not(None),
+                    active_station.is_not(None),
+                ),
+                or_(*search_conditions),
             )
         )
         if status:
@@ -125,7 +164,7 @@ class ProductionAdminReads:
             )
         ).all()
         roles = {}
-        user_ids = [user.id for _, user in rows]
+        user_ids = [user.id for user, _, _, _ in rows]
         if user_ids:
             for user_id, role in await session.execute(
                 select(UserRole.user_id, Role.name)
@@ -151,27 +190,32 @@ class ProductionAdminReads:
             limit,
             offset,
             lambda row: {
-                "id": row[1].id,
-                "availability": row[0].availability,
-                "first_name": row[1].first_name or "",
-                "last_name": row[1].last_name or "",
-                "name": " ".join(x for x in (row[1].first_name, row[1].last_name) if x),
-                "email": row[1].email,
-                "phone": row[1].phone,
-                "status": row[1].status,
-                "created_at": row[0].created_at,
+                "id": row[0].id,
+                "is_demo": row[2] is not None,
+                "availability": row[1].availability if row[1] else "available",
+                "first_name": row[0].first_name or "",
+                "last_name": row[0].last_name or "",
+                "name": " ".join(x for x in (row[0].first_name, row[0].last_name) if x),
+                "email": row[0].email,
+                "phone": row[0].phone,
+                "status": row[0].status,
+                "created_at": row[1].created_at if row[1] else row[0].created_at,
                 "stations": sorted(
-                    role.removeprefix("production_") for role in roles.get(row[1].id, [])
+                    role.removeprefix("production_") for role in roles.get(row[0].id, [])
                 ),
-                "primary_station": row[0].primary_station,
-                "code_active": row[1].id in active_codes,
-                "code_updated_at": active_codes.get(row[1].id),
+                "primary_station": (
+                    row[1].primary_station if row[1] else row[2].station if row[2] else row[3]
+                ),
+                "code_active": row[0].id in active_codes,
+                "code_updated_at": active_codes.get(row[0].id),
             },
         )
 
-    async def users(self, session, *, q, status, limit, offset):
+    async def users(self, session, *, q, status, limit, offset, pepper):
         """Compatibility alias: terminal users are production employees."""
-        return await self.employees(session, q=q, status=status, limit=limit, offset=offset)
+        return await self.employees(
+            session, q=q, status=status, limit=limit, offset=offset, pepper=pepper
+        )
 
     def clients_query(self):
         # Registered accounts never merge by contact. Unidentified guests stay distinct.
@@ -316,6 +360,18 @@ class ProductionAdminReads:
             "employees_count": await session.scalar(select(func.count(ProductionEmployee.id))),
             "clients_count": await session.scalar(
                 select(func.count()).select_from(self.clients_query())
+            ),
+            "support_open_count": await session.scalar(
+                select(func.count(AdminInboxItem.id)).where(
+                    AdminInboxItem.kind == "support",
+                    AdminInboxItem.status.in_(("new", "in_progress")),
+                )
+            ),
+            "problems_open_count": await session.scalar(
+                select(func.count(AdminInboxItem.id)).where(
+                    AdminInboxItem.kind == "production_problem",
+                    AdminInboxItem.status.in_(("new", "in_progress")),
+                )
             ),
             "order_states": order_states,
             "payout_states": payout_states,

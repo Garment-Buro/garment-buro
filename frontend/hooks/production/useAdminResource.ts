@@ -1,24 +1,33 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { requestJson } from '@/lib/api/http';
 import { useProductionAuthStore } from '@/store/productionAuthStore';
 
-export function useAdminResource<T>(path: string) {
+export function useAdminResource<T>(path: string, refreshIntervalMs = 0) {
     const run = useProductionAuthStore((state) => state.runAuthenticated);
     const [result, setResult] = useState<{
         path: string;
         data: T | null;
         error: string;
     }>({ path: '', data: null, error: '' });
+    const resultRef = useRef(result);
+    resultRef.current = result;
     const [loading, setLoading] = useState(true);
     const [revision, setRevision] = useState(0);
     const reload = useCallback(() => setRevision((value) => value + 1), []);
     useEffect(() => {
         const controller = new AbortController();
+        const hasCurrentData =
+            resultRef.current.path === path &&
+            resultRef.current.data !== null;
         void (async () => {
-            setLoading(true);
-            setResult({ path, data: null, error: '' });
+            if (!hasCurrentData) {
+                setLoading(true);
+                setResult({ path, data: null, error: '' });
+            } else {
+                setResult((current) => ({ ...current, error: '' }));
+            }
             try {
                 const data = await run(() =>
                     requestJson<T>(`/production/admin/${path}`, {
@@ -44,6 +53,24 @@ export function useAdminResource<T>(path: string) {
         })();
         return () => controller.abort();
     }, [path, revision, run]);
+    useEffect(() => {
+        if (refreshIntervalMs <= 0) return;
+        const refreshWhenVisible = () => {
+            if (document.visibilityState === 'visible') reload();
+        };
+        const timer = window.setInterval(
+            refreshWhenVisible,
+            refreshIntervalMs,
+        );
+        document.addEventListener('visibilitychange', refreshWhenVisible);
+        return () => {
+            window.clearInterval(timer);
+            document.removeEventListener(
+                'visibilitychange',
+                refreshWhenVisible,
+            );
+        };
+    }, [refreshIntervalMs, reload]);
     return {
         data: result.path === path ? result.data : null,
         error: result.path === path ? result.error : '',

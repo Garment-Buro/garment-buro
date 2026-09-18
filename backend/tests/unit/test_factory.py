@@ -82,6 +82,7 @@ def test_factory_keeps_crm_file_routes_off_when_other_crm_writes_are_enabled() -
     application = create_app(settings=settings)
     registered_paths = {route.path for route in application.routes}
 
+    assert "/api/support" in registered_paths
     assert "/api/crm/projects/{project_id}/status" in registered_paths
     assert "/api/crm/files" not in registered_paths
     assert "/api/crm/files/{attachment_id}/download" not in registered_paths
@@ -167,6 +168,9 @@ def test_factory_registers_catalog_mutations_only_for_guarded_cutover() -> None:
 
     assert {
         ("POST", "/api/products"),
+        ("GET", "/api/product-categories"),
+        ("POST", "/api/product-categories"),
+        ("PUT", "/api/product-categories/{category_id}"),
         ("PUT", "/api/products/{product_id}"),
         ("DELETE", "/api/products/{product_id}"),
         ("PUT", "/api/variants/{variant_id}"),
@@ -184,6 +188,27 @@ def test_factory_registers_catalog_mutations_only_for_guarded_cutover() -> None:
         ("GET", "/api/crm/projects/{project_id}"),
         ("GET", "/api/crm/reference/fabrics"),
         ("GET", "/api/crm/reference/garment-models"),
+        ("POST", "/api/crm/reference/fabrics"),
+        ("PUT", "/api/crm/reference/fabrics/{fabric_id}"),
+        ("POST", "/api/crm/reference/garment-models"),
+        ("PUT", "/api/crm/reference/garment-models/{garment_model_id}"),
+        ("POST", "/api/crm/reference/garment-models/{garment_model_id}/products"),
+        ("POST", "/api/crm/reference/garment-models/{garment_model_id}/tech-cards"),
+        ("GET", "/api/crm/assortment/patterns"),
+        ("GET", "/api/crm/assortment/products"),
+        ("POST", "/api/crm/assortment/patterns"),
+        ("GET", "/api/crm/assortment/fabric-requirements"),
+        ("POST", "/api/crm/assortment/fabric-requirements"),
+        ("GET", "/api/crm/assortment/accessory-categories"),
+        ("POST", "/api/crm/assortment/accessory-categories"),
+        ("GET", "/api/crm/assortment/accessories"),
+        ("POST", "/api/crm/assortment/accessories"),
+        ("GET", "/api/crm/assortment/accessory-requirements"),
+        ("POST", "/api/crm/assortment/accessory-requirements"),
+        ("GET", "/api/crm/assortment/boxes"),
+        ("POST", "/api/crm/assortment/boxes"),
+        ("GET", "/api/crm/assortment/packaging-rules"),
+        ("POST", "/api/crm/assortment/packaging-rules"),
         ("PATCH", "/api/crm/projects/{project_id}/status"),
         ("PUT", "/api/crm/projects/{project_id}/assignment"),
         ("PATCH", "/api/crm/units/{unit_id}/status"),
@@ -196,6 +221,16 @@ def test_factory_registers_catalog_mutations_only_for_guarded_cutover() -> None:
         ("POST", "/api/crm/materials/reservations/{reservation_id}/release"),
         ("POST", "/api/crm/files"),
         ("GET", "/api/crm/files/{attachment_id}/download"),
+        ("GET", "/api/production/admin/assortment/models"),
+        ("POST", "/api/production/admin/assortment/models"),
+        ("GET", "/api/production/admin/assortment/tech-cards"),
+        ("GET", "/api/production/admin/assortment/fabrics"),
+        ("GET", "/api/production/admin/assortment/patterns"),
+        ("GET", "/api/production/admin/assortment/accessories"),
+        ("GET", "/api/production/admin/assortment/boxes"),
+        ("GET", "/api/production/admin/assortment/products"),
+        ("POST", "/api/production/admin/assortment/media/public"),
+        ("POST", "/api/production/admin/assortment/media/pattern"),
     } <= registered
 
 

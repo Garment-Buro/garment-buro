@@ -8,9 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.modules.catalog.mapper import CatalogResponseMapper
-from app.modules.catalog.models import Product, ProductVariant
+from app.modules.catalog.models import Product, ProductCategory, ProductVariant
 from app.modules.catalog.repository import CatalogRepository
 from app.modules.catalog.schemas import (
+    ProductCategoryResponse,
+    ProductCategoryWrite,
     ProductDetailResponse,
     ProductResponse,
     ProductVariantResponse,
@@ -53,6 +55,14 @@ class CatalogInventoryReservedError(ValueError):
     pass
 
 
+class CatalogReferenceNotFoundError(LookupError):
+    pass
+
+
+class CatalogVersionConflictError(RuntimeError):
+    pass
+
+
 class CatalogService:
     def __init__(
         self,
@@ -65,6 +75,10 @@ class CatalogService:
     async def list_products(self, session: AsyncSession) -> list[ProductResponse]:
         products = await self.repository.list_products(session)
         return [self.mapper.product(product) for product in products]
+
+    async def list_categories(self, session: AsyncSession) -> list[ProductCategoryResponse]:
+        categories = await self.repository.list_categories(session)
+        return [ProductCategoryResponse.model_validate(category) for category in categories]
 
     async def get_product(
         self,
@@ -103,6 +117,7 @@ class CatalogWriteService:
         payload: ProductWriteRequest,
         actor_user_id: int,
     ) -> ProductDetailResponse:
+        await self._validate_product_references(session, payload)
         media_by_url = await self._resolve_media(session, payload)
         product = Product()
         self._apply_scalars(product, payload)
@@ -129,6 +144,7 @@ class CatalogWriteService:
         if product is None:
             raise CatalogProductNotFoundError(product_id)
         self._ensure_product_unreserved(product)
+        await self._validate_product_references(session, payload)
         media_by_url = await self._resolve_media(session, payload)
         await self.repository.clear_product_children(session, product)
         self._apply_scalars(product, payload)
@@ -182,10 +198,17 @@ class CatalogWriteService:
             raise CatalogVariantNotFoundError(variant_id)
         if variant.reserved_quantity:
             raise CatalogInventoryReservedError("Catalog variant has active reservations")
+        await self._validate_variant_reference(
+            session,
+            payload,
+            garment_model_id=variant.product.garment_model_id,
+        )
         references = self._variant_media_references(payload)
         media_by_url = await self._resolve_references(session, references)
         await self.repository.clear_variant_media(session, variant)
         variant.size = payload.size
+        variant.garment_size_id = payload.garment_size_id
+        variant.fabric_id = payload.fabric_id
         variant.color = payload.color
         variant.color_hex = payload.color_hex
         variant.stock_quantity = payload.stock_quantity
@@ -208,6 +231,90 @@ class CatalogWriteService:
             },
         )
         return self.mapper.variant(variant)
+
+    async def create_category(
+        self,
+        session: AsyncSession,
+        *,
+        payload: ProductCategoryWrite,
+    ) -> ProductCategoryResponse:
+        category = ProductCategory(version=1)
+        self._apply_category(category, payload)
+        await self.repository.add_category(session, category)
+        return ProductCategoryResponse.model_validate(category)
+
+    async def update_category(
+        self,
+        session: AsyncSession,
+        *,
+        category_id: int,
+        expected_version: int,
+        payload: ProductCategoryWrite,
+    ) -> ProductCategoryResponse:
+        category = await self.repository.get_category(session, category_id, lock=True)
+        if category is None:
+            raise CatalogReferenceNotFoundError("Product category was not found")
+        if category.version != expected_version:
+            raise CatalogVersionConflictError("Product category version has changed")
+        self._apply_category(category, payload)
+        category.version += 1
+        await session.flush()
+        return ProductCategoryResponse.model_validate(category)
+
+    async def _validate_product_references(
+        self,
+        session: AsyncSession,
+        payload: ProductWriteRequest,
+    ) -> None:
+        if payload.category_id is not None:
+            category = await self.repository.get_category(session, payload.category_id)
+            if category is None or not category.is_active:
+                raise CatalogReferenceNotFoundError("Active product category was not found")
+        if payload.garment_model_id is not None and not await self.repository.garment_model_exists(
+            session, payload.garment_model_id
+        ):
+            raise CatalogReferenceNotFoundError("Active garment model was not found")
+        for variant in payload.variants:
+            await self._validate_variant_reference(
+                session,
+                variant,
+                garment_model_id=payload.garment_model_id,
+            )
+
+    async def _validate_variant_reference(
+        self,
+        session: AsyncSession,
+        payload: ProductVariantWriteRequest,
+        *,
+        garment_model_id: int | None,
+    ) -> None:
+        if payload.garment_size_id is None and payload.fabric_id is None:
+            return
+        if garment_model_id is None:
+            raise CatalogReferenceNotFoundError(
+                "Variant size and fabric references require a garment model"
+            )
+        if payload.garment_size_id is not None:
+            size = await self.repository.get_garment_size(session, payload.garment_size_id)
+            if (
+                size is None
+                or not size.is_active
+                or size.garment_model_id != garment_model_id
+                or (payload.size is not None and payload.size != size.code)
+            ):
+                raise CatalogReferenceNotFoundError(
+                    "Variant garment size must match its active garment model and size code"
+                )
+        if payload.fabric_id is not None:
+            fabric = await self.repository.get_active_fabric(session, payload.fabric_id)
+            if fabric is None or not await self.repository.model_allows_fabric(
+                session,
+                garment_model_id=garment_model_id,
+                fabric_id=payload.fabric_id,
+            ):
+                raise CatalogReferenceNotFoundError(
+                    "Variant fabric must be active and allowed for its garment model"
+                )
 
     @staticmethod
     def _ensure_product_unreserved(product: Product) -> None:
@@ -268,6 +375,9 @@ class CatalogWriteService:
     @staticmethod
     def _apply_scalars(product: Product, payload: ProductWriteRequest) -> None:
         product.title = payload.title
+        product.slug = payload.slug
+        product.category_id = payload.category_id
+        product.garment_model_id = payload.garment_model_id
         product.price = payload.price
         product.old_price = payload.old_price
         product.description = payload.description
@@ -282,6 +392,13 @@ class CatalogWriteService:
         product.width_cm = payload.width
         product.length_cm = payload.length
         product.stock_quantity = payload.stock_quantity
+
+    @staticmethod
+    def _apply_category(category: ProductCategory, payload: ProductCategoryWrite) -> None:
+        category.slug = payload.slug
+        category.name = payload.name
+        category.description = payload.description
+        category.is_active = payload.is_active
 
     def _attach_children(
         self,
@@ -304,6 +421,8 @@ class CatalogWriteService:
         for variant_payload in payload.variants:
             variant = ProductVariant(
                 size=variant_payload.size,
+                garment_size_id=variant_payload.garment_size_id,
+                fabric_id=variant_payload.fabric_id,
                 color=variant_payload.color,
                 color_hex=variant_payload.color_hex,
                 stock_quantity=variant_payload.stock_quantity,

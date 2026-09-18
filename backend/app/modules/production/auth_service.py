@@ -12,9 +12,11 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from app.modules.identity.models import SecurityAuditEvent, User
 from app.modules.production.auth_models import (
     ProductionCredential,
+    ProductionEmployee,
     ProductionLoginLimit,
     ProductionSession,
 )
+from app.modules.production.models import ProductionDemoEmployee
 from app.modules.production.security import ProductionDenied, can_administer, stations_for_user
 
 PREFIXES = {
@@ -68,7 +70,15 @@ async def limit_login(session, *, client_ip: str, pepper: str, now: datetime) ->
     return allowed
 
 
-async def issue_code(session, *, user_id: int, station: str, pepper: str) -> str:
+async def issue_code(
+    session,
+    *,
+    user_id: int,
+    station: str,
+    pepper: str,
+    actor_user_id: int | None = None,
+    audit_source: str = "operator_cli",
+) -> str:
     user = await session.scalar(select(User).where(User.id == user_id).with_for_update())
     if user is None or user.status != "active" or station not in PREFIXES:
         raise ValueError("Active employee and known station are required")
@@ -79,6 +89,25 @@ async def issue_code(session, *, user_id: int, station: str, pepper: str) -> str
     )
     if not allowed:
         raise ValueError("Assign the employee's station role before issuing a code")
+    if station != "admin":
+        # Some operator workflows add the employee row immediately before issuing
+        # the code, while this session deliberately runs with autoflush disabled.
+        await session.flush()
+        is_demo = await session.scalar(
+            select(ProductionDemoEmployee.id).where(ProductionDemoEmployee.user_id == user_id)
+        )
+        employee = await session.scalar(
+            select(ProductionEmployee).where(ProductionEmployee.user_id == user_id)
+        )
+        if is_demo is None and employee is None:
+            session.add(
+                ProductionEmployee(
+                    user_id=user_id,
+                    primary_station=station,
+                    created_by_user_id=actor_user_id,
+                )
+            )
+            await session.flush()
     # Retain old digests so a revoked code can never be reassigned to another employee.
     for _ in range(100):
         digits = 6 if station == "admin" else 5
@@ -90,7 +119,12 @@ async def issue_code(session, *, user_id: int, station: str, pepper: str) -> str
             break
     else:
         raise ValueError("Could not allocate a unique code")
-    await revoke_code(session, user_id=user_id)
+    await revoke_code(
+        session,
+        user_id=user_id,
+        actor_user_id=actor_user_id,
+        audit_source=audit_source,
+    )
     session.add(
         ProductionCredential(user_id=user_id, station=station, code_digest=digest, active=True)
     )
@@ -100,14 +134,21 @@ async def issue_code(session, *, user_id: int, station: str, pepper: str) -> str
     session.add(
         SecurityAuditEvent(
             event_type="production.code_issued",
+            actor_user_id=actor_user_id,
             subject_user_id=user_id,
-            details={"station": station, "source": "operator_cli"},
+            details={"station": station, "source": audit_source},
         )
     )
     return code
 
 
-async def revoke_code(session, *, user_id: int) -> None:
+async def revoke_code(
+    session,
+    *,
+    user_id: int,
+    actor_user_id: int | None = None,
+    audit_source: str = "operator_cli",
+) -> None:
     await session.scalar(select(User).where(User.id == user_id).with_for_update())
     await session.execute(
         update(ProductionCredential)
@@ -117,8 +158,9 @@ async def revoke_code(session, *, user_id: int) -> None:
     session.add(
         SecurityAuditEvent(
             event_type="production.code_revoked",
+            actor_user_id=actor_user_id,
             subject_user_id=user_id,
-            details={"source": "operator_cli"},
+            details={"source": audit_source},
         )
     )
 

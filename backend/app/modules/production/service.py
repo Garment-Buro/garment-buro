@@ -21,6 +21,7 @@ from app.modules.production.evidence import (
     validate_files,
     verify_specification,
 )
+from app.modules.production.inbox_service import AdminInboxService
 from app.modules.production.models import (
     ProductionBag,
     ProductionEvent,
@@ -391,6 +392,8 @@ class ProductionService:
             self._state(bag, "inbox", "kitting", "workshop", "waiting_dtf")
             if not command.note:
                 raise ProductionConflict("Опишите проблему")
+            if item.issue:
+                raise ProductionConflict("У вещи уже есть открытая проблема")
             allowed = (
                 {"tech", "kit"}
                 if bag.state != "workshop"
@@ -406,6 +409,16 @@ class ProductionService:
             if not set(stations) & allowed:
                 require_station(stations, "tech")
             item.issue = command.note
+            inbox_item = await AdminInboxService().create_production_problem(
+                session,
+                message=command.note,
+                reporter_user_id=actor,
+                order_id=order.id,
+                project_id=project.id,
+                production_unit_id=unit.id,
+                station=stations[0],
+            )
+            item.problem_inbox_item_id = inbox_item.id
         elif action in {"resolve_issue", "rework"}:
             require_station(stations, "tech")
             self._state(bag, "inbox", "kitting", "workshop", "waiting_dtf")
@@ -430,6 +443,11 @@ class ProductionService:
                     await self._unit_status(
                         session, unit, CrmProductionUnitStatus.IN_PROGRESS, actor
                     )
+            await AdminInboxService().resolve_production_problem(
+                session,
+                item_id=item.problem_inbox_item_id,
+                actor_user_id=actor,
+            )
             item.issue = None
         elif action == "pack_bag":
             require_station(stations, "packing")

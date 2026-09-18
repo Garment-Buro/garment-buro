@@ -19,24 +19,25 @@ async def is_demo_employee(session, user_id):
 
 
 async def require_demo_project(session, user_id, project_id):
-    if not await is_demo_employee(session, user_id):
-        return
-    allowed = await session.scalar(
-        select(Order.id)
+    employee_is_demo = await is_demo_employee(session, user_id)
+    result = await session.execute(
+        select(Order.is_demo, CrmOrderProject.is_demo)
         .join(CrmOrderProject, CrmOrderProject.order_id == Order.id)
-        .where(
-            CrmOrderProject.id == project_id,
-            CrmOrderProject.is_demo.is_(True),
-            Order.is_demo.is_(True),
-        )
+        .where(CrmOrderProject.id == project_id)
     )
-    if allowed is None:
+    flags = result.first()
+    if flags is None:
+        if employee_is_demo:
+            raise ProductionDenied("Демонстрационный код доступен только для тестовых заказов")
+        return
+    project_is_demo = bool(flags[0] and flags[1])
+    if employee_is_demo and not project_is_demo:
         raise ProductionDenied("Демонстрационный код доступен только для тестовых заказов")
+    if not employee_is_demo and project_is_demo:
+        raise ProductionDenied("Учебные заказы доступны только учебным аккаунтам")
 
 
 async def require_demo_resource(session, user_id, params):
-    if not await is_demo_employee(session, user_id):
-        return
     project_id = params.get("project_id")
     if "order_id" in params:
         project_id = await session.scalar(

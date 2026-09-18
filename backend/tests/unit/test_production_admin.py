@@ -15,6 +15,8 @@ from app.modules.partners.models import PartnerPayoutRequest, PartnerProfile
 from app.modules.partners.service import PartnerProgramService
 from app.modules.production.auth_models import ProductionCredential, ProductionEmployee
 from app.modules.production.auth_service import issue_code
+from app.modules.production.inbox_models import AdminInboxItem
+from app.modules.production.models import ProductionDemoEmployee
 from app.modules.production.router import router
 from tests.unit.test_production_auth import PEPPER
 from tests.unit.test_production_terminal import setup
@@ -61,6 +63,30 @@ async def admin_app(tmp_path):
             session.add(profile)
             await session.flush()
             session.add(PartnerPayoutRequest(partner_id=profile.id, amount=Decimal("1250.50")))
+            session.add_all(
+                [
+                    AdminInboxItem(
+                        kind="support",
+                        subject="Не открывается заказ",
+                        message="После оплаты страница заказа не загрузилась",
+                        reporter_user_id=3,
+                        reporter_name="Покупатель",
+                        reporter_email="customer@example.test",
+                        order_id=1,
+                    ),
+                    AdminInboxItem(
+                        kind="production_problem",
+                        subject="Нет материала на раскрое",
+                        message="Для единицы производства не найден рулон ткани",
+                        reporter_user_id=2,
+                        reporter_name="Раскрой",
+                        project_id=1,
+                        production_unit_id=1,
+                        station="cut",
+                        priority="high",
+                    ),
+                ]
+            )
             await session.commit()
             admin_code = await issue_code(
                 session, user_id=person.id, station="admin", pepper=PEPPER
@@ -86,7 +112,18 @@ def test_administrator_reads_all_sections_without_exposing_secrets(tmp_path):
                     "users",
                     "clients",
                     "payouts",
+                    "support",
+                    "support/1",
+                    "problems",
+                    "problems/2",
                     "orders/1",
+                    "assortment/models",
+                    "assortment/fabrics",
+                    "assortment/patterns",
+                    "assortment/tech-cards",
+                    "assortment/accessories",
+                    "assortment/boxes",
+                    "assortment/products",
                 ):
                     response = await client.get(f"/api/production/admin/{name}")
                     assert response.status_code == 200, response.text
@@ -95,6 +132,8 @@ def test_administrator_reads_all_sections_without_exposing_secrets(tmp_path):
                     assert "signing_url" not in response.text and "session" not in response.text
                 stats = (await client.get("/api/production/admin/stats")).json()
                 assert stats["employees_count"] == 1 and stats["orders_count"] == 1
+                assert stats["support_open_count"] == 1
+                assert stats["problems_open_count"] == 1
                 assert stats["payout_states"] == [
                     {"status": "requested", "count": 1, "amount": "1250.50"}
                 ]
@@ -121,6 +160,82 @@ def test_administrator_reads_all_sections_without_exposing_secrets(tmp_path):
     asyncio.run(scenario())
 
 
+def test_admin_filters_and_updates_support_and_production_problems(tmp_path):
+    async def scenario():
+        async with admin_app(tmp_path) as (app, db, admin_code, cutter_code):
+            async with AsyncClient(transport=ASGITransport(app), base_url="https://test") as client:
+                await client.post("/api/production/auth/login", json={"code": admin_code})
+
+                support = await client.get("/api/production/admin/support?q=оплаты&priority=normal")
+                assert support.status_code == 200, support.text
+                assert [item["subject"] for item in support.json()["items"]] == [
+                    "Не открывается заказ"
+                ]
+                assert (
+                    await client.get("/api/production/admin/support?status=unknown")
+                ).status_code == 422
+                assert (await client.get("/api/production/admin/support/999")).status_code == 404
+                assert (await client.get("/api/production/admin/problems/1")).status_code == 404
+
+                updated = await client.patch(
+                    "/api/production/admin/support/1",
+                    json={
+                        "expected_version": 1,
+                        "status": "in_progress",
+                        "priority": "high",
+                        "assigned_to_user_id": 4,
+                        "admin_note": "Проверяем статус оплаты",
+                    },
+                )
+                assert updated.status_code == 200, updated.text
+                assert updated.json()["version"] == 2
+                assert updated.json()["status"] == "in_progress"
+                assert updated.json()["assigned_to_user_id"] == 4
+
+                stale = await client.patch(
+                    "/api/production/admin/support/1",
+                    json={
+                        "expected_version": 1,
+                        "status": "closed",
+                        "priority": "high",
+                    },
+                )
+                assert stale.status_code == 409
+
+                resolved = await client.patch(
+                    "/api/production/admin/support/1",
+                    json={
+                        "expected_version": 2,
+                        "status": "resolved",
+                        "priority": "high",
+                        "assigned_to_user_id": 4,
+                        "admin_note": "Доступ к заказу восстановлен",
+                    },
+                )
+                assert resolved.status_code == 200
+                assert resolved.json()["resolved_at"] is not None
+                assert (await client.get("/api/production/admin/stats")).json()[
+                    "support_open_count"
+                ] == 0
+
+            async with AsyncClient(transport=ASGITransport(app), base_url="https://test") as floor:
+                await floor.post("/api/production/auth/login", json={"code": cutter_code})
+                assert (await floor.get("/api/production/admin/problems")).status_code == 403
+
+            async with db.session() as session:
+                events = list(
+                    await session.scalars(
+                        select(SecurityAuditEvent).where(
+                            SecurityAuditEvent.event_type == "production.admin_inbox_updated"
+                        )
+                    )
+                )
+                assert len(events) == 2
+                assert all(event.actor_user_id == 4 for event in events)
+
+    asyncio.run(scenario())
+
+
 def test_floor_code_cannot_be_used_as_admin_even_after_role_grant(tmp_path):
     async def scenario():
         async with admin_app(tmp_path) as (app, db, _, cutter):
@@ -135,6 +250,9 @@ def test_floor_code_cannot_be_used_as_admin_even_after_role_grant(tmp_path):
                     await session.commit()
                 assert not (await client.get("/api/production/me")).json()["can_administer"]
                 assert (await client.get("/api/production/admin/employees")).status_code == 403
+                assert (
+                    await client.get("/api/production/admin/assortment/models")
+                ).status_code == 403
                 assert (
                     await client.post(
                         "/api/production/admin/payouts/1/review",
@@ -208,9 +326,9 @@ def test_admin_manages_employee_roles_status_and_one_time_codes(tmp_path):
                 await client.post("/api/production/auth/login", json={"code": admin_code})
                 payload = {
                     "first_name": "Мария",
-                    "last_name": "Орлова",
+                    "last_name": "",
                     "email": None,
-                    "phone": "+375291112233",
+                    "phone": None,
                     "status": "active",
                     "stations": ["cut", "sewing"],
                     "primary_station": "cut",
@@ -222,12 +340,16 @@ def test_admin_manages_employee_roles_status_and_one_time_codes(tmp_path):
                 first_code = result["code"]
                 assert len(first_code) == 6 and first_code.startswith("2")
                 assert result["employee"]["stations"] == ["cut", "sewing"]
+                assert result["employee"]["last_name"] == ""
+                assert result["employee"]["phone"] is None
 
                 # The raw code is shown once and never appears in a later read.
                 listed = await client.get(f"/api/production/admin/employees?q={employee_id}")
                 assert listed.status_code == 200
                 assert listed.json()["items"][0]["code_active"] is True
                 assert first_code not in listed.text and "code_digest" not in listed.text
+                found_by_code = await client.get(f"/api/production/admin/employees?q={first_code}")
+                assert [item["id"] for item in found_by_code.json()["items"]] == [employee_id]
 
                 async with AsyncClient(
                     transport=ASGITransport(app), base_url="https://test"
@@ -332,5 +454,51 @@ def test_admin_manages_employee_roles_status_and_one_time_codes(tmp_path):
                     "production.employee_updated",
                     "production.employee_code_rotated",
                 }
+
+    asyncio.run(scenario())
+
+
+def test_admin_lists_and_finds_isolated_demo_access_by_code(tmp_path):
+    async def scenario():
+        async with admin_app(tmp_path) as (app, db, admin_code, _):
+            async with db.session() as session:
+                repo = IdentityRepository()
+                demo = User(
+                    email="production-demo-qc@garment-buro.invalid",
+                    email_normalized="production-demo-qc@garment-buro.invalid",
+                    first_name="Демо · ОТК",
+                )
+                session.add(demo)
+                await session.flush()
+                session.add(ProductionDemoEmployee(user_id=demo.id, station="qc"))
+                role = await repo.get_role(session, RoleName.PRODUCTION_QC)
+                session.add(UserRole(user_id=demo.id, role_id=role.id))
+                await session.flush()
+                demo_code = await issue_code(session, user_id=demo.id, station="qc", pepper=PEPPER)
+                await session.commit()
+
+            async with AsyncClient(transport=ASGITransport(app), base_url="https://test") as client:
+                await client.post("/api/production/auth/login", json={"code": admin_code})
+                response = await client.get(f"/api/production/admin/employees?q={demo_code}")
+                assert response.status_code == 200, response.text
+                assert response.json()["items"] == [
+                    {
+                        "id": demo.id,
+                        "is_demo": True,
+                        "availability": "available",
+                        "first_name": "Демо · ОТК",
+                        "last_name": "",
+                        "name": "Демо · ОТК",
+                        "email": "production-demo-qc@garment-buro.invalid",
+                        "phone": None,
+                        "status": "active",
+                        "created_at": response.json()["items"][0]["created_at"],
+                        "stations": ["qc"],
+                        "primary_station": "qc",
+                        "code_active": True,
+                        "code_updated_at": response.json()["items"][0]["code_updated_at"],
+                    }
+                ]
+                assert demo_code not in response.text
 
     asyncio.run(scenario())

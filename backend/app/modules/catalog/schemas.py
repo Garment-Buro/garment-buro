@@ -2,7 +2,42 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+
+class ProductCategoryWrite(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    slug: str = Field(min_length=1, max_length=96, pattern=r"^[a-z0-9][a-z0-9-]*$")
+    name: str = Field(min_length=1, max_length=255)
+    description: str | None = None
+    is_active: bool = True
+
+    @field_validator("slug")
+    @classmethod
+    def normalize_slug(cls, value: str) -> str:
+        return value.strip().casefold()
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("description")
+    @classmethod
+    def normalize_description(cls, value: str | None) -> str | None:
+        return value.strip() or None if value is not None else None
+
+
+class ProductCategoryUpdate(ProductCategoryWrite):
+    expected_version: int = Field(gt=0)
+
+
+class ProductCategoryResponse(ProductCategoryWrite):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    version: int
 
 
 class ProductVariantWriteRequest(BaseModel):
@@ -10,6 +45,8 @@ class ProductVariantWriteRequest(BaseModel):
 
     id: int | None = None
     size: str | None = Field(default=None, max_length=32)
+    garment_size_id: int | None = Field(default=None, gt=0)
+    fabric_id: int | None = Field(default=None, gt=0)
     color: str | None = Field(default=None, max_length=64)
     color_hex: str | None = Field(default=None, max_length=7)
     stock_quantity: int = Field(default=0, ge=0)
@@ -23,6 +60,14 @@ class ProductWriteRequest(BaseModel):
     model_config = ConfigDict(extra="ignore", populate_by_name=True)
 
     title: str = Field(min_length=1, max_length=255)
+    slug: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=255,
+        pattern=r"^[a-z0-9][a-z0-9-]*$",
+    )
+    category_id: int | None = Field(default=None, gt=0)
+    garment_model_id: int | None = Field(default=None, gt=0)
     price: Decimal = Field(ge=0, max_digits=12, decimal_places=2)
     old_price: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
     video_src: str | None = Field(default=None, max_length=4096)
@@ -61,6 +106,17 @@ class ProductWriteRequest(BaseModel):
         if not normalized:
             raise ValueError("Product title must not be blank")
         return normalized
+
+    @field_validator("slug")
+    @classmethod
+    def normalize_slug(cls, value: str | None) -> str | None:
+        return value.strip().casefold() if value is not None else None
+
+    @model_validator(mode="after")
+    def validate_prices(self) -> ProductWriteRequest:
+        if self.old_price is not None and self.old_price < self.price:
+            raise ValueError("Old price must not be lower than the current price")
+        return self
 
 
 class ProductDeletedResponse(BaseModel):

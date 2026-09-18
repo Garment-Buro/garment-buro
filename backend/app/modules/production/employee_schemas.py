@@ -41,6 +41,7 @@ class EmployeeWrite(BaseModel):
 
 class EmployeeRead(BaseModel):
     id: int
+    is_demo: bool = False
     first_name: str
     last_name: str
     name: str

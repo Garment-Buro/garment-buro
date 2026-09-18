@@ -40,6 +40,8 @@ class ProductionReadService:
         )
         if demo_only:
             query = query.where(Order.is_demo.is_(True), CrmOrderProject.is_demo.is_(True))
+        else:
+            query = query.where(Order.is_demo.is_(False), CrmOrderProject.is_demo.is_(False))
         if cursor:
             query = query.where(CrmOrderProject.id < cursor)
         rows = list(
@@ -127,15 +129,15 @@ class ProductionReadService:
                 blockers.append("Технолог ещё не закрепил спецификацию и файлы")
             if row and row.issue:
                 blockers.append(row.issue)
-            link = await plans.get_catalog_model_link(
+            garment_model_id = await plans.get_catalog_garment_model_id(
                 session, catalog_product_id=unit.product_id_snapshot
             )
             sizes, cards = [], []
-            if link:
+            if garment_model_id is not None:
                 sizes = [
                     {"id": x.id, "code": x.code}
                     for x in await plans.list_active_sizes(
-                        session, garment_model_id=link.garment_model_id
+                        session, garment_model_id=garment_model_id
                     )
                 ]
                 cards = [
@@ -144,7 +146,7 @@ class ProductionReadService:
                         select(CrmTechCardRevision)
                         .join(CrmTechCard, CrmTechCard.id == CrmTechCardRevision.tech_card_id)
                         .where(
-                            CrmTechCard.garment_model_id == link.garment_model_id,
+                            CrmTechCard.garment_model_id == garment_model_id,
                             CrmTechCard.is_active.is_(True),
                             CrmTechCardRevision.status == "published",
                         )

@@ -10,6 +10,9 @@ from app.db.session import get_database_session
 from app.modules.catalog.dependencies import require_catalog_writer
 from app.modules.catalog.mapper import CatalogResponseMapper
 from app.modules.catalog.schemas import (
+    ProductCategoryResponse,
+    ProductCategoryUpdate,
+    ProductCategoryWrite,
     ProductDeletedResponse,
     ProductDetailResponse,
     ProductResponse,
@@ -20,8 +23,10 @@ from app.modules.catalog.schemas import (
 from app.modules.catalog.service import (
     CatalogInventoryReservedError,
     CatalogProductNotFoundError,
+    CatalogReferenceNotFoundError,
     CatalogService,
     CatalogVariantNotFoundError,
+    CatalogVersionConflictError,
     CatalogWriteService,
     UnknownCatalogMediaError,
 )
@@ -30,6 +35,8 @@ from app.modules.identity.models import User
 router = APIRouter(prefix="/api/products", tags=["catalog"])
 write_router = APIRouter(prefix="/api/products", tags=["catalog-admin"])
 variant_write_router = APIRouter(prefix="/api/variants", tags=["catalog-admin"])
+category_router = APIRouter(prefix="/api/product-categories", tags=["catalog"])
+category_write_router = APIRouter(prefix="/api/product-categories", tags=["catalog-admin"])
 
 
 def get_catalog_service(request: Request) -> CatalogService:
@@ -46,6 +53,14 @@ async def list_products(
     service: Annotated[CatalogService, Depends(get_catalog_service)],
 ) -> list[ProductResponse]:
     return await service.list_products(session)
+
+
+@category_router.get("", response_model=list[ProductCategoryResponse])
+async def list_product_categories(
+    session: Annotated[AsyncSession, Depends(get_database_session)],
+    service: Annotated[CatalogService, Depends(get_catalog_service)],
+) -> list[ProductCategoryResponse]:
+    return await service.list_categories(session)
 
 
 @router.get("/{product_id}", response_model=ProductDetailResponse)
@@ -86,6 +101,8 @@ async def create_product(
         return product
     except UnknownCatalogMediaError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+    except CatalogReferenceNotFoundError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
     except IntegrityError as error:
         await session.rollback()
         raise HTTPException(status_code=409, detail="Catalog write conflict") from error
@@ -114,6 +131,8 @@ async def update_product(
         await session.rollback()
         raise HTTPException(status_code=409, detail=str(error)) from error
     except UnknownCatalogMediaError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except CatalogReferenceNotFoundError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     except IntegrityError as error:
         await session.rollback()
@@ -172,3 +191,49 @@ async def update_variant(
     except IntegrityError as error:
         await session.rollback()
         raise HTTPException(status_code=409, detail="Catalog write conflict") from error
+
+
+@category_write_router.post("", response_model=ProductCategoryResponse, status_code=201)
+async def create_product_category(
+    payload: ProductCategoryWrite,
+    _user: Annotated[User, Depends(require_catalog_writer)],
+    session: Annotated[AsyncSession, Depends(get_database_session)],
+    service: Annotated[CatalogWriteService, Depends(get_catalog_write_service)],
+) -> ProductCategoryResponse:
+    try:
+        category = await service.create_category(session, payload=payload)
+        await session.commit()
+        return category
+    except IntegrityError as error:
+        await session.rollback()
+        raise HTTPException(status_code=409, detail="Product category conflict") from error
+
+
+@category_write_router.put("/{category_id}", response_model=ProductCategoryResponse)
+async def update_product_category(
+    category_id: int,
+    payload: ProductCategoryUpdate,
+    _user: Annotated[User, Depends(require_catalog_writer)],
+    session: Annotated[AsyncSession, Depends(get_database_session)],
+    service: Annotated[CatalogWriteService, Depends(get_catalog_write_service)],
+) -> ProductCategoryResponse:
+    try:
+        category = await service.update_category(
+            session,
+            category_id=category_id,
+            expected_version=payload.expected_version,
+            payload=ProductCategoryWrite.model_validate(
+                payload.model_dump(exclude={"expected_version"})
+            ),
+        )
+        await session.commit()
+        return category
+    except CatalogReferenceNotFoundError as error:
+        await session.rollback()
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except CatalogVersionConflictError as error:
+        await session.rollback()
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    except IntegrityError as error:
+        await session.rollback()
+        raise HTTPException(status_code=409, detail="Product category conflict") from error

@@ -8,13 +8,13 @@ from sqlalchemy.orm import selectinload
 
 from app.modules.catalog.models import Product
 from app.modules.crm.reference_models import (
-    CrmCatalogProductModelLink,
     CrmFabric,
     CrmGarmentModel,
     CrmReferenceEvent,
     CrmTechCard,
     CrmTechCardRevision,
 )
+from app.modules.media.models import MediaObject, MediaStatus
 
 
 class CrmReferenceRepository:
@@ -46,27 +46,31 @@ class CrmReferenceRepository:
             .with_for_update()
         )
 
-    async def catalog_product_exists(
+    async def public_ready_media_exists(
         self,
         session: AsyncSession,
         *,
-        catalog_product_id: int,
+        media_object_id: int,
     ) -> bool:
         return (
-            await session.scalar(select(Product.id).where(Product.id == catalog_product_id))
+            await session.scalar(
+                select(MediaObject.id).where(
+                    MediaObject.id == media_object_id,
+                    MediaObject.status == MediaStatus.READY.value,
+                    MediaObject.is_public.is_(True),
+                )
+            )
             is not None
         )
 
-    async def get_catalog_link_for_update(
+    async def get_catalog_product_for_update(
         self,
         session: AsyncSession,
         *,
         catalog_product_id: int,
-    ) -> CrmCatalogProductModelLink | None:
+    ) -> Product | None:
         return await session.scalar(
-            select(CrmCatalogProductModelLink)
-            .where(CrmCatalogProductModelLink.catalog_product_id == catalog_product_id)
-            .with_for_update()
+            select(Product).where(Product.id == catalog_product_id).with_for_update()
         )
 
     async def get_tech_card_for_update(
@@ -96,6 +100,19 @@ class CrmReferenceRepository:
             .options(selectinload(CrmTechCard.revisions))
             .with_for_update()
         )
+
+    async def list_tech_cards(
+        self,
+        session: AsyncSession,
+        *,
+        garment_model_id: int | None = None,
+    ) -> list[CrmTechCard]:
+        statement = select(CrmTechCard).options(
+            selectinload(CrmTechCard.revisions).selectinload(CrmTechCardRevision.checkpoints)
+        )
+        if garment_model_id is not None:
+            statement = statement.where(CrmTechCard.garment_model_id == garment_model_id)
+        return list(await session.scalars(statement.order_by(CrmTechCard.id.desc())))
 
     @staticmethod
     async def add_event(

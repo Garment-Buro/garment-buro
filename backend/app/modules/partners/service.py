@@ -14,6 +14,7 @@ from app.modules.partners.models import (
     PartnerCommission,
     PartnerCommissionStatus,
     PartnerLanding,
+    PartnerLandingProduct,
     PartnerLandingStatus,
     PartnerOrderAttribution,
     PartnerPayoutRequest,
@@ -56,6 +57,12 @@ class PartnerNotFoundError(LookupError):
 
 class PartnerLandingNotFoundError(LookupError):
     pass
+
+
+class PartnerLandingProductNotFoundError(LookupError):
+    def __init__(self, product_ids: list[int]) -> None:
+        self.product_ids = product_ids
+        super().__init__(f"Catalog products were not found: {product_ids}")
 
 
 class PartnerConflictError(ValueError):
@@ -450,6 +457,7 @@ class PartnerProgramService:
             raise PartnerNotFoundError("Partner profile was not found")
         if await self.repository.get_landing_by_slug(session, slug=payload.slug):
             raise PartnerConflictError("Landing slug is already used")
+        await self._require_landing_products(session, product_ids=payload.product_ids)
         published_at = (
             ensure_utc(now or datetime.now(timezone.utc))
             if payload.status == PartnerLandingStatus.PUBLISHED.value
@@ -457,9 +465,13 @@ class PartnerProgramService:
         )
         landing = PartnerLanding(
             partner_id=partner_id,
-            **payload.model_dump(),
+            **payload.model_dump(exclude={"product_ids"}),
             published_at=published_at,
         )
+        landing.product_links = [
+            PartnerLandingProduct(product_id=product_id, position=position)
+            for position, product_id in enumerate(payload.product_ids)
+        ]
         await self.repository.add_landing(session, landing)
         return landing
 
@@ -476,13 +488,23 @@ class PartnerProgramService:
         if landing is None:
             raise PartnerLandingNotFoundError("Partner landing was not found")
         previous_status = landing.status
+        if "product_ids" in payload.model_fields_set and payload.product_ids is not None:
+            await self._require_landing_products(session, product_ids=payload.product_ids)
         for field in payload.model_fields_set:
+            if field == "product_ids":
+                continue
             value = getattr(payload, field)
             if value is None and field not in {"eyebrow", "image_url"}:
                 continue
             if field == "content" and value is not None:
                 value = value.model_dump(mode="json")
             setattr(landing, field, value)
+        if "product_ids" in payload.model_fields_set and payload.product_ids is not None:
+            await self.repository.replace_landing_products(
+                session,
+                landing=landing,
+                product_ids=payload.product_ids,
+            )
         if landing.status == PartnerLandingStatus.PUBLISHED.value and (
             previous_status != PartnerLandingStatus.PUBLISHED.value or landing.published_at is None
         ):
@@ -491,6 +513,20 @@ class PartnerProgramService:
             landing.published_at = None
         await session.flush()
         return landing
+
+    async def _require_landing_products(
+        self,
+        session: AsyncSession,
+        *,
+        product_ids: list[int],
+    ) -> None:
+        existing_ids = await self.repository.existing_product_ids(
+            session,
+            product_ids=product_ids,
+        )
+        missing_ids = [product_id for product_id in product_ids if product_id not in existing_ids]
+        if missing_ids:
+            raise PartnerLandingProductNotFoundError(missing_ids)
 
     async def request_payout(
         self,

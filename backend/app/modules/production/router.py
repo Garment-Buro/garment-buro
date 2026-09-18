@@ -23,6 +23,7 @@ from app.modules.crm.production_service import (
 from app.modules.crm.service import CrmProjectStateError, CrmProjectVersionConflictError
 from app.modules.identity.models import User
 from app.modules.production.admin_router import router as admin_router
+from app.modules.production.assortment_admin_router import router as assortment_admin_router
 from app.modules.production.auth_router import get_production_user
 from app.modules.production.auth_router import router as auth_router
 from app.modules.production.demo_access import is_demo_employee, require_demo_resource
@@ -37,6 +38,7 @@ from app.modules.production.service import ProductionService
 router = APIRouter(prefix="/api/production", tags=["production-terminal"])
 router.include_router(auth_router, prefix="")
 router.include_router(admin_router)
+router.include_router(assortment_admin_router)
 router.include_router(label_router)
 Session = Annotated[AsyncSession, Depends(get_database_session)]
 CurrentUser = Annotated[User, Depends(get_production_user)]

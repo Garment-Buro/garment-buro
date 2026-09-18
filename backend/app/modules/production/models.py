@@ -91,6 +91,9 @@ class ProductionWorkItem(Base, IntegerIdMixin, TimestampMixin):
     dtf_inserted: Mapped[bool] = mapped_column(Boolean, default=False)
     stage_index: Mapped[int] = mapped_column(Integer, default=0)
     issue: Mapped[str | None] = mapped_column(Text)
+    problem_inbox_item_id: Mapped[int | None] = mapped_column(
+        ForeignKey("admin_inbox_items.id", ondelete="SET NULL"), index=True
+    )
     lane: Mapped[str | None] = mapped_column(String(24), index=True)
     public_token: Mapped[str | None] = mapped_column(String(64), unique=True)
     dtf_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

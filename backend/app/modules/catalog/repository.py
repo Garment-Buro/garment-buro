@@ -4,11 +4,78 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.modules.catalog.models import CatalogAuditEvent, Product, ProductVariant
+from app.modules.catalog.models import (
+    CatalogAuditEvent,
+    Product,
+    ProductCategory,
+    ProductVariant,
+)
+from app.modules.crm.assortment_models import CrmGarmentFabricRequirement
+from app.modules.crm.reference_models import CrmFabric, CrmGarmentModel, CrmGarmentSize
 from app.modules.media.models import ProductMedia, ProductVariantMedia
 
 
 class CatalogRepository:
+    @staticmethod
+    async def list_categories(session: AsyncSession) -> list[ProductCategory]:
+        return list(await session.scalars(select(ProductCategory).order_by(ProductCategory.name)))
+
+    @staticmethod
+    async def get_category(
+        session: AsyncSession,
+        category_id: int,
+        *,
+        lock: bool = False,
+    ) -> ProductCategory | None:
+        statement = select(ProductCategory).where(ProductCategory.id == category_id)
+        return await session.scalar(statement.with_for_update() if lock else statement)
+
+    @staticmethod
+    async def add_category(session: AsyncSession, category: ProductCategory) -> None:
+        session.add(category)
+        await session.flush()
+
+    @staticmethod
+    async def garment_model_exists(session: AsyncSession, garment_model_id: int) -> bool:
+        return (
+            await session.scalar(
+                select(CrmGarmentModel.id).where(
+                    CrmGarmentModel.id == garment_model_id,
+                    CrmGarmentModel.is_active.is_(True),
+                )
+            )
+            is not None
+        )
+
+    @staticmethod
+    async def get_garment_size(
+        session: AsyncSession, garment_size_id: int
+    ) -> CrmGarmentSize | None:
+        return await session.get(CrmGarmentSize, garment_size_id)
+
+    @staticmethod
+    async def get_active_fabric(session: AsyncSession, fabric_id: int) -> CrmFabric | None:
+        return await session.scalar(
+            select(CrmFabric).where(CrmFabric.id == fabric_id, CrmFabric.is_active.is_(True))
+        )
+
+    @staticmethod
+    async def model_allows_fabric(
+        session: AsyncSession,
+        *,
+        garment_model_id: int,
+        fabric_id: int,
+    ) -> bool:
+        return (
+            await session.scalar(
+                select(CrmGarmentFabricRequirement.id).where(
+                    CrmGarmentFabricRequirement.garment_model_id == garment_model_id,
+                    CrmGarmentFabricRequirement.fabric_id == fabric_id,
+                )
+            )
+            is not None
+        )
+
     async def list_products(self, session: AsyncSession) -> list[Product]:
         result = await session.scalars(
             select(Product)
@@ -59,7 +126,8 @@ class CatalogRepository:
             select(ProductVariant)
             .where(ProductVariant.id == variant_id)
             .options(
-                selectinload(ProductVariant.media_links).selectinload(ProductVariantMedia.media)
+                selectinload(ProductVariant.media_links).selectinload(ProductVariantMedia.media),
+                selectinload(ProductVariant.product),
             )
             .with_for_update()
         )

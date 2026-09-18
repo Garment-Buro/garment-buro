@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.catalog.models import Product
 from app.modules.crm.material_models import CrmMaterialBalance
 from app.modules.crm.models import CrmOrderProject, CrmProductionUnit
 from app.modules.crm.production_models import (
@@ -12,7 +13,6 @@ from app.modules.crm.production_models import (
     CrmProductionPlanStatus,
 )
 from app.modules.crm.reference_models import (
-    CrmCatalogProductModelLink,
     CrmFabric,
     CrmGarmentModel,
     CrmGarmentSize,
@@ -194,13 +194,13 @@ class CrmReadRepository:
         products: dict[int, list[int]] = {}
         rows = await session.execute(
             select(
-                CrmCatalogProductModelLink.garment_model_id,
-                CrmCatalogProductModelLink.catalog_product_id,
+                Product.garment_model_id,
+                Product.id,
             )
-            .where(CrmCatalogProductModelLink.garment_model_id.in_(garment_model_ids))
+            .where(Product.garment_model_id.in_(garment_model_ids))
             .order_by(
-                CrmCatalogProductModelLink.garment_model_id,
-                CrmCatalogProductModelLink.catalog_product_id,
+                Product.garment_model_id,
+                Product.id,
             )
         )
         for model_id, product_id in rows:

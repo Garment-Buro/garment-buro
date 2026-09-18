@@ -30,6 +30,29 @@ CATALOG_AUDIT_DETAILS_TYPE = JSON().with_variant(JSONB, "postgresql")
 CATALOG_DOCUMENT_TYPE = JSON().with_variant(JSONB, "postgresql")
 
 
+class ProductCategory(Base, IntegerIdMixin, TimestampMixin):
+    __tablename__ = "product_categories"
+    __table_args__ = (
+        CheckConstraint("length(trim(slug)) > 0", name="product_category_slug_nonempty"),
+        CheckConstraint("length(trim(name)) > 0", name="product_category_name_nonempty"),
+        CheckConstraint("version > 0", name="product_category_version_positive"),
+    )
+
+    slug: Mapped[str] = mapped_column(String(96), nullable=False, unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default="true",
+        index=True,
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+
+    products: Mapped[list[Product]] = relationship(back_populates="category")
+
+
 class Product(Base, IntegerIdMixin, TimestampMixin):
     __tablename__ = "products"
     __table_args__ = (
@@ -59,6 +82,16 @@ class Product(Base, IntegerIdMixin, TimestampMixin):
 
     title: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     slug: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
+    category_id: Mapped[int | None] = mapped_column(
+        ForeignKey("product_categories.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    garment_model_id: Mapped[int | None] = mapped_column(
+        ForeignKey("crm_garment_models.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
     price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     old_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -136,6 +169,7 @@ class Product(Base, IntegerIdMixin, TimestampMixin):
         passive_deletes=True,
         order_by="ProductVariant.id",
     )
+    category: Mapped[ProductCategory | None] = relationship(back_populates="products")
     media_links: Mapped[list[ProductMedia]] = relationship(
         back_populates="product",
         cascade="all, delete-orphan",
@@ -182,6 +216,16 @@ class ProductVariant(Base, IntegerIdMixin, TimestampMixin):
     )
     sku: Mapped[str | None] = mapped_column(String(100), unique=True, nullable=True)
     size: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    garment_size_id: Mapped[int | None] = mapped_column(
+        ForeignKey("crm_garment_sizes.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    fabric_id: Mapped[int | None] = mapped_column(
+        ForeignKey("crm_fabrics.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
     color: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     color_hex: Mapped[str | None] = mapped_column(String(7), nullable=True)
     stock_quantity: Mapped[int] = mapped_column(

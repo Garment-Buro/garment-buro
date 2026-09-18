@@ -71,11 +71,11 @@ class CrmProductionService:
         await self._guard_terminal(session, unit.id, from_terminal)
         if unit.status != CrmProductionUnitStatus.QUEUED.value:
             raise CrmProductionConflictError("Only a queued production unit can be planned")
-        link = await self.repository.get_catalog_model_link(
+        garment_model_id = await self.repository.get_catalog_garment_model_id(
             session,
             catalog_product_id=unit.product_id_snapshot,
         )
-        if link is None:
+        if garment_model_id is None:
             raise CrmProductionConflictError(
                 "Production unit product has no CRM garment-model link"
             )
@@ -87,7 +87,7 @@ class CrmProductionService:
             raise CrmProductionConflictError("Production unit order evidence is missing")
         sizes = await self.repository.list_active_sizes(
             session,
-            garment_model_id=link.garment_model_id,
+            garment_model_id=garment_model_id,
         )
         size = next((candidate for candidate in sizes if candidate.id == garment_size_id), None)
         if sizes and size is None:
@@ -103,7 +103,7 @@ class CrmProductionService:
         if revision_evidence is None:
             raise CrmProductionConflictError("Published tech-card revision is required")
         revision, card = revision_evidence
-        if card.garment_model_id != link.garment_model_id:
+        if card.garment_model_id != garment_model_id:
             raise CrmProductionConflictError("Tech card belongs to another garment model")
 
         evidence_sha256 = self._evidence_digest(
@@ -111,7 +111,7 @@ class CrmProductionService:
             order_item_id=unit.order_item_id,
             product_id=unit.product_id_snapshot,
             variant_id=unit.variant_id_snapshot,
-            garment_model_id=link.garment_model_id,
+            garment_model_id=garment_model_id,
             garment_size_id=size.id if size is not None else None,
             tech_card_revision_id=revision.id,
         )
@@ -142,7 +142,7 @@ class CrmProductionService:
             production_unit_id=unit.id,
             revision_number=len(plans) + 1,
             based_on_plan_revision_id=active.id if active is not None else None,
-            garment_model_id=link.garment_model_id,
+            garment_model_id=garment_model_id,
             garment_size_id=size.id if size is not None else None,
             tech_card_revision_id=revision.id,
             status=CrmProductionPlanStatus.ACTIVE.value,

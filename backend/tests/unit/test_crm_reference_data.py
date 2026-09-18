@@ -14,7 +14,6 @@ from app.db.base import Base
 from app.db.session import DatabaseManager
 from app.modules.catalog.models import Product
 from app.modules.crm.reference_models import (
-    CrmCatalogProductModelLink,
     CrmFabric,
     CrmGarmentModel,
     CrmGarmentSize,
@@ -318,16 +317,16 @@ def test_garment_model_updates_preserve_size_identity_and_link_catalog(
 
             async with database.session() as session:
                 model = await session.get(CrmGarmentModel, 1)
-                link = await session.scalar(select(CrmCatalogProductModelLink))
                 sizes = list(
                     await session.scalars(
                         select(CrmGarmentSize).where(CrmGarmentSize.garment_model_id == model.id)
                     )
                 )
-                assert model is not None and link is not None
+                assert model is not None
                 assert model.version == 3
-                assert link.garment_model_id == model.id
-                assert link.catalog_product_id == 1
+                product = await session.get(Product, 1)
+                assert product is not None
+                assert product.garment_model_id == model.id
                 assert len(sizes) == 2
                 assert "items" not in Base.metadata.tables
                 assert "item_variants" not in Base.metadata.tables

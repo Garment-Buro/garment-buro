@@ -9,12 +9,14 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.modules.catalog.models import Product
 from app.modules.identity.models import Role, RoleName, UserRole
 from app.modules.orders.models import Order
 from app.modules.partners.models import (
     PartnerCommission,
     PartnerCommissionStatus,
     PartnerLanding,
+    PartnerLandingProduct,
     PartnerLandingStatus,
     PartnerOrderAttribution,
     PartnerPayoutRequest,
@@ -109,7 +111,10 @@ class PartnerRepository:
                 PartnerLanding.status == PartnerLandingStatus.PUBLISHED.value,
                 PartnerProfile.status == PartnerStatus.ACTIVE.value,
             )
-            .options(selectinload(PartnerLanding.partner))
+            .options(
+                selectinload(PartnerLanding.partner),
+                selectinload(PartnerLanding.product_links),
+            )
         )
 
     async def get_landing(
@@ -121,7 +126,10 @@ class PartnerRepository:
         return await session.scalar(
             select(PartnerLanding)
             .where(PartnerLanding.id == landing_id)
-            .options(selectinload(PartnerLanding.partner))
+            .options(
+                selectinload(PartnerLanding.partner),
+                selectinload(PartnerLanding.product_links),
+            )
         )
 
     async def get_landing_by_slug(
@@ -130,11 +138,40 @@ class PartnerRepository:
         *,
         slug: str,
     ) -> PartnerLanding | None:
-        return await session.scalar(select(PartnerLanding).where(PartnerLanding.slug == slug))
+        return await session.scalar(
+            select(PartnerLanding)
+            .where(PartnerLanding.slug == slug)
+            .options(selectinload(PartnerLanding.product_links))
+        )
 
     @staticmethod
     async def add_landing(session: AsyncSession, landing: PartnerLanding) -> None:
         session.add(landing)
+        await session.flush()
+
+    @staticmethod
+    async def existing_product_ids(
+        session: AsyncSession,
+        *,
+        product_ids: list[int],
+    ) -> set[int]:
+        if not product_ids:
+            return set()
+        return set(await session.scalars(select(Product.id).where(Product.id.in_(product_ids))))
+
+    @staticmethod
+    async def replace_landing_products(
+        session: AsyncSession,
+        *,
+        landing: PartnerLanding,
+        product_ids: list[int],
+    ) -> None:
+        landing.product_links.clear()
+        await session.flush()
+        landing.product_links.extend(
+            PartnerLandingProduct(product_id=product_id, position=position)
+            for position, product_id in enumerate(product_ids)
+        )
         await session.flush()
 
     async def list_landings(
@@ -147,6 +184,7 @@ class PartnerRepository:
             await session.scalars(
                 select(PartnerLanding)
                 .where(PartnerLanding.partner_id == partner_id)
+                .options(selectinload(PartnerLanding.product_links))
                 .order_by(PartnerLanding.created_at.desc())
             )
         )
@@ -155,7 +193,10 @@ class PartnerRepository:
         return list(
             await session.scalars(
                 select(PartnerLanding)
-                .options(selectinload(PartnerLanding.partner))
+                .options(
+                    selectinload(PartnerLanding.partner),
+                    selectinload(PartnerLanding.product_links),
+                )
                 .order_by(PartnerLanding.created_at.desc())
             )
         )

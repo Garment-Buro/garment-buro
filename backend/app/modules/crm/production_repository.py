@@ -3,11 +3,11 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.catalog.models import Product
 from app.modules.crm.material_models import CrmMaterialReservation
 from app.modules.crm.models import CrmProductionUnit
 from app.modules.crm.production_models import CrmProductionPlanRevision
 from app.modules.crm.reference_models import (
-    CrmCatalogProductModelLink,
     CrmGarmentSize,
     CrmTechCard,
     CrmTechCardRevision,
@@ -37,16 +37,14 @@ class CrmProductionRepository:
     ) -> OrderItem | None:
         return await session.get(OrderItem, order_item_id)
 
-    async def get_catalog_model_link(
+    async def get_catalog_garment_model_id(
         self,
         session: AsyncSession,
         *,
         catalog_product_id: int,
-    ) -> CrmCatalogProductModelLink | None:
+    ) -> int | None:
         return await session.scalar(
-            select(CrmCatalogProductModelLink).where(
-                CrmCatalogProductModelLink.catalog_product_id == catalog_product_id
-            )
+            select(Product.garment_model_id).where(Product.id == catalog_product_id)
         )
 
     async def list_active_sizes(

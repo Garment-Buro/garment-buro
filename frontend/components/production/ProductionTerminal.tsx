@@ -1,6 +1,5 @@
 'use client';
 import { useEffect } from 'react';
-import Link from 'next/link';
 import { useProductionAuthStore } from '@/store/productionAuthStore';
 import { ProductionAdminTerminal } from './admin/ProductionAdminTerminal';
 import { ProductionLogin } from './ProductionLogin';
@@ -10,7 +9,7 @@ import styles from './ProductionTerminal.module.css';
 export function ProductionTerminal({
     mode = 'auto',
 }: {
-    mode?: 'auto' | 'admin' | 'floor';
+    mode?: 'auto' | 'floor';
 }) {
     const initialize = useProductionAuthStore((state) => state.initialize);
     useEffect(() => {
@@ -30,16 +29,8 @@ export function ProductionTerminal({
                 <p role="status">Проверяем рабочую сессию…</p>
             </main>
         );
-    if (!authenticated) return <ProductionLogin admin={mode === 'admin'} />;
+    if (!authenticated) return <ProductionLogin />;
     if (canAdminister && mode !== 'floor')
         return <ProductionAdminTerminal key={userId} />;
-    if (mode === 'admin')
-        return (
-            <main className={styles.login}>
-                <h1>Нет доступа</h1>
-                <p>Войдите личным кодом администратора.</p>
-                <Link href="/production">Вернуться в терминал</Link>
-            </main>
-        );
     return <ProductionWorkspace key={userId} />;
 }

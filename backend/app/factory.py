@@ -23,16 +23,21 @@ from app.modules.carts.router import router as cart_router
 from app.modules.catalog.content import verify_catalog_content_cutover
 from app.modules.catalog.content_router import router as catalog_content_router
 from app.modules.catalog.cutover import verify_catalog_cutover
+from app.modules.catalog.router import category_router as catalog_category_router
+from app.modules.catalog.router import category_write_router as catalog_category_write_router
 from app.modules.catalog.router import router as catalog_router
 from app.modules.catalog.router import variant_write_router
 from app.modules.catalog.router import write_router as catalog_write_router
 from app.modules.checkout.router import router as checkout_router
 from app.modules.checkout.service import CheckoutService
+from app.modules.crm.assortment_router import router as crm_assortment_router
+from app.modules.crm.assortment_router import write_router as crm_assortment_write_router
 from app.modules.crm.command_service import CrmStaffCommandService
 from app.modules.crm.file_router import router as crm_file_router
 from app.modules.crm.file_service import CrmFileService
 from app.modules.crm.material_service import CrmMaterialService
 from app.modules.crm.read_service import CrmReadService
+from app.modules.crm.reference_router import router as crm_reference_write_router
 from app.modules.crm.router import router as crm_router
 from app.modules.crm.router import write_router as crm_write_router
 from app.modules.delivery.directory import PickupDirectory
@@ -77,6 +82,7 @@ from app.modules.payouts.provider import (
 from app.modules.payouts.router import router as payout_router
 from app.modules.payouts.service import PayoutService
 from app.modules.production.router import router as production_router
+from app.modules.production.support_router import router as support_router
 from app.modules.qr_codes.router import router as qr_code_router
 from app.modules.qr_codes.service import QrCodeService
 
@@ -358,9 +364,11 @@ def create_app(
     application.include_router(qr_code_router)
     if runtime_settings.catalog_reads_enabled:
         application.include_router(catalog_router)
+        application.include_router(catalog_category_router)
         application.include_router(media_router)
     if runtime_settings.catalog_writes_enabled:
         application.include_router(catalog_write_router)
+        application.include_router(catalog_category_write_router)
         application.include_router(variant_write_router)
         application.include_router(media_write_router)
         application.include_router(catalog_content_router)
@@ -369,6 +377,7 @@ def create_app(
         application.include_router(cart_router)
     if runtime_settings.identity_api_enabled:
         application.include_router(identity_router)
+        application.include_router(support_router)
     if runtime_settings.order_reads_enabled:
         application.include_router(order_router)
         application.include_router(order_guest_router)
@@ -383,8 +392,11 @@ def create_app(
         application.include_router(payout_router)
     if runtime_settings.crm_api_enabled:
         application.include_router(crm_router)
+        application.include_router(crm_assortment_router)
         application.include_router(production_router)
     if runtime_settings.crm_writes_enabled:
+        application.include_router(crm_assortment_write_router)
+        application.include_router(crm_reference_write_router)
         application.include_router(crm_write_router)
     if runtime_settings.crm_files_enabled:
         application.include_router(crm_file_router)

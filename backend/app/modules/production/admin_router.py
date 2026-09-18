@@ -20,6 +20,19 @@ from app.modules.production.employee_service import (
     EmployeeNotFoundError,
     ProductionEmployeeService,
 )
+from app.modules.production.inbox_models import AdminInboxKind
+from app.modules.production.inbox_schemas import (
+    AdminInboxPage,
+    AdminInboxRead,
+    AdminInboxUpdate,
+    InboxPriority,
+    InboxStatus,
+)
+from app.modules.production.inbox_service import (
+    AdminInboxConflictError,
+    AdminInboxNotFoundError,
+    AdminInboxService,
+)
 from app.modules.production.security import can_administer
 
 router = APIRouter(prefix="/admin", tags=["production-admin"])
@@ -89,6 +102,14 @@ class ListQuery(BaseModel):
     offset: int = Field(default=0, ge=0, le=1000000)
 
 
+class InboxListQuery(BaseModel):
+    q: str = Field(default="", max_length=100)
+    status: InboxStatus | Literal[""] = ""
+    priority: InboxPriority | Literal[""] = ""
+    limit: int = Field(default=30, ge=1, le=100)
+    offset: int = Field(default=0, ge=0, le=1000000)
+
+
 @router.get("/stats")
 async def statistics(_admin: Admin, session: Session):
     return await ProductionAdminReads().stats(session)
@@ -108,17 +129,93 @@ async def order(order_id: int, _admin: Admin, session: Session):
 
 
 @router.get("/users")
-async def users(_admin: Admin, session: Session, query: Annotated[ListQuery, Query()]):
-    return await ProductionAdminReads().users(session, **query.model_dump())
+async def users(
+    request: Request, _admin: Admin, session: Session, query: Annotated[ListQuery, Query()]
+):
+    return await ProductionAdminReads().users(
+        session, **query.model_dump(), pepper=employee_pepper(request)
+    )
 
 
 @router.get("/employees")
-async def employees(_admin: Admin, session: Session, query: Annotated[ListQuery, Query()]):
-    return await ProductionAdminReads().employees(session, **query.model_dump())
+async def employees(
+    request: Request, _admin: Admin, session: Session, query: Annotated[ListQuery, Query()]
+):
+    return await ProductionAdminReads().employees(
+        session, **query.model_dump(), pepper=employee_pepper(request)
+    )
 
 
 def employee_pepper(request: Request) -> str:
     return request.app.state.settings.require_secret("identity_otp_pepper", "IDENTITY_OTP_PEPPER")
+
+
+async def inbox_list(kind: str, session: Session, query: InboxListQuery):
+    return await AdminInboxService().list(session, kind=kind, **query.model_dump())
+
+
+async def inbox_item(kind: str, item_id: int, session: Session):
+    try:
+        return await AdminInboxService().get(session, item_id=item_id, kind=kind)
+    except AdminInboxNotFoundError as error:
+        raise HTTPException(404, "Обращение не найдено") from error
+
+
+async def update_inbox_item(
+    kind: str,
+    item_id: int,
+    payload: AdminInboxUpdate,
+    admin: User,
+    session: Session,
+):
+    try:
+        result = await AdminInboxService().update(
+            session,
+            item_id=item_id,
+            kind=kind,
+            payload=payload,
+            actor_user_id=admin.id,
+        )
+        await session.commit()
+        return result
+    except AdminInboxNotFoundError as error:
+        await session.rollback()
+        raise HTTPException(404, "Обращение не найдено") from error
+    except AdminInboxConflictError as error:
+        await session.rollback()
+        raise HTTPException(409, str(error)) from error
+
+
+@router.get("/support", response_model=AdminInboxPage)
+async def support(_admin: Admin, session: Session, query: Annotated[InboxListQuery, Query()]):
+    return await inbox_list(AdminInboxKind.SUPPORT.value, session, query)
+
+
+@router.get("/support/{item_id}", response_model=AdminInboxRead)
+async def support_item(item_id: int, _admin: Admin, session: Session):
+    return await inbox_item(AdminInboxKind.SUPPORT.value, item_id, session)
+
+
+@router.patch("/support/{item_id}", response_model=AdminInboxRead)
+async def update_support(item_id: int, payload: AdminInboxUpdate, admin: Admin, session: Session):
+    return await update_inbox_item(AdminInboxKind.SUPPORT.value, item_id, payload, admin, session)
+
+
+@router.get("/problems", response_model=AdminInboxPage)
+async def problems(_admin: Admin, session: Session, query: Annotated[InboxListQuery, Query()]):
+    return await inbox_list(AdminInboxKind.PRODUCTION_PROBLEM.value, session, query)
+
+
+@router.get("/problems/{item_id}", response_model=AdminInboxRead)
+async def problem_item(item_id: int, _admin: Admin, session: Session):
+    return await inbox_item(AdminInboxKind.PRODUCTION_PROBLEM.value, item_id, session)
+
+
+@router.patch("/problems/{item_id}", response_model=AdminInboxRead)
+async def update_problem(item_id: int, payload: AdminInboxUpdate, admin: Admin, session: Session):
+    return await update_inbox_item(
+        AdminInboxKind.PRODUCTION_PROBLEM.value, item_id, payload, admin, session
+    )
 
 
 @router.post("/employees", response_model=EmployeeCodeResponse)

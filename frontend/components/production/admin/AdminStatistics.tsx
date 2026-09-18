@@ -10,7 +10,7 @@ import styles from './ProductionAdmin.module.css';
 
 export function AdminStatistics() {
     const { data, loading, error, reload } =
-        useAdminResource<AdminStats>('stats');
+        useAdminResource<AdminStats>('stats', 30_000);
     return (
         <section aria-busy={loading}>
             <div className={styles.sectionHeading}>
@@ -35,6 +35,8 @@ export function AdminStatistics() {
                             ['Заказы', data.orders_count],
                             ['Сотрудники', data.employees_count],
                             ['Клиенты', data.clients_count],
+                            ['Открытые проблемы', data.problems_open_count],
+                            ['Открытые обращения', data.support_open_count],
                             ['Сумма заказов', money(data.orders_total)],
                             [
                                 'Сумма оплаченных заказов',

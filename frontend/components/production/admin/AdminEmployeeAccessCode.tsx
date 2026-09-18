@@ -11,7 +11,9 @@ export function AdminEmployeeAccessCode({
     result: AdminEmployeeCodeResponse;
     onClose: () => void;
 }) {
-    const [copied, setCopied] = useState(false);
+    const [copyState, setCopyState] = useState<
+        'idle' | 'copied' | 'error'
+    >('idle');
     if (!result.code) return null;
     return (
         <div className={styles.modalBackdrop} role="presentation">
@@ -27,20 +29,89 @@ export function AdminEmployeeAccessCode({
                     Код для {result.employee.name}. После закрытия его нельзя будет
                     посмотреть — только заменить новым.
                 </p>
-                <output className={styles.accessCode} aria-label="Код доступа">
-                    {result.code}
-                </output>
-                <div className={styles.editorActions}>
+                <div className={styles.accessCodeRow}>
+                    <output
+                        className={styles.accessCode}
+                        aria-label="Код доступа"
+                    >
+                        {result.code}
+                    </output>
                     <button
+                        className={styles.copyCodeButton}
                         type="button"
+                        aria-label="Скопировать код сотрудника"
+                        title="Скопировать код"
                         onClick={async () => {
-                            await navigator.clipboard.writeText(result.code || '');
-                            setCopied(true);
+                            try {
+                                await navigator.clipboard.writeText(
+                                    result.code || '',
+                                );
+                                setCopyState('copied');
+                            } catch {
+                                setCopyState('error');
+                            }
                         }}
                     >
-                        {copied ? 'Скопировано' : 'Скопировать код'}
+                        {copyState === 'copied' ? (
+                            <svg
+                                viewBox="0 0 24 24"
+                                width="24"
+                                height="24"
+                                fill="none"
+                                aria-hidden="true"
+                            >
+                                <path
+                                    d="m5 12 4 4L19 6"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                />
+                            </svg>
+                        ) : (
+                            <svg
+                                viewBox="0 0 24 24"
+                                width="24"
+                                height="24"
+                                fill="none"
+                                aria-hidden="true"
+                            >
+                                <rect
+                                    x="8"
+                                    y="8"
+                                    width="11"
+                                    height="11"
+                                    rx="2"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                />
+                                <path
+                                    d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                />
+                            </svg>
+                        )}
                     </button>
-                    <button type="button" onClick={onClose}>
+                </div>
+                <p
+                    className={copyState === 'error' ? styles.error : styles.copyStatus}
+                    role="status"
+                    aria-live="polite"
+                >
+                    {copyState === 'copied'
+                        ? 'Код скопирован.'
+                        : copyState === 'error'
+                          ? 'Не удалось скопировать. Выделите код вручную.'
+                          : 'Нажмите значок рядом с кодом, чтобы скопировать.'}
+                </p>
+                <div className={styles.editorActions}>
+                    <button
+                        className={styles.primaryButton}
+                        type="button"
+                        onClick={onClose}
+                    >
                         Я сохранил код
                     </button>
                 </div>

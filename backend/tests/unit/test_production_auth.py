@@ -9,7 +9,7 @@ from sqlalchemy import select
 
 from app.modules.identity.models import User, UserRole
 from app.modules.identity.router import router as identity_router
-from app.modules.production.auth_models import ProductionCredential
+from app.modules.production.auth_models import ProductionCredential, ProductionEmployee
 from app.modules.production.auth_service import (
     issue_code,
     limit_login,
@@ -32,6 +32,10 @@ def test_personal_code_rotation_and_session_revocation(tmp_path):
                 assert len(code) == 6 and code.startswith("2") and code.isascii()
                 stored = await session.scalar(select(ProductionCredential))
                 assert stored.code_digest != code and len(stored.code_digest) == 64
+                employee = await session.scalar(
+                    select(ProductionEmployee).where(ProductionEmployee.user_id == 2)
+                )
+                assert employee is not None and employee.primary_station == "cut"
                 token = await login(
                     session, code=code, pepper=PEPPER, now=datetime.now(timezone.utc)
                 )

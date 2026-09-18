@@ -19,6 +19,7 @@ export function useProductionTerminal(station?: string) {
     const [notice, setNotice] = useState('');
     const [refresh, setRefresh] = useState(0);
     const locked = useRef(false);
+    const polling = useRef(false);
     const reload = useCallback(() => setRefresh((value) => value + 1), []);
 
     useEffect(() => {
@@ -75,6 +76,52 @@ export function useProductionTerminal(station?: string) {
         })();
         return () => controller.abort();
     }, [run, userId, selected, refresh, station]);
+    useEffect(() => {
+        const refreshQueue = async () => {
+            if (
+                document.visibilityState !== 'visible' ||
+                loading ||
+                busy ||
+                locked.current ||
+                polling.current
+            )
+                return;
+            polling.current = true;
+            try {
+                const list = await run((token) =>
+                    productionApi.queue(token, undefined),
+                );
+                setQueue((current) => {
+                    if (current.items.length <= list.items.length) return list;
+                    return {
+                        items: [
+                            ...list.items,
+                            ...current.items.filter(
+                                (item) =>
+                                    !list.items.some(
+                                        (fresh) =>
+                                            fresh.project_id ===
+                                            item.project_id,
+                                    ),
+                            ),
+                        ],
+                        next_cursor: current.next_cursor,
+                    };
+                });
+            } catch {
+                // Keep the last usable queue. An explicit refresh shows the error.
+            } finally {
+                polling.current = false;
+            }
+        };
+        const timer = window.setInterval(() => void refreshQueue(), 20_000);
+        const refreshOnReturn = () => void refreshQueue();
+        document.addEventListener('visibilitychange', refreshOnReturn);
+        return () => {
+            window.clearInterval(timer);
+            document.removeEventListener('visibilitychange', refreshOnReturn);
+        };
+    }, [busy, loading, run, userId]);
 
     const select = (id: number | null, unit?: number) => {
         if (locked.current) return;

@@ -55,7 +55,14 @@ export function AdminEmployeeEditor({
     const firstInput = useRef<HTMLInputElement>(null);
     const run = useProductionAuthStore((state) => state.runAuthenticated);
 
-    useEffect(() => firstInput.current?.focus(), []);
+    useEffect(() => {
+        firstInput.current?.focus();
+        const closeOnEscape = (event: KeyboardEvent) => {
+            if (event.key === 'Escape' && !busy) onClose();
+        };
+        window.addEventListener('keydown', closeOnEscape);
+        return () => window.removeEventListener('keydown', closeOnEscape);
+    }, [busy, onClose]);
 
     const toggleStation = (station: ProductionStation) => {
         setForm((current) => {
@@ -112,7 +119,13 @@ export function AdminEmployeeEditor({
     };
 
     return (
-        <div className={styles.modalBackdrop} role="presentation">
+        <div
+            className={styles.modalBackdrop}
+            role="presentation"
+            onMouseDown={(event) => {
+                if (event.target === event.currentTarget && !busy) onClose();
+            }}
+        >
             <section
                 className={styles.employeeEditor}
                 role="dialog"
@@ -127,6 +140,10 @@ export function AdminEmployeeEditor({
                                 ? 'Изменить сотрудника'
                                 : 'Новый сотрудник'}
                         </h2>
+                        <p className={styles.modalDescription}>
+                            Для входа нужен только личный код. Контактные данные
+                            можно добавить позже.
+                        </p>
                     </div>
                     <button type="button" disabled={busy} onClick={onClose}>
                         Закрыть
@@ -151,74 +168,128 @@ export function AdminEmployeeEditor({
                         }
                     }}
                 >
-                    <div className={styles.formGrid}>
-                        <label>
-                            Имя
-                            <input
-                                ref={firstInput}
-                                required
-                                maxLength={255}
-                                autoComplete="off"
-                                value={form.first_name}
-                                onChange={(event) =>
-                                    setForm({
-                                        ...form,
-                                        first_name: event.target.value,
-                                    })
-                                }
-                            />
-                        </label>
-                        <label>
-                            Фамилия
-                            <input
-                                maxLength={255}
-                                autoComplete="off"
-                                value={form.last_name}
-                                onChange={(event) =>
-                                    setForm({
-                                        ...form,
-                                        last_name: event.target.value,
-                                    })
-                                }
-                            />
-                        </label>
-                        <label>
-                            Телефон
-                            <input
-                                type="tel"
-                                maxLength={64}
-                                autoComplete="off"
-                                value={form.phone || ''}
-                                onChange={(event) =>
-                                    setForm({
-                                        ...form,
-                                        phone: event.target.value || null,
-                                    })
-                                }
-                            />
-                        </label>
-                        <label>
-                            Почта — необязательно
-                            <input
-                                type="email"
-                                maxLength={320}
-                                autoComplete="off"
-                                value={form.email || ''}
-                                onChange={(event) =>
-                                    setForm({
-                                        ...form,
-                                        email: event.target.value || null,
-                                    })
-                                }
-                            />
-                        </label>
-                    </div>
+                    <fieldset className={styles.formSection}>
+                        <legend>Личные данные</legend>
+                        <div className={styles.formGrid}>
+                            <label>
+                                Имя
+                                <input
+                                    ref={firstInput}
+                                    required
+                                    maxLength={255}
+                                    autoComplete="off"
+                                    placeholder="Например, Мария"
+                                    value={form.first_name}
+                                    onChange={(event) =>
+                                        setForm({
+                                            ...form,
+                                            first_name: event.target.value,
+                                        })
+                                    }
+                                />
+                            </label>
+                            <label>
+                                Фамилия (необязательно)
+                                <input
+                                    maxLength={255}
+                                    autoComplete="off"
+                                    placeholder="Можно оставить пустой"
+                                    value={form.last_name}
+                                    onChange={(event) =>
+                                        setForm({
+                                            ...form,
+                                            last_name: event.target.value,
+                                        })
+                                    }
+                                />
+                            </label>
+                            <label>
+                                Телефон (необязательно)
+                                <input
+                                    type="tel"
+                                    maxLength={64}
+                                    autoComplete="off"
+                                    placeholder="Можно оставить пустым"
+                                    value={form.phone || ''}
+                                    onChange={(event) =>
+                                        setForm({
+                                            ...form,
+                                            phone: event.target.value || null,
+                                        })
+                                    }
+                                />
+                            </label>
+                            <label>
+                                Почта (необязательно)
+                                <input
+                                    type="email"
+                                    maxLength={320}
+                                    autoComplete="off"
+                                    placeholder="name@example.ru"
+                                    value={form.email || ''}
+                                    onChange={(event) =>
+                                        setForm({
+                                            ...form,
+                                            email: event.target.value || null,
+                                        })
+                                    }
+                                />
+                            </label>
+                        </div>
+                    </fieldset>
+
+                    <fieldset className={styles.formSection}>
+                        <legend>Рабочий доступ</legend>
+                        <div className={styles.formGrid}>
+                            <label>
+                                Доступ
+                                <select
+                                    value={form.status}
+                                    onChange={(event) =>
+                                        setForm({
+                                            ...form,
+                                            status: event.target.value as
+                                                | 'active'
+                                                | 'blocked',
+                                        })
+                                    }
+                                >
+                                    <option value="active">Активен</option>
+                                    <option value="blocked">Заблокирован</option>
+                                </select>
+                                <small>
+                                    Блокировка сразу отзывает код и текущие сессии.
+                                </small>
+                            </label>
+                            <label>
+                                Доступность
+                                <select
+                                    value={form.availability}
+                                    onChange={(event) =>
+                                        setForm((current) => ({
+                                            ...current,
+                                            availability: event.target
+                                                .value as AdminEmployeeWrite['availability'],
+                                        }))
+                                    }
+                                >
+                                    <option value="available">На работе</option>
+                                    <option value="sick">Болеет</option>
+                                    <option value="vacation">В отпуске</option>
+                                    <option value="absent">Отсутствует</option>
+                                </select>
+                                <small>
+                                    Вне работы личный код временно не действует.
+                                </small>
+                            </label>
+                        </div>
+                    </fieldset>
 
                     <fieldset className={styles.roleFieldset}>
-                        <legend>Доступные участки</legend>
+                        <legend>Участки производства</legend>
                         <p className={styles.muted}>
-                            Можно выбрать несколько участков. Административная
-                            роль здесь не выдаётся.
+                            Выберите один или несколько участков, затем укажите
+                            основной. Выбрано: {form.stations.length}.
                         </p>
                         <div className={styles.roleGrid}>
                             {productionStations.map((station) => (
@@ -237,10 +308,7 @@ export function AdminEmployeeEditor({
                                 </label>
                             ))}
                         </div>
-                    </fieldset>
-
-                    <div className={styles.formGrid}>
-                        <label>
+                        <label className={styles.primaryStation}>
                             Основной участок
                             <select
                                 value={form.primary_station}
@@ -262,27 +330,7 @@ export function AdminEmployeeEditor({
                                 По нему формируется первая цифра личного кода.
                             </small>
                         </label>
-                        <label>
-                            Доступ
-                            <select
-                                value={form.status}
-                                onChange={(event) =>
-                                    setForm({
-                                        ...form,
-                                        status: event.target.value as
-                                            | 'active'
-                                            | 'blocked',
-                                    })
-                                }
-                            >
-                                <option value="active">Активен</option>
-                                <option value="blocked">Заблокирован</option>
-                            </select>
-                            <small>
-                                Блокировка сразу отзывает код и текущие сессии.
-                            </small>
-                        </label>
-                    </div>
+                    </fieldset>
 
                     {error && (
                         <p role="alert" className={styles.error}>
@@ -290,30 +338,9 @@ export function AdminEmployeeEditor({
                         </p>
                     )}
                     <div className={styles.editorActions}>
-                        <button
-                            type="submit"
-                            disabled={busy || !form.first_name.trim()}
-                        >
-                            {busy ? 'Сохраняем…' : 'Сохранить'}
+                        <button type="button" disabled={busy} onClick={onClose}>
+                            Отмена
                         </button>
-                        <label>
-                            Доступность сотрудника
-                            <select
-                                value={form.availability}
-                                onChange={(e) =>
-                                    setForm((old) => ({
-                                        ...old,
-                                        availability: e.target
-                                            .value as AdminEmployeeWrite['availability'],
-                                    }))
-                                }
-                            >
-                                <option value="available">На работе</option>
-                                <option value="sick">Болеет</option>
-                                <option value="vacation">В отпуске</option>
-                                <option value="absent">Отсутствует</option>
-                            </select>
-                        </label>
                         {employee &&
                             employee.status === 'active' &&
                             form.availability === 'available' && (
@@ -340,6 +367,13 @@ export function AdminEmployeeEditor({
                                     Выдать новый код
                                 </button>
                             )}
+                        <button
+                            className={styles.primaryButton}
+                            type="submit"
+                            disabled={busy || !form.first_name.trim()}
+                        >
+                            {busy ? 'Сохраняем…' : 'Сохранить'}
+                        </button>
                     </div>
                 </form>
             </section>

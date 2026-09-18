@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 REFERENCE_CODE_PATTERN = re.compile(r"^[A-Z0-9][A-Z0-9_-]{0,63}$")
 SIZE_CODE_PATTERN = re.compile(r"^[A-Z0-9][A-Z0-9_+./-]{0,31}$")
@@ -37,6 +38,12 @@ class CrmFabricWrite(BaseModel):
         ge=0,
         max_digits=12,
         decimal_places=2,
+    )
+    minimum_stock_meters: Decimal = Field(
+        default=Decimal("0"),
+        ge=0,
+        max_digits=14,
+        decimal_places=3,
     )
     currency: str = Field(default="RUB", pattern=r"^RUB$")
     is_active: bool = True
@@ -75,6 +82,12 @@ class CrmGarmentSizeWrite(BaseModel):
     max_length_cm: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)
     min_width_cm: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)
     max_width_cm: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)
+    min_sleeve_length_cm: Decimal | None = Field(
+        default=None, gt=0, max_digits=10, decimal_places=2
+    )
+    max_sleeve_length_cm: Decimal | None = Field(
+        default=None, gt=0, max_digits=10, decimal_places=2
+    )
     extra_width_price_per_cm: Decimal | None = Field(
         default=None,
         ge=0,
@@ -97,6 +110,7 @@ class CrmGarmentSizeWrite(BaseModel):
             (self.min_height_cm, self.max_height_cm, "height"),
             (self.min_length_cm, self.max_length_cm, "length"),
             (self.min_width_cm, self.max_width_cm, "width"),
+            (self.min_sleeve_length_cm, self.max_sleeve_length_cm, "sleeve"),
         ):
             if minimum is not None and maximum is not None and minimum > maximum:
                 raise ValueError(f"Garment size {label} range is inverted")
@@ -111,6 +125,7 @@ class CrmGarmentModelWrite(BaseModel):
     base_length_cm: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)
     base_width_cm: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)
     base_weight_g: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)
+    size_chart_media_object_id: int | None = Field(default=None, gt=0)
     is_active: bool = True
     sizes: list[CrmGarmentSizeWrite] = Field(default_factory=list, max_length=100)
 
@@ -146,6 +161,7 @@ class CrmGarmentModelWrite(BaseModel):
 class CrmTechCardCheckpointWrite(BaseModel):
     position: int = Field(gt=0)
     stage_code: str = Field(min_length=1, max_length=64)
+    role_code: str | None = Field(default=None, min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=255)
     description: str | None = None
     standard_minutes: Decimal | None = Field(
@@ -163,6 +179,16 @@ class CrmTechCardCheckpointWrite(BaseModel):
         normalized = value.strip().lower()
         if not STAGE_CODE_PATTERN.fullmatch(normalized):
             raise ValueError("Tech-card stage code contains unsupported characters")
+        return normalized
+
+    @field_validator("role_code")
+    @classmethod
+    def normalize_role_code(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().lower()
+        if not STAGE_CODE_PATTERN.fullmatch(normalized):
+            raise ValueError("Tech-card role code contains unsupported characters")
         return normalized
 
     @field_validator("name")
@@ -210,3 +236,98 @@ class CrmTechCardCreate(BaseModel):
         if not REFERENCE_CODE_PATTERN.fullmatch(normalized):
             raise ValueError("Tech-card code contains unsupported characters")
         return normalized
+
+
+class CrmFabricReferenceRead(CrmFabricWrite):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    version: int
+
+
+class CrmFabricUpdate(CrmFabricWrite):
+    expected_version: int = Field(gt=0)
+
+
+class CrmGarmentSizeReferenceRead(CrmGarmentSizeWrite):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    is_active: bool
+    version: int
+
+
+class CrmGarmentModelReferenceRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    code: str
+    name: str
+    description: str | None
+    base_height_cm: Decimal | None
+    base_length_cm: Decimal | None
+    base_width_cm: Decimal | None
+    base_weight_g: Decimal | None
+    size_chart_media_object_id: int | None
+    is_active: bool
+    version: int
+    sizes: list[CrmGarmentSizeReferenceRead]
+
+
+class CrmGarmentModelUpdate(CrmGarmentModelWrite):
+    expected_version: int = Field(gt=0)
+
+
+class CrmCatalogProductModelAssignmentRead(BaseModel):
+    garment_model_id: int
+    catalog_product_id: int
+
+
+class CrmCatalogProductModelAssignmentWrite(BaseModel):
+    catalog_product_id: int = Field(gt=0)
+
+
+class CrmTechCardCheckpointRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    position: int
+    stage_code: str
+    role_code: str
+    name: str
+    description: str | None
+    standard_minutes: Decimal | None
+    labor_cost: Decimal
+    currency: str
+
+
+class CrmTechCardRevisionRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    revision_number: int
+    based_on_revision_id: int | None
+    status: str
+    name_snapshot: str
+    description_snapshot: str | None
+    created_by_user_id: int | None
+    published_by_user_id: int | None
+    created_at: datetime
+    published_at: datetime | None
+    checkpoints: list[CrmTechCardCheckpointRead]
+
+
+class CrmTechCardRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    garment_model_id: int
+    code: str
+    latest_revision_number: int
+    is_active: bool
+    revisions: list[CrmTechCardRevisionRead]
+
+
+class CrmTechCardRevisionCreate(BaseModel):
+    expected_latest_revision: int = Field(gt=0)
+    revision: CrmTechCardRevisionWrite

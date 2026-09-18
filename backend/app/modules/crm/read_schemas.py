@@ -87,6 +87,7 @@ class CrmFabricRead(BaseModel):
     density_gsm: Decimal | None
     width_cm: Decimal
     cost_per_meter: Decimal | None
+    minimum_stock_meters: Decimal
     currency: str
     is_active: bool
     version: int
@@ -104,6 +105,14 @@ class CrmGarmentSizeRead(BaseModel):
     code: str
     sort_order: int
     base_price: Decimal
+    min_height_cm: Decimal | None
+    max_height_cm: Decimal | None
+    min_length_cm: Decimal | None
+    max_length_cm: Decimal | None
+    min_width_cm: Decimal | None
+    max_width_cm: Decimal | None
+    min_sleeve_length_cm: Decimal | None
+    max_sleeve_length_cm: Decimal | None
     currency: str
     is_active: bool
     version: int
@@ -122,10 +131,12 @@ class CrmGarmentModelRead(BaseModel):
     id: int
     code: str
     name: str
+    description: str | None
     base_height_cm: Decimal | None
     base_length_cm: Decimal | None
     base_width_cm: Decimal | None
     base_weight_g: Decimal | None
+    size_chart_media_object_id: int | None
     is_active: bool
     version: int
     catalog_product_ids: list[int]
