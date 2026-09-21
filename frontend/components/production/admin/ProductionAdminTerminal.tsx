@@ -54,19 +54,31 @@ export function ProductionAdminTerminal() {
                 К содержимому
             </a>
             <header className={styles.header}>
-                <div>
-                    <p className={styles.eyebrow}>
-                        GARMENT BURO ·{' '}
-                        {user?.admin_scope === 'production'
-                            ? 'ПРОИЗВОДСТВО'
-                            : 'УПРАВЛЕНИЕ'}
-                    </p>
-                    <h1>
-                        {user?.admin_scope === 'production'
-                            ? 'Производственный администратор'
-                            : 'Системный администратор'}
-                    </h1>
-                    <p>{user?.name}</p>
+                <div className={styles.identity}>
+                    <video
+                        className={styles.adminLogo}
+                        src="/logo_anim.mp4"
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                        preload="auto"
+                        aria-hidden="true"
+                    />
+                    <div className={styles.identityCopy}>
+                        <p className={styles.eyebrow}>
+                            GARMENT BURO ·{' '}
+                            {user?.admin_scope === 'production'
+                                ? 'ПРОИЗВОДСТВО'
+                                : 'УПРАВЛЕНИЕ'}
+                        </p>
+                        <h1>
+                            {user?.admin_scope === 'production'
+                                ? 'Производственный администратор'
+                                : 'Системный администратор'}
+                        </h1>
+                        <p>{user?.name}</p>
+                    </div>
                 </div>
                 <div className={styles.actions}>
                     {Boolean(user?.stations.length) && (

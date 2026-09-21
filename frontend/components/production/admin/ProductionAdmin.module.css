@@ -94,6 +94,27 @@
     max-width: 1440px;
     margin: 0 auto;
 }
+.identity {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    min-width: 0;
+}
+.identityCopy {
+    min-width: 0;
+}
+.identityCopy > p:last-child {
+    margin-bottom: 0;
+}
+.adminLogo {
+    display: block;
+    width: 64px;
+    height: 64px;
+    flex: 0 0 64px;
+    border-radius: 50%;
+    object-fit: cover;
+    pointer-events: none;
+}
 .eyebrow {
     color: #656166;
     font-size: 12px;
@@ -685,8 +706,17 @@
         flex-direction: column;
         gap: 12px;
     }
-    .header > div:first-child p:last-child {
-        margin-bottom: 0;
+    .identity {
+        align-items: flex-start;
+        gap: 12px;
+    }
+    .identityCopy {
+        flex: 1;
+    }
+    .adminLogo {
+        width: 48px;
+        height: 48px;
+        flex-basis: 48px;
     }
     .actions {
         display: grid;

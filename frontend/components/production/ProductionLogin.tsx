@@ -16,9 +16,8 @@ export function ProductionLogin() {
             <section className={styles.panel}>
                 <p className={styles.eyebrow}>GARMENT BURO · ПРОИЗВОДСТВО</p>
                 <h1>Вход в терминал</h1>
-                <p>
-                    Введите личный код: 6 цифр для сотрудника или 8 для
-                    администратора. Код и доступ выдаёт руководитель.
+                <p className={styles.loginMessage}>
+                    Твоя работа двигает заказ вперёд.
                 </p>
                 <form onSubmit={async (event) => {
                     event.preventDefault();
@@ -30,10 +29,16 @@ export function ProductionLogin() {
                         setCode('');
                     } finally { locked.current = false; setLoading(false); }
                 }}>
-                    <label htmlFor="production-code">Личный код сотрудника</label>
+                    <label
+                        className={styles.srOnly}
+                        htmlFor="production-code"
+                    >
+                        Личный код сотрудника
+                    </label>
                     <input id="production-code" type="password" inputMode="numeric"
                         autoComplete="current-password" required pattern="([0-9]{6}|99[0-9]{6})"
                         minLength={6} maxLength={8} disabled={loading} value={code}
+                        placeholder="Личный код сотрудника"
                         aria-describedby="production-code-help" aria-invalid={!!error}
                         onChange={(event) => setCode(event.target.value.replace(/[^0-9]/g, '').slice(0, 8))} />
                     <small id="production-code-help">Не передавайте свой код другим сотрудникам.</small>
@@ -42,7 +47,6 @@ export function ProductionLogin() {
                     </button>
                 </form>
                 {(error || sessionError) && <p role="alert" className={styles.error}>{error || sessionError}</p>}
-                <small>Без подключения к сети изменения не записываются.</small>
             </section>
         </main>
     );
