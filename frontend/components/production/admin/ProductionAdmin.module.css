@@ -639,6 +639,12 @@
 .dialogActions {
     justify-content: flex-end;
 }
+.dialogHeaderActions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+}
 .screen .iconButton {
     flex: 0 0 48px;
     width: 48px;
@@ -745,6 +751,193 @@
 }
 .fullField {
     grid-column: 1 / -1;
+}
+.patternForm {
+    display: grid;
+    gap: 24px;
+    padding-top: 8px;
+}
+.patternIdentityGrid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+}
+.patternMeasurements {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+.patternMeasurement {
+    min-width: 0;
+    padding: 16px;
+    border: 1px solid #e3e0e2;
+    border-radius: 16px;
+    background: #fff;
+}
+.patternMeasurement[data-enabled='false'] {
+    background: #f2f0ef;
+}
+.patternMeasurementHeading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+.patternMeasurementHeading strong,
+.patternMeasurementHeading small {
+    display: block;
+}
+.patternMeasurementHeading small {
+    margin-top: 2px;
+}
+.patternMeasurement output {
+    flex: 0 0 auto;
+    padding: 6px 10px;
+    border-radius: 8px;
+    color: #fff;
+    background: #181818;
+    font-size: 14px;
+    line-height: 20px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+.screen .patternMeasureToggle {
+    min-height: 36px;
+    padding: 6px 10px;
+    font-size: 14px;
+    line-height: 20px;
+}
+.patternRangeControl {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 8px 12px;
+    margin-top: 16px;
+}
+.patternRangeControl > input[type='range'] {
+    grid-column: 1 / -1;
+    min-height: 32px;
+    padding: 0;
+    border: 0;
+    accent-color: #181818;
+    cursor: pointer;
+}
+.patternRangeControl > output + input[type='range'] {
+    grid-column: 2;
+    grid-row: 1;
+}
+.patternRangeEnds {
+    grid-column: 1 / -1;
+    display: flex;
+    justify-content: space-between;
+    color: #656166;
+    font-size: 12px;
+    line-height: 16px;
+    font-variant-numeric: tabular-nums;
+}
+.patternFileField {
+    display: grid;
+    gap: 8px;
+    color: #181818;
+    font-size: 14px;
+    line-height: 20px;
+}
+.screen .patternFilePicker {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    min-height: 56px;
+    padding: 12px 16px;
+    border: 1px solid #d6d0d5;
+    border-radius: 8px;
+    background: #fff;
+    cursor: pointer;
+}
+.screen .patternFilePicker:has(input:focus-visible) {
+    outline: 3px solid #71528c;
+    outline-offset: 4px;
+}
+.patternFilePicker input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    min-height: 0;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+}
+.patternFilePicker > svg {
+    width: 20px;
+    height: 20px;
+    flex: 0 0 20px;
+    color: #5e4274;
+}
+.patternFilePicker > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.patternStatusMenu {
+    position: relative;
+}
+.patternStatusMenu summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 48px;
+    padding: 8px 12px;
+    border: 1px solid #d6d0d5;
+    border-radius: 8px;
+    background: #fff;
+    font-size: 14px;
+    line-height: 20px;
+    font-weight: 600;
+    cursor: pointer;
+    list-style: none;
+}
+.patternStatusMenu summary::-webkit-details-marker {
+    display: none;
+}
+.patternStatusMenu summary > svg {
+    width: 16px;
+    height: 16px;
+}
+.patternStatusDot {
+    width: 8px;
+    height: 8px;
+    flex: 0 0 8px;
+    border-radius: 999px;
+    background: #962f39;
+}
+.patternStatusDot[data-active='true'] {
+    background: #2d7249;
+}
+.patternStatusMenu > div {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    z-index: 5;
+    display: grid;
+    width: 176px;
+    padding: 8px;
+    border: 1px solid #e3e0e2;
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: 0 16px 40px rgb(24 24 24 / 16%);
+}
+.screen .patternStatusMenu > div button {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 40px;
+    padding: 8px;
+    border: 0;
+    background: transparent;
+    text-align: left;
+}
+.patternStatusMenu > div button:hover {
+    background: #f2f0ef;
 }
 .checkField {
     display: grid !important;
@@ -1614,13 +1807,17 @@
     }
     .assortmentDialog {
         width: 100%;
-        max-height: none;
-        min-height: 100dvh;
+        height: calc(100dvh - max(16px, env(safe-area-inset-top)));
+        min-height: 0;
+        max-height: calc(100dvh - max(16px, env(safe-area-inset-top)));
         padding: 16px;
         border: 0;
         border-radius: 0;
     }
     .dialogHeading {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
         margin: -16px -16px 16px;
         padding: max(16px, env(safe-area-inset-top)) 16px 16px;
         border-radius: 0;
@@ -1631,6 +1828,33 @@
     }
     .fullField {
         grid-column: 1 / -1;
+    }
+    .patternForm {
+        gap: 16px;
+        padding-top: 4px;
+    }
+    .patternIdentityGrid,
+    .patternMeasurements {
+        grid-template-columns: 1fr;
+    }
+    .patternMeasurement {
+        padding: 12px;
+    }
+    .dialogHeading:has(.patternStatusMenu) {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .dialogHeading:has(.patternStatusMenu) .dialogHeaderActions {
+        width: 100%;
+        justify-content: space-between;
+        gap: 8px;
+    }
+    .dialogHeaderActions > button {
+        min-height: 40px;
+        padding: 8px 12px;
+    }
+    .patternStatusMenu summary {
+        min-height: 40px;
+        padding: 8px;
     }
     .breakdowns {
         grid-template-columns: 1fr;

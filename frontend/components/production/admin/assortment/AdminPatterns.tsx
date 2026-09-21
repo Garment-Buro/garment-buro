@@ -1,7 +1,13 @@
 'use client';
 
 import { useMemo, useState, type FormEvent } from 'react';
-import { PiPencilSimple, PiPlus, PiUploadSimple } from 'react-icons/pi';
+import {
+    PiCaretDown,
+    PiCheck,
+    PiPencilSimple,
+    PiPlus,
+    PiUploadSimple,
+} from 'react-icons/pi';
 import { useAssortmentResource } from '@/hooks/production/useAssortmentResource';
 import {
     saveAssortment,
@@ -16,20 +22,107 @@ import { AdminFilters } from '../AdminFilters';
 import { AssortmentDialog, AssortmentFeedback } from './AssortmentDialog';
 import styles from '../ProductionAdmin.module.css';
 
-type PatternForm = Omit<Pattern, 'id' | 'version' | 'grid_key'> & {
+type PatternForm = Omit<Pattern, 'id' | 'version' | 'grid_key' | 'name'> & {
     id?: number;
     version?: number;
     filename?: string;
 };
+
+type MeasurementKey =
+    | 'width_cm'
+    | 'length_cm'
+    | 'sleeve_length_cm'
+    | 'height_cm';
+
+type MeasurementRange = {
+    min: string | null;
+    max: string | null;
+};
+
+const firstMeasurement = (range: MeasurementRange) => range.min ?? '';
+
+function PatternMeasurement({
+    label,
+    field,
+    value,
+    range,
+    required,
+    onChange,
+}: {
+    label: string;
+    field: MeasurementKey;
+    value: string | null;
+    range: MeasurementRange;
+    required?: boolean;
+    onChange: (field: MeasurementKey, value: string | null) => void;
+}) {
+    const available = range.min !== null && range.max !== null;
+    const enabled = required || value !== null;
+    const current = value ?? range.min ?? '';
+
+    return (
+        <section className={styles.patternMeasurement} data-enabled={enabled}>
+            <div className={styles.patternMeasurementHeading}>
+                <div>
+                    <strong>{label}</strong>
+                    <small>
+                        {available
+                            ? `${range.min}–${range.max} см`
+                            : 'Диапазон не задан для размера'}
+                    </small>
+                </div>
+                {required ? (
+                    <output htmlFor={`pattern-${field}`}>
+                        {current ? `${Number(current)} см` : '—'}
+                    </output>
+                ) : (
+                    <button
+                        type="button"
+                        className={styles.patternMeasureToggle}
+                        disabled={!available}
+                        aria-pressed={enabled}
+                        onClick={() =>
+                            onChange(field, enabled ? null : firstMeasurement(range))
+                        }
+                    >
+                        {enabled ? 'Убрать' : 'Указать'}
+                    </button>
+                )}
+            </div>
+            {enabled && available && (
+                <div className={styles.patternRangeControl}>
+                    {!required && (
+                        <output htmlFor={`pattern-${field}`}>
+                            {current ? `${Number(current)} см` : '—'}
+                        </output>
+                    )}
+                    <input
+                        id={`pattern-${field}`}
+                        type="range"
+                        min={range.min ?? undefined}
+                        max={range.max ?? undefined}
+                        step="2"
+                        value={current}
+                        aria-label={`${label}, сантиметры`}
+                        onChange={(event) => onChange(field, event.target.value)}
+                    />
+                    <div className={styles.patternRangeEnds} aria-hidden="true">
+                        <span>{Number(range.min)}</span>
+                        <span>{Number(range.max)}</span>
+                    </div>
+                </div>
+            )}
+        </section>
+    );
+}
 
 const emptyPattern = (model?: GarmentModel): PatternForm => ({
     code: '',
     garment_model_id: model?.id ?? 0,
     garment_size_id: model?.sizes[0]?.id ?? 0,
     media_object_id: 0,
-    name: '',
-    width_cm: '',
-    length_cm: '',
+    width_cm: model?.sizes[0]?.min_width_cm ?? '',
+    length_cm: model?.sizes[0]?.min_length_cm ?? '',
     sleeve_length_cm: null,
     height_cm: null,
     is_active: true,
@@ -54,7 +147,7 @@ export function AdminPatterns() {
                 return (
                     matchesModel &&
                     (!needle ||
-                        `${item.code} ${item.name} ${item.grid_key}`
+                        `${item.code} ${item.grid_key}`
                             .toLowerCase()
                             .includes(needle))
                 );
@@ -87,7 +180,7 @@ export function AdminPatterns() {
                     garment_model_id: editor.garment_model_id,
                     garment_size_id: editor.garment_size_id,
                     media_object_id: editor.media_object_id,
-                    name: editor.name,
+                    name: editor.code,
                     width_cm: Number(editor.width_cm),
                     length_cm: Number(editor.length_cm),
                     sleeve_length_cm: editor.sleeve_length_cm
@@ -131,7 +224,7 @@ export function AdminPatterns() {
             </div>
             <div className={styles.assortmentFilters}>
                 <label className={styles.assortmentSearch}>
-                    Поиск по коду или названию
+                    Поиск по коду лекала
                     <input
                         type="search"
                         value={query}
@@ -182,12 +275,11 @@ export function AdminPatterns() {
                                         )}
                                     </span>
                                     <small>{pattern.code}</small>
-                                    <h4>{pattern.name}</h4>
                                 </div>
                                 <button
                                     className={styles.iconButton}
                                     onClick={() => setEditor({ ...pattern })}
-                                    aria-label={`Изменить лекало ${pattern.name}`}
+                                    aria-label={`Изменить лекало ${pattern.code}`}
                                 >
                                     <PiPencilSimple aria-hidden />
                                 </button>
@@ -214,11 +306,49 @@ export function AdminPatterns() {
             {editor && (
                 <AssortmentDialog
                     title={editor.id ? 'Изменить лекало' : 'Новое лекало'}
-                    description="Ширина и длина должны попадать в диапазон размера и сетку с шагом два сантиметра."
+                    headerActions={
+                        <details className={styles.patternStatusMenu}>
+                            <summary>
+                                <span
+                                    className={styles.patternStatusDot}
+                                    data-active={editor.is_active}
+                                />
+                                {editor.is_active ? 'Активно' : 'Неактивно'}
+                                <PiCaretDown aria-hidden />
+                            </summary>
+                            <div role="menu">
+                                {([
+                                    [true, 'Активно'],
+                                    [false, 'Неактивно'],
+                                ] as const).map(([active, label]) => (
+                                    <button
+                                        type="button"
+                                        role="menuitemradio"
+                                        aria-checked={editor.is_active === active}
+                                        key={String(active)}
+                                        onClick={(event) => {
+                                            setEditor({
+                                                ...editor,
+                                                is_active: Boolean(active),
+                                            });
+                                            event.currentTarget
+                                                .closest('details')
+                                                ?.removeAttribute('open');
+                                        }}
+                                    >
+                                        <span>{label}</span>
+                                        {editor.is_active === active && (
+                                            <PiCheck aria-hidden />
+                                        )}
+                                    </button>
+                                ))}
+                            </div>
+                        </details>
+                    }
                     onClose={() => setEditor(null)}
                 >
-                    <form onSubmit={submit}>
-                        <div className={styles.formGrid}>
+                    <form className={styles.patternForm} onSubmit={submit}>
+                        <div className={styles.patternIdentityGrid}>
                             <label className={styles.fullField}>
                                 Код лекала
                                 <input
@@ -233,7 +363,7 @@ export function AdminPatterns() {
                                         })
                                     }
                                 />
-                                <small>Латиница, цифры, дефис или подчёркивание.</small>
+                                <small>Латиница, цифры, дефис или подчёркивание</small>
                             </label>
                             <label>
                                 Модель
@@ -250,6 +380,12 @@ export function AdminPatterns() {
                                             garment_model_id: model?.id ?? 0,
                                             garment_size_id:
                                                 model?.sizes[0]?.id ?? 0,
+                                            width_cm:
+                                                model?.sizes[0]?.min_width_cm ?? '',
+                                            length_cm:
+                                                model?.sizes[0]?.min_length_cm ?? '',
+                                            sleeve_length_cm: null,
+                                            height_cm: null,
                                         });
                                     }}
                                 >
@@ -266,14 +402,27 @@ export function AdminPatterns() {
                                 <select
                                     required
                                     value={editor.garment_size_id || ''}
-                                    onChange={(event) =>
+                                    onChange={(event) => {
+                                        const size = models
+                                            .find(
+                                                (model) =>
+                                                    model.id ===
+                                                    editor.garment_model_id,
+                                            )
+                                            ?.sizes.find(
+                                                (item) =>
+                                                    item.id ===
+                                                    Number(event.target.value),
+                                            );
                                         setEditor({
                                             ...editor,
-                                            garment_size_id: Number(
-                                                event.target.value,
-                                            ),
-                                        })
-                                    }
+                                            garment_size_id: size?.id ?? 0,
+                                            width_cm: size?.min_width_cm ?? '',
+                                            length_cm: size?.min_length_cm ?? '',
+                                            sleeve_length_cm: null,
+                                            height_cm: null,
+                                        });
+                                    }}
                                 >
                                     <option value="">Выберите размер</option>
                                     {(
@@ -289,47 +438,77 @@ export function AdminPatterns() {
                                     ))}
                                 </select>
                             </label>
-                            <label className={styles.fullField}>
-                                Название
-                                <input
-                                    required
-                                    value={editor.name}
-                                    placeholder="M 46×70, рукав 22"
-                                    onChange={(event) =>
-                                        setEditor({
-                                            ...editor,
-                                            name: event.target.value,
-                                        })
-                                    }
-                                />
-                            </label>
-                            {(
-                                [
-                                    ['width_cm', 'Ширина, см'],
-                                    ['length_cm', 'Длина, см'],
-                                    ['sleeve_length_cm', 'Рукав, см'],
-                                    ['height_cm', 'Рост, см'],
-                                ] as const
-                            ).map(([field, label], index) => (
-                                <label key={field}>
-                                    {label}
-                                    <input
-                                        required={index < 2}
-                                        type="number"
-                                        min="0.01"
-                                        step="0.01"
-                                        value={editor[field] ?? ''}
-                                        onChange={(event) =>
-                                            setEditor({
-                                                ...editor,
-                                                [field]: event.target.value || null,
-                                            })
-                                        }
-                                    />
-                                </label>
-                            ))}
-                            <label className={styles.fullField}>
-                                Файл лекала
+                        </div>
+                        <div className={styles.patternMeasurements}>
+                            {(() => {
+                                const size = models
+                                    .find(
+                                        (model) =>
+                                            model.id === editor.garment_model_id,
+                                    )
+                                    ?.sizes.find(
+                                        (item) =>
+                                            item.id === editor.garment_size_id,
+                                    );
+                                const updateMeasurement = (
+                                    field: MeasurementKey,
+                                    value: string | null,
+                                ) => setEditor({ ...editor, [field]: value });
+                                return (
+                                    <>
+                                        <PatternMeasurement
+                                            label="Ширина"
+                                            field="width_cm"
+                                            value={editor.width_cm}
+                                            range={{
+                                                min: size?.min_width_cm ?? null,
+                                                max: size?.max_width_cm ?? null,
+                                            }}
+                                            required
+                                            onChange={updateMeasurement}
+                                        />
+                                        <PatternMeasurement
+                                            label="Длина"
+                                            field="length_cm"
+                                            value={editor.length_cm}
+                                            range={{
+                                                min: size?.min_length_cm ?? null,
+                                                max: size?.max_length_cm ?? null,
+                                            }}
+                                            required
+                                            onChange={updateMeasurement}
+                                        />
+                                        <PatternMeasurement
+                                            label="Рукав"
+                                            field="sleeve_length_cm"
+                                            value={editor.sleeve_length_cm}
+                                            range={{
+                                                min:
+                                                    size?.min_sleeve_length_cm ??
+                                                    null,
+                                                max:
+                                                    size?.max_sleeve_length_cm ??
+                                                    null,
+                                            }}
+                                            onChange={updateMeasurement}
+                                        />
+                                        <PatternMeasurement
+                                            label="Рост"
+                                            field="height_cm"
+                                            value={editor.height_cm}
+                                            range={{
+                                                min: size?.min_height_cm ?? null,
+                                                max: size?.max_height_cm ?? null,
+                                            }}
+                                            onChange={updateMeasurement}
+                                        />
+                                    </>
+                                );
+                            })()}
+                        </div>
+                        <div className={styles.patternFileField}>
+                            <span>Файл лекала</span>
+                            <label className={styles.patternFilePicker}>
                                 <input
                                     type="file"
                                     accept="application/pdf,image/jpeg,image/png,image/webp"
@@ -368,26 +547,13 @@ export function AdminPatterns() {
                                         }
                                     }}
                                 />
-                                <small>
-                                    <PiUploadSimple aria-hidden />{' '}
+                                <PiUploadSimple aria-hidden />
+                                <span>
                                     {editor.filename ??
                                         (editor.media_object_id
                                             ? `Медиа №${editor.media_object_id}`
                                             : 'PDF, JPEG, PNG или WebP')}
-                                </small>
-                            </label>
-                            <label className={styles.checkField}>
-                                <input
-                                    type="checkbox"
-                                    checked={editor.is_active}
-                                    onChange={(event) =>
-                                        setEditor({
-                                            ...editor,
-                                            is_active: event.target.checked,
-                                        })
-                                    }
-                                />
-                                Лекало активно
+                                </span>
                             </label>
                         </div>
                         {formError && <p className={styles.error}>{formError}</p>}
@@ -399,7 +565,7 @@ export function AdminPatterns() {
                                 className={styles.primaryButton}
                                 disabled={saving || uploading}
                             >
-                                {saving ? 'Сохраняем…' : 'Сохранить лекало'}
+                                {saving ? 'Сохраняем…' : 'Сохранить'}
                             </button>
                         </div>
                     </form>
