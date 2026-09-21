@@ -617,6 +617,10 @@
 }
 .assortmentDialog {
     width: min(100%, 1040px);
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    overflow: hidden;
+    padding: 0;
 }
 .dialogHeading,
 .dialogActions,
@@ -628,13 +632,19 @@
     gap: 16px;
 }
 .dialogHeading {
-    position: sticky;
-    top: 0;
+    position: relative;
     z-index: 2;
-    margin: -24px -24px 16px;
+    margin: 0;
     padding: 24px;
+    border-bottom: 1px solid #e3e0e2;
     border-radius: 24px 24px 0 0;
     background: #faf9f8;
+}
+.assortmentDialogBody {
+    min-height: 0;
+    padding: 16px 24px 24px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
 }
 .dialogActions {
     justify-content: flex-end;
@@ -974,6 +984,122 @@
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 12px;
     margin-top: 16px;
+}
+.sizeCardList {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(144px, 1fr));
+    gap: 8px;
+    margin: 8px 0 16px;
+}
+.screen .sizeCard,
+.screen .sizeCardAdd {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    min-width: 0;
+    min-height: 80px;
+    padding: 12px;
+    border-radius: 12px;
+    text-align: left;
+}
+.screen .sizeCard[data-selected='true'] {
+    border-color: #71528c;
+    background: #eee8f2;
+    box-shadow: inset 0 0 0 1px #71528c;
+}
+.sizeCard strong,
+.sizeCard small {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.sizeCard small {
+    display: -webkit-box;
+    margin-top: 2px;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+}
+.screen .sizeCardAdd {
+    flex-direction: row;
+    align-items: center;
+    border-style: dashed;
+    color: #5e4274;
+    background: #fff;
+}
+.sizeCardAdd svg {
+    width: 20px;
+    height: 20px;
+    flex: 0 0 20px;
+}
+.sizeDetailCard {
+    padding: 16px;
+    border: 1px solid #e3e0e2;
+    border-radius: 16px;
+    background: #faf9f8;
+}
+.sizeDetailHeading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+.sizeDetailHeading h4,
+.sizeDetailHeading small {
+    display: block;
+}
+.sizePrimaryFields,
+.sizeRangeGrid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 16px;
+}
+.sizeRangeCard {
+    min-width: 0;
+    padding: 12px;
+    border: 1px solid #e3e0e2;
+    border-radius: 12px;
+    background: #fff;
+}
+.sizeRangeHeading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.sizeRangeHeading > svg {
+    width: 20px;
+    height: 20px;
+    flex: 0 0 20px;
+    color: #5e4274;
+}
+.sizeRangeInputs {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 20px minmax(0, 1fr) auto;
+    align-items: end;
+    gap: 8px;
+    margin-top: 12px;
+}
+.sizeRangeInputs > label {
+    gap: 4px;
+}
+.sizeRangeInputs label > span {
+    color: #656166;
+    font-size: 12px;
+    line-height: 16px;
+}
+.sizeRangeInputs > svg {
+    width: 20px;
+    height: 20px;
+    margin-bottom: 14px;
+    color: #8a8589;
+}
+.sizeRangeUnit {
+    margin-bottom: 14px;
+    color: #656166;
+    font-size: 14px;
+    line-height: 20px;
 }
 .relatedSection {
     margin-top: 32px;
@@ -1548,6 +1674,31 @@
     max-width: 520px;
     color: #656166;
 }
+.modelSetupFlow {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.modelSetupFlow > span {
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+    padding: 4px 8px;
+    border-radius: 8px;
+    color: #3f3940;
+    background: #eee8f2;
+    font-size: 12px;
+    line-height: 16px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.modelSetupFlow > svg {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 16px;
+    color: #8a8589;
+}
 .formSection,
 .roleFieldset {
     min-width: 0;
@@ -1810,7 +1961,7 @@
         height: calc(100dvh - max(16px, env(safe-area-inset-top)));
         min-height: 0;
         max-height: calc(100dvh - max(16px, env(safe-area-inset-top)));
-        padding: 16px;
+        padding: 0;
         border: 0;
         border-radius: 0;
     }
@@ -1818,13 +1969,53 @@
         display: grid;
         grid-template-columns: minmax(0, 1fr) auto;
         align-items: center;
-        margin: -16px -16px 16px;
+        margin: 0;
         padding: max(16px, env(safe-area-inset-top)) 16px 16px;
+        border-bottom: 1px solid #e3e0e2;
         border-radius: 0;
         box-shadow: 0 8px 24px rgb(24 24 24 / 8%);
     }
+    .assortmentDialogBody {
+        padding: 16px 16px max(16px, env(safe-area-inset-bottom));
+    }
     .measureGrid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .modelSetupFlow {
+        flex-wrap: nowrap;
+        gap: 4px;
+        overflow-x: auto;
+        scrollbar-width: none;
+    }
+    .modelSetupFlow::-webkit-scrollbar,
+    .sizeCardList::-webkit-scrollbar {
+        display: none;
+    }
+    .modelSetupFlow > span {
+        flex: 0 0 auto;
+    }
+    .sizeCardList {
+        display: flex;
+        margin-right: -16px;
+        margin-left: -16px;
+        padding: 0 16px;
+        overflow-x: auto;
+        overscroll-behavior-x: contain;
+        scrollbar-width: none;
+        scroll-snap-type: x proximity;
+    }
+    .screen .sizeCard,
+    .screen .sizeCardAdd {
+        flex: 0 0 152px;
+        min-height: 72px;
+        scroll-snap-align: start;
+    }
+    .sizeDetailCard {
+        padding: 12px;
+    }
+    .sizePrimaryFields,
+    .sizeRangeGrid {
+        grid-template-columns: 1fr;
     }
     .fullField {
         grid-column: 1 / -1;

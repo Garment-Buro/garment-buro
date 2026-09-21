@@ -26,6 +26,10 @@ const patterns = readFileSync(
     new URL('./assortment/AdminPatterns.tsx', import.meta.url),
     'utf8',
 );
+const models = readFileSync(
+    new URL('./assortment/AdminModels.tsx', import.meta.url),
+    'utf8',
+);
 const dialog = readFileSync(
     new URL('./assortment/AssortmentDialog.tsx', import.meta.url),
     'utf8',
@@ -83,4 +87,32 @@ test('pattern editor uses visual measurements and compact header controls', () =
     assert.doesNotMatch(patterns, /Ширина и длина должны попадать/);
     assert.match(dialog, />\s*Закрыть\s*</);
     assert.doesNotMatch(dialog, /PiX/);
+});
+
+test('model editor explains the flow and keeps one compact size editor open', () => {
+    assert.match(models, /1\. Модель/);
+    assert.match(models, /2\. Размеры/);
+    assert.match(models, /3\. Диапазоны/);
+    assert.match(models, /className=\{styles\.sizeCardList\}/);
+    assert.match(models, /aria-selected=\{activeSizeIndex === index\}/);
+    assert.match(models, /className=\{styles\.sizeDetailCard\}/);
+    assert.match(models, /<SizeRangeEditor/);
+    assert.match(models, /step="2"/);
+    assert.doesNotMatch(models, /Сначала задайте общие параметры/);
+});
+
+test('assortment dialog scrolls below an opaque fixed header', () => {
+    assert.match(dialog, /className=\{styles\.assortmentDialogBody\}/);
+    assert.match(
+        css,
+        /\.assortmentDialog\s*\{[^}]*overflow:\s*hidden/s,
+    );
+    assert.match(
+        css,
+        /\.assortmentDialogBody\s*\{[^}]*overflow-y:\s*auto/s,
+    );
+    assert.doesNotMatch(
+        css,
+        /\.dialogHeading\s*\{[^}]*position:\s*sticky/s,
+    );
 });

@@ -11,7 +11,7 @@ export function AssortmentDialog({
     children,
 }: {
     title: string;
-    description?: string;
+    description?: ReactNode;
     headerActions?: ReactNode;
     onClose: () => void;
     children: ReactNode;
@@ -24,7 +24,7 @@ export function AssortmentDialog({
                 aria-modal="true"
                 aria-labelledby="assortment-dialog-title"
             >
-                <div className={styles.dialogHeading}>
+                <header className={styles.dialogHeading}>
                     <div>
                         <h2 id="assortment-dialog-title">{title}</h2>
                         {description && (
@@ -39,8 +39,8 @@ export function AssortmentDialog({
                             Закрыть
                         </button>
                     </div>
-                </div>
-                {children}
+                </header>
+                <div className={styles.assortmentDialogBody}>{children}</div>
             </section>
         </div>
     );

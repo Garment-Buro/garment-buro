@@ -1,7 +1,13 @@
 'use client';
 
 import { useMemo, useState, type FormEvent } from 'react';
-import { PiPencilSimple, PiPlus, PiTrash } from 'react-icons/pi';
+import {
+    PiArrowRight,
+    PiPencilSimple,
+    PiPlus,
+    PiRuler,
+    PiTrash,
+} from 'react-icons/pi';
 import { useAssortmentResource } from '@/hooks/production/useAssortmentResource';
 import {
     saveAssortment,
@@ -51,11 +57,85 @@ const emptyModel = (): ModelForm => ({
 const optionalNumber = (value: string | null | undefined) =>
     value == null || value === '' ? null : Number(value);
 
+type SizeRangeField =
+    | 'min_width_cm'
+    | 'max_width_cm'
+    | 'min_length_cm'
+    | 'max_length_cm'
+    | 'min_height_cm'
+    | 'max_height_cm'
+    | 'min_sleeve_length_cm'
+    | 'max_sleeve_length_cm';
+
+function SizeRangeEditor({
+    label,
+    size,
+    minimum,
+    maximum,
+    onChange,
+}: {
+    label: string;
+    size: GarmentSize;
+    minimum: SizeRangeField;
+    maximum: SizeRangeField;
+    onChange: (field: SizeRangeField, value: string) => void;
+}) {
+    return (
+        <section className={styles.sizeRangeCard}>
+            <div className={styles.sizeRangeHeading}>
+                <PiRuler aria-hidden />
+                <strong>{label}</strong>
+            </div>
+            <div className={styles.sizeRangeInputs}>
+                <label>
+                    <span>От</span>
+                    <input
+                        type="number"
+                        min="0.01"
+                        step="2"
+                        inputMode="decimal"
+                        value={size[minimum] ?? ''}
+                        placeholder="—"
+                        onChange={(event) => onChange(minimum, event.target.value)}
+                    />
+                </label>
+                <PiArrowRight aria-hidden />
+                <label>
+                    <span>До</span>
+                    <input
+                        type="number"
+                        min="0.01"
+                        step="2"
+                        inputMode="decimal"
+                        value={size[maximum] ?? ''}
+                        placeholder="—"
+                        onChange={(event) => onChange(maximum, event.target.value)}
+                    />
+                </label>
+                <span className={styles.sizeRangeUnit}>см</span>
+            </div>
+        </section>
+    );
+}
+
+const sizeSummary = (size: GarmentSize) => {
+    const width =
+        size.min_width_cm && size.max_width_cm
+            ? `${Number(size.min_width_cm)}–${Number(size.max_width_cm)} см`
+            : 'Ширина не задана';
+    const length =
+        size.min_length_cm && size.max_length_cm
+            ? `${Number(size.min_length_cm)}–${Number(size.max_length_cm)} см`
+            : 'Длина не задана';
+    return `${width} · ${length}`;
+};
+
 export function AdminModels() {
     const { data, loading, error, reload } =
         useAssortmentResource<ReferencePage<GarmentModel>>('models');
     const [search, setSearch] = useState('');
     const [editor, setEditor] = useState<ModelForm | null>(null);
+    const [activeSizeIndex, setActiveSizeIndex] = useState(0);
     const [saving, setSaving] = useState(false);
     const [formError, setFormError] = useState('');
     const [uploading, setUploading] = useState(false);
@@ -66,6 +146,19 @@ export function AdminModels() {
             `${model.name} ${model.code}`.toLocaleLowerCase('ru').includes(query),
         );
     }, [data, search]);
+    const activeSize = editor?.sizes[activeSizeIndex] ?? null;
+
+    const openEditor = (model?: GarmentModel) => {
+        setActiveSizeIndex(0);
+        setEditor(
+            model
+                ? {
+                      ...model,
+                      sizes: model.sizes.map((size) => ({ ...size })),
+                  }
+                : emptyModel(),
+        );
+    };
 
     const updateSize = (
         index: number,
@@ -149,7 +242,7 @@ export function AdminModels() {
                         Размеры, диапазоны мерок, вес и таблица размеров для сайта.
                     </p>
                 </div>
-                <button onClick={() => setEditor(emptyModel())}>
+                <button onClick={() => openEditor()}>
                     <PiPlus aria-hidden /> Добавить модель
                 </button>
             </div>
@@ -177,14 +270,7 @@ export function AdminModels() {
                                 </div>
                                 <button
                                     className={styles.iconButton}
-                                    onClick={() =>
-                                        setEditor({
-                                            ...model,
-                                            sizes: model.sizes.map((size) => ({
-                                                ...size,
-                                            })),
-                                        })
-                                    }
+                                    onClick={() => openEditor(model)}
                                     aria-label={`Изменить модель ${model.name}`}
                                     title="Изменить"
                                 >
@@ -221,7 +307,15 @@ export function AdminModels() {
             {editor && (
                 <AssortmentDialog
                     title={editor.id ? 'Изменить модель' : 'Новая модель'}
-                    description="Сначала задайте общие параметры, затем добавьте размеры и допустимые диапазоны."
+                    description={
+                        <span className={styles.modelSetupFlow}>
+                            <span>1. Модель</span>
+                            <PiArrowRight aria-hidden />
+                            <span>2. Размеры</span>
+                            <PiArrowRight aria-hidden />
+                            <span>3. Диапазоны</span>
+                        </span>
+                    }
                     onClose={() => setEditor(null)}
                 >
                     <form onSubmit={submit}>
@@ -353,114 +447,159 @@ export function AdminModels() {
                         </fieldset>
                         <fieldset className={styles.formSection}>
                             <legend>Размерная сетка</legend>
-                            <div className={styles.sizeList}>
-                                {editor.sizes.map((size, index) => (
-                                    <article className={styles.sizeEditor} key={index}>
-                                        <div className={styles.assortmentCardTop}>
-                                            <h4>Размер {index + 1}</h4>
-                                            <button
-                                                type="button"
-                                                className={styles.iconButton}
-                                                disabled={editor.sizes.length === 1}
-                                                onClick={() =>
-                                                    setEditor({
-                                                        ...editor,
-                                                        sizes: editor.sizes.filter(
-                                                            (_, itemIndex) =>
-                                                                itemIndex !== index,
-                                                        ),
-                                                    })
-                                                }
-                                                aria-label={`Удалить размер ${index + 1}`}
-                                            >
-                                                <PiTrash aria-hidden />
-                                            </button>
-                                        </div>
-                                        <div className={styles.measureGrid}>
-                                            <label>
-                                                Код размера
-                                                <input
-                                                    required
-                                                    value={size.code}
-                                                    placeholder="M"
-                                                    onChange={(event) =>
-                                                        updateSize(
-                                                            index,
-                                                            'code',
-                                                            event.target.value.toUpperCase(),
-                                                        )
-                                                    }
-                                                />
-                                            </label>
-                                            <label>
-                                                Базовая цена
-                                                <input
-                                                    type="number"
-                                                    min="0"
-                                                    step="0.01"
-                                                    value={size.base_price}
-                                                    onChange={(event) =>
-                                                        updateSize(
-                                                            index,
-                                                            'base_price',
-                                                            event.target.value,
-                                                        )
-                                                    }
-                                                />
-                                            </label>
-                                            {(
-                                                [
-                                                    ['min_width_cm', 'Ширина от'],
-                                                    ['max_width_cm', 'Ширина до'],
-                                                    ['min_length_cm', 'Длина от'],
-                                                    ['max_length_cm', 'Длина до'],
-                                                    ['min_height_cm', 'Рост от'],
-                                                    ['max_height_cm', 'Рост до'],
-                                                    [
-                                                        'min_sleeve_length_cm',
-                                                        'Рукав от',
-                                                    ],
-                                                    [
-                                                        'max_sleeve_length_cm',
-                                                        'Рукав до',
-                                                    ],
-                                                ] as const
-                                            ).map(([field, label]) => (
-                                                <label key={field}>
-                                                    {label}, см
-                                                    <input
-                                                        type="number"
-                                                        min="0.01"
-                                                        step="0.01"
-                                                        value={size[field] ?? ''}
-                                                        onChange={(event) =>
-                                                            updateSize(
-                                                                index,
-                                                                field,
-                                                                event.target.value,
-                                                            )
-                                                        }
-                                                    />
-                                                </label>
-                                            ))}
-                                        </div>
-                                    </article>
-                                ))}
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() =>
-                                    setEditor({
-                                        ...editor,
-                                        sizes: [
-                                            ...editor.sizes,
-                                            emptySize(editor.sizes.length),
-                                        ],
-                                    })
-                                }
+                            <div
+                                className={styles.sizeCardList}
+                                role="tablist"
+                                aria-label="Размеры модели"
                             >
-                                <PiPlus aria-hidden /> Добавить размер
-                            </button>
+                                {editor.sizes.map((size, index) => (
+                                    <button
+                                        type="button"
+                                        role="tab"
+                                        aria-selected={activeSizeIndex === index}
+                                        className={styles.sizeCard}
+                                        data-selected={activeSizeIndex === index}
+                                        key={size.id ?? `new-${index}`}
+                                        onClick={() => setActiveSizeIndex(index)}
+                                    >
+                                        <strong>
+                                            {size.code || `Размер ${index + 1}`}
+                                        </strong>
+                                        <small>{sizeSummary(size)}</small>
+                                    </button>
+                                ))}
+                                <button
+                                    type="button"
+                                    className={styles.sizeCardAdd}
+                                    onClick={() => {
+                                        const nextIndex = editor.sizes.length;
+                                        setEditor({
+                                            ...editor,
+                                            sizes: [
+                                                ...editor.sizes,
+                                                emptySize(nextIndex),
+                                            ],
+                                        });
+                                        setActiveSizeIndex(nextIndex);
+                                    }}
+                                >
+                                    <PiPlus aria-hidden />
+                                    <span>Добавить размер</span>
+                                </button>
+                            </div>
+                            {activeSize && (
+                                <article className={styles.sizeDetailCard}>
+                                    <div className={styles.sizeDetailHeading}>
+                                        <div>
+                                            <h4>
+                                                {activeSize.code ||
+                                                    `Размер ${activeSizeIndex + 1}`}
+                                            </h4>
+                                            <small>
+                                                Укажите границы, доступные покупателю
+                                            </small>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            className={styles.iconButton}
+                                            disabled={editor.sizes.length === 1}
+                                            onClick={() => {
+                                                const sizes = editor.sizes.filter(
+                                                    (_, index) =>
+                                                        index !== activeSizeIndex,
+                                                );
+                                                setEditor({ ...editor, sizes });
+                                                setActiveSizeIndex((current) =>
+                                                    Math.max(
+                                                        0,
+                                                        Math.min(
+                                                            current,
+                                                            sizes.length - 1,
+                                                        ),
+                                                    ),
+                                                );
+                                            }}
+                                            aria-label={`Удалить размер ${activeSize.code || activeSizeIndex + 1}`}
+                                        >
+                                            <PiTrash aria-hidden />
+                                        </button>
+                                    </div>
+                                    <div className={styles.sizePrimaryFields}>
+                                        <label>
+                                            Код размера
+                                            <input
+                                                required
+                                                value={activeSize.code}
+                                                placeholder="M"
+                                                onChange={(event) =>
+                                                    updateSize(
+                                                        activeSizeIndex,
+                                                        'code',
+                                                        event.target.value.toUpperCase(),
+                                                    )
+                                                }
+                                            />
+                                        </label>
+                                        <label>
+                                            Базовая цена
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                step="0.01"
+                                                value={activeSize.base_price}
+                                                onChange={(event) =>
+                                                    updateSize(
+                                                        activeSizeIndex,
+                                                        'base_price',
+                                                        event.target.value,
+                                                    )
+                                                }
+                                            />
+                                        </label>
+                                    </div>
+                                    <div className={styles.sizeRangeGrid}>
+                                        {(
+                                            [
+                                                [
+                                                    'Ширина',
+                                                    'min_width_cm',
+                                                    'max_width_cm',
+                                                ],
+                                                [
+                                                    'Длина',
+                                                    'min_length_cm',
+                                                    'max_length_cm',
+                                                ],
+                                                [
+                                                    'Рост',
+                                                    'min_height_cm',
+                                                    'max_height_cm',
+                                                ],
+                                                [
+                                                    'Рукав',
+                                                    'min_sleeve_length_cm',
+                                                    'max_sleeve_length_cm',
+                                                ],
+                                            ] as const
+                                        ).map(([label, minimum, maximum]) => (
+                                            <SizeRangeEditor
+                                                key={minimum}
+                                                label={label}
+                                                size={activeSize}
+                                                minimum={minimum}
+                                                maximum={maximum}
+                                                onChange={(field, value) =>
+                                                    updateSize(
+                                                        activeSizeIndex,
+                                                        field,
+                                                        value,
+                                                    )
+                                                }
+                                            />
+                                        ))}
+                                    </div>
+                                </article>
+                            )}
                         </fieldset>
                         {formError && (
                             <p className={styles.error} role="alert">
