@@ -16,6 +16,16 @@ Station = Literal[
     "packing",
     "shipping",
 ]
+EMPLOYEE_STATIONS = {
+    "tech",
+    "kit",
+    "cut",
+    "dtf",
+    "workshop",
+    "press",
+    "packing",
+    "shipping",
+}
 
 
 class EmployeeWrite(BaseModel):
@@ -28,13 +38,15 @@ class EmployeeWrite(BaseModel):
     status: Literal["active", "blocked"] = "active"
     availability: Literal["available", "sick", "vacation", "absent"] = "available"
     is_production_admin: bool = False
-    stations: list[Station] = Field(min_length=1, max_length=11)
+    stations: list[Station] = Field(min_length=1, max_length=8)
     primary_station: Station
 
     @model_validator(mode="after")
     def validate_stations(self):
         if len(set(self.stations)) != len(self.stations):
             raise ValueError("Участки сотрудника не должны повторяться")
+        if any(station not in EMPLOYEE_STATIONS for station in self.stations):
+            raise ValueError("Эта роль больше не назначается сотрудникам")
         if self.primary_station not in self.stations:
             raise ValueError("Основной участок должен входить в роли сотрудника")
         return self

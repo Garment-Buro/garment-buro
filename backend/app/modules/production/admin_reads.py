@@ -2,7 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import String, case, cast, func, or_, select, union
+from sqlalchemy import String, and_, case, cast, func, or_, select, union
 from sqlalchemy.orm import selectinload
 
 from app.modules.bank_payouts.models import PartnerBankPayment
@@ -206,16 +206,23 @@ class ProductionAdminReads:
                 func.coalesce(ProductionEmployee.availability, "available") == availability
             )
         if station:
-            role_name = (
-                "production_supervisor"
-                if station == "production_admin"
-                else f"production_{station}"
+            role_names = (
+                ("production_supervisor",)
+                if station == "manager"
+                else (
+                    "production_workshop",
+                    "production_application",
+                    "production_sewing",
+                    "production_qc",
+                )
+                if station == "workshop"
+                else (f"production_{station}",)
             )
             statement = statement.where(
                 User.id.in_(
                     select(UserRole.user_id)
                     .join(Role, Role.id == UserRole.role_id)
-                    .where(Role.name == role_name)
+                    .where(Role.name.in_(role_names))
                 )
             )
         rows = (
@@ -380,6 +387,131 @@ class ProductionAdminReads:
                 "paid_orders_total": money(r["paid_orders_total"]),
             },
         )
+
+    @staticmethod
+    def client_identity(key: str):
+        kind, separator, value = key.partition(":")
+        if not separator or not value:
+            raise ValueError("Некорректный идентификатор клиента")
+        if kind in {"user", "order"}:
+            if not value.isdigit() or int(value) < 1:
+                raise ValueError("Некорректный идентификатор клиента")
+            value = int(value)
+        if kind == "user":
+            return kind, value, Order.user_id == value
+        if kind == "email":
+            return kind, value, and_(Order.user_id.is_(None), Order.email_normalized == value)
+        if kind == "phone":
+            return (
+                kind,
+                value,
+                and_(
+                    Order.user_id.is_(None),
+                    func.nullif(Order.email_normalized, "").is_(None),
+                    Order.phone == value,
+                ),
+            )
+        if kind == "order":
+            return kind, value, Order.id == value
+        raise ValueError("Некорректный идентификатор клиента")
+
+    async def client_detail(self, session, *, key: str):
+        kind, value, order_filter = self.client_identity(key)
+        rows = (
+            await session.execute(
+                select(Order, OrderWorkflow.state)
+                .outerjoin(OrderWorkflow, OrderWorkflow.order_id == Order.id)
+                .where(Order.is_demo.is_(False), order_filter)
+                .order_by(Order.created_at.desc(), Order.id.desc())
+                .limit(100)
+            )
+        ).all()
+        if not rows:
+            return None
+        orders = [row[0] for row in rows]
+        latest = orders[0]
+        account = await session.get(User, value) if kind == "user" else None
+        direct_ticket_filter = (
+            AdminInboxItem.reporter_user_id == value
+            if kind == "user"
+            else and_(
+                AdminInboxItem.reporter_user_id.is_(None),
+                func.lower(AdminInboxItem.reporter_email) == str(value).lower(),
+            )
+            if kind == "email"
+            else and_(
+                AdminInboxItem.reporter_user_id.is_(None),
+                AdminInboxItem.reporter_email.is_(None),
+                AdminInboxItem.reporter_phone == value,
+            )
+            if kind == "phone"
+            else AdminInboxItem.order_id == value
+        )
+        order_ids = [order.id for order in orders]
+        tickets = list(
+            await session.scalars(
+                select(AdminInboxItem)
+                .where(
+                    AdminInboxItem.kind == "support",
+                    or_(direct_ticket_filter, AdminInboxItem.order_id.in_(order_ids)),
+                )
+                .order_by(AdminInboxItem.updated_at.desc(), AdminInboxItem.id.desc())
+                .limit(100)
+            )
+        )
+        return {
+            "key": key,
+            "name": " ".join(value for value in (latest.first_name, latest.last_name) if value),
+            "email": latest.email,
+            "phone": latest.phone,
+            "account": None
+            if account is None
+            else {
+                "id": account.id,
+                "email": account.email,
+                "phone": account.phone,
+                "username": account.username,
+                "registered_at": account.created_at,
+                "email_verified": account.email_verified_at is not None,
+                "gender": account.gender,
+                "birth_date": account.birth_date,
+                "height_cm": money(account.height_cm) if account.height_cm is not None else None,
+                "weight_kg": money(account.weight_kg) if account.weight_kg is not None else None,
+            },
+            "recipient": {
+                "patronymic": latest.patronymic,
+                "city": latest.delivery_city,
+                "address": latest.delivery_address,
+                "delivery_method": latest.delivery_method,
+                "pickup_point": latest.cdek_point_code,
+            },
+            "orders": [
+                {
+                    "id": order.id,
+                    "created_at": order.created_at,
+                    "total": money(order.total_price),
+                    "status": order.status,
+                    "payment_status": order.payment_status,
+                    "workflow_state": workflow_state,
+                    "delivery_city": order.delivery_city,
+                    "delivery_method": order.delivery_method,
+                    "payment_method": order.payment_method,
+                }
+                for order, workflow_state in rows
+            ],
+            "tickets": [
+                {
+                    "id": ticket.id,
+                    "subject": ticket.subject,
+                    "status": ticket.status,
+                    "priority": ticket.priority,
+                    "order_id": ticket.order_id,
+                    "created_at": ticket.created_at,
+                    "updated_at": ticket.updated_at,
+                }
+                for ticket in tickets
+            ],
+        }
 
     async def payouts(self, session, *, q, status, limit, offset, sort, direction):
         statement = (

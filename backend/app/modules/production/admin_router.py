@@ -33,7 +33,11 @@ from app.modules.production.inbox_service import (
     AdminInboxNotFoundError,
     AdminInboxService,
 )
-from app.modules.production.security import can_administer, can_system_administer
+from app.modules.production.security import (
+    can_administer,
+    can_system_administer,
+    is_production_manager,
+)
 from app.modules.production.ticket_routing import route_ticket
 from app.modules.production.ticket_schemas import AdminTicketCreate, TicketReply, TicketRoute
 from app.modules.production.ticket_service import TicketService
@@ -49,9 +53,9 @@ async def require_admin(
     user: Annotated[User, Depends(get_production_user)],
 ):
     response.headers["Cache-Control"] = "no-store"
-    if getattr(request.state, "production_station", None) != "admin" or not await can_administer(
-        session, user.id
-    ):
+    station = getattr(request.state, "production_station", None)
+    manager = await is_production_manager(session, user.id)
+    if not manager and (station != "admin" or not await can_administer(session, user.id)):
         raise HTTPException(
             403, "Нужен личный код администратора", headers={"Cache-Control": "no-store"}
         )
@@ -68,7 +72,9 @@ async def require_system_admin(
     user: Annotated[User, Depends(get_production_user)],
 ):
     await require_admin(request, response, session, user)
-    if not await can_system_administer(session, user.id):
+    if getattr(
+        request.state, "production_station", None
+    ) != "admin" or not await can_system_administer(session, user.id):
         raise HTTPException(
             403,
             "Раздел доступен только системному администратору",
@@ -165,7 +171,7 @@ class PayoutListQuery(ListQuery):
 class EmployeeListQuery(ListQuery):
     status: Literal["active", "blocked", ""] = ""
     availability: Literal["available", "sick", "vacation", "absent", ""] = ""
-    station: Station | Literal["production_admin", ""] = ""
+    station: Station | Literal["manager", ""] = ""
 
 
 class InboxListQuery(BaseModel):
@@ -216,6 +222,21 @@ async def employees(
     return await ProductionAdminReads().employees(
         session, **query.model_dump(), pepper=employee_pepper(request)
     )
+
+
+@router.get("/clients/detail")
+async def client_detail(
+    _admin: SystemAdmin,
+    session: Session,
+    key: str = Query(min_length=3, max_length=512),
+):
+    try:
+        result = await ProductionAdminReads().client_detail(session, key=key)
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from error
+    if result is None:
+        raise HTTPException(404, "Клиент не найден")
+    return result
 
 
 def employee_pepper(request: Request) -> str:

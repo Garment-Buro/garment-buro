@@ -64,6 +64,11 @@ async def admin_app(tmp_path):
             )
             session.add(profile)
             await session.flush()
+            order = await session.get(Order, 1)
+            order.user_id = 3
+            order.email = "customer@example.test"
+            order.email_normalized = "customer@example.test"
+            order.first_name = "Покупатель"
             session.add(PartnerPayoutRequest(partner_id=profile.id, amount=Decimal("1250.50")))
             session.add_all(
                 [
@@ -152,6 +157,16 @@ def test_administrator_reads_all_sections_without_exposing_secrets(tmp_path):
                 ]
                 users = (await client.get("/api/production/admin/employees?limit=1")).json()
                 assert len(users["items"]) == 1 and users["next_offset"] is None
+                clients = (await client.get("/api/production/admin/clients")).json()
+                detail = await client.get(
+                    "/api/production/admin/clients/detail",
+                    params={"key": clients["items"][0]["key"]},
+                )
+                assert detail.status_code == 200, detail.text
+                assert detail.json()["account"]["id"] == 3
+                assert [order["id"] for order in detail.json()["orders"]] == [1]
+                assert [ticket["id"] for ticket in detail.json()["tickets"]] == [1]
+                assert detail.json()["recipient"]["city"] == "Test city"
                 assert (
                     await client.get("/api/production/admin/employees?q=customer%40example.test")
                 ).json()["items"] == []
@@ -455,7 +470,7 @@ def test_admin_manages_employee_roles_status_and_one_time_codes(tmp_path):
                     "email": None,
                     "phone": None,
                     "status": "active",
-                    "stations": ["cut", "sewing"],
+                    "stations": ["cut", "workshop"],
                     "primary_station": "cut",
                 }
                 created = await client.post("/api/production/admin/employees", json=payload)
@@ -464,7 +479,7 @@ def test_admin_manages_employee_roles_status_and_one_time_codes(tmp_path):
                 employee_id = result["employee"]["id"]
                 first_code = result["code"]
                 assert len(first_code) == 6 and first_code.startswith("2")
-                assert result["employee"]["stations"] == ["cut", "sewing"]
+                assert result["employee"]["stations"] == ["cut", "workshop"]
                 assert result["employee"]["last_name"] == ""
                 assert result["employee"]["phone"] is None
 
@@ -483,19 +498,19 @@ def test_admin_manages_employee_roles_status_and_one_time_codes(tmp_path):
                         await worker.post("/api/production/auth/login", json={"code": first_code})
                     ).status_code == 200
                     me = (await worker.get("/api/production/me")).json()
-                    assert me["stations"] == ["cut", "sewing"]
+                    assert me["stations"] == ["cut", "workshop"]
 
                 changed = await client.put(
                     f"/api/production/admin/employees/{employee_id}",
                     json=payload
                     | {
-                        "stations": ["sewing", "packing"],
-                        "primary_station": "sewing",
+                        "stations": ["workshop", "packing"],
+                        "primary_station": "workshop",
                     },
                 )
                 assert changed.status_code == 200, changed.text
                 second_code = changed.json()["code"]
-                assert len(second_code) == 6 and second_code.startswith("5")
+                assert len(second_code) == 6 and second_code.startswith("4")
                 assert second_code != first_code
 
                 async with AsyncClient(
@@ -508,7 +523,7 @@ def test_admin_manages_employee_roles_status_and_one_time_codes(tmp_path):
                         await worker.post("/api/production/auth/login", json={"code": second_code})
                     ).status_code == 200
                     assert (await worker.get("/api/production/me")).json()["stations"] == [
-                        "sewing",
+                        "workshop",
                         "packing",
                     ]
 
@@ -537,10 +552,15 @@ def test_admin_manages_employee_roles_status_and_one_time_codes(tmp_path):
                     json=payload | {"primary_station": "admin", "stations": ["admin"]},
                 )
                 assert invalid.status_code == 422
+                removed_role = await client.post(
+                    "/api/production/admin/employees",
+                    json=payload | {"primary_station": "sewing", "stations": ["sewing"]},
+                )
+                assert removed_role.status_code == 422
                 assert (
                     await client.post(
                         "/api/production/admin/employees",
-                        json=payload | {"primary_station": "cut", "stations": ["sewing"]},
+                        json=payload | {"primary_station": "cut", "stations": ["workshop"]},
                     )
                 ).status_code == 422
                 assert (
@@ -629,15 +649,15 @@ def test_admin_lists_and_finds_isolated_demo_access_by_code(tmp_path):
                 adopted = await client.put(
                     f"/api/production/admin/employees/{demo.id}",
                     json={
-                        "first_name": "ОТК",
+                        "first_name": "Контроль качества",
                         "last_name": "Сотрудник",
                         "email": None,
                         "phone": None,
                         "status": "active",
                         "availability": "available",
                         "is_production_admin": False,
-                        "stations": ["qc"],
-                        "primary_station": "qc",
+                        "stations": ["workshop"],
+                        "primary_station": "workshop",
                     },
                 )
                 assert adopted.status_code == 200, adopted.text
@@ -661,7 +681,7 @@ def test_admin_lists_and_finds_isolated_demo_access_by_code(tmp_path):
     asyncio.run(scenario())
 
 
-def test_system_admin_can_assign_production_administrator_access(tmp_path):
+def test_system_admin_can_assign_manager_access_with_regular_employee_code(tmp_path):
     async def scenario():
         async with admin_app(tmp_path) as (app, _, admin_code, _):
             payload = {
@@ -681,14 +701,12 @@ def test_system_admin_can_assign_production_administrator_access(tmp_path):
                 assert created.status_code == 200, created.text
                 employee_id = created.json()["employee"]["id"]
                 code = created.json()["code"]
-                assert len(code) == 8 and code.startswith("99")
+                assert len(code) == 6 and code.startswith("0")
                 assert created.json()["employee"]["is_production_admin"] is True
 
                 listed = await system.get(f"/api/production/admin/employees?q={employee_id}")
                 assert listed.json()["items"][0]["is_production_admin"] is True
-                filtered = await system.get(
-                    "/api/production/admin/employees?station=production_admin"
-                )
+                filtered = await system.get("/api/production/admin/employees?station=manager")
                 assert [item["id"] for item in filtered.json()["items"]] == [employee_id]
 
             async with AsyncClient(

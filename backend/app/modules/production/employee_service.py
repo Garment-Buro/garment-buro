@@ -62,7 +62,7 @@ class ProductionEmployeeService:
             code = await issue_code(
                 session,
                 user_id=user.id,
-                station="admin" if payload.is_production_admin else payload.primary_station,
+                station=payload.primary_station,
                 pepper=pepper,
                 actor_user_id=actor_id,
                 audit_source="admin_ui",
@@ -117,7 +117,7 @@ class ProductionEmployeeService:
             )
         )
         code = None
-        code_station = "admin" if payload.is_production_admin else payload.primary_station
+        code_station = payload.primary_station
         if payload.status == "blocked" or payload.availability != "available":
             await revoke_code(
                 session,
@@ -171,15 +171,10 @@ class ProductionEmployeeService:
             raise EmployeeNotFoundError()
         if user.status != "active" or employee.availability != "available":
             raise EmployeeConflictError("Сначала активируйте сотрудника")
-        is_production_admin = await session.scalar(
-            select(UserRole.user_id)
-            .join(Role, Role.id == UserRole.role_id)
-            .where(UserRole.user_id == user.id, Role.name == "production_supervisor")
-        )
         code = await issue_code(
             session,
             user_id=user.id,
-            station="admin" if is_production_admin else employee.primary_station,
+            station=employee.primary_station,
             pepper=pepper,
             actor_user_id=actor_id,
             audit_source="admin_ui",

@@ -33,15 +33,17 @@ test('production admin separates employees from customer profiles', () => {
 });
 
 test('employee roles and one-time access code have dedicated controls', () => {
-    assert.match(types, /export const productionStations = \[/);
+    assert.match(types, /export const employeeStations = \[/);
     assert.match(records, /AdminEmployeeEditor/);
     assert.match(records, /AdminEmployeeAccessCode/);
     assert.match(table, /onEmployee\(row\)/);
     assert.match(table, /Код не выдан/);
     assert.match(table, /'\*\*\*'/);
     assert.match(table, /onCode\(row\)/);
-    assert.match(editor, /Производственный администратор/);
-    assert.match(editor, /префиксом 99/);
+    assert.match(editor, /Менеджер/);
+    assert.match(editor, /обычный личный код своего участка/);
+    assert.match(editor, /employeeStations\.map/);
+    assert.doesNotMatch(editor, /Нанесение|Пошив|ОТК/);
     assert.match(table, /row\.is_production_admin/);
 });
 

@@ -78,7 +78,7 @@ export function ProductionTechCard({ unit }: { unit: Unit }) {
                                     </span>
                                 </div>
                             ))}
-                            <h2>Проверки ОТК</h2>
+                            <h2>Проверки качества</h2>
                             <ul>
                                 {unit.specification.quality_checks.map(
                                     (check) => (

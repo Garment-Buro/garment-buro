@@ -194,7 +194,7 @@ def test_full_flow_persists_dtf_pocket_quality_and_order_shipment(tmp_path):
             await execute(db, service, "send_bag")
             for stage in ["application", "sewing", "press"]:
                 await execute(db, service, "complete_stage", unit_id=1, stage=stage)
-            with pytest.raises(ProductionConflict, match="ОТК"):
+            with pytest.raises(ProductionConflict, match="проверки качества"):
                 await execute(
                     db, service, "complete_stage", unit_id=1, stage="qc", quality_confirmed=[0]
                 )

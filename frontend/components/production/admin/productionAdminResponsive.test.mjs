@@ -114,7 +114,17 @@ test('orders and payouts expose sorting, client navigation and readable details'
     assert.doesNotMatch(orderDetails, /JSON\.stringify/);
     assert.match(orderItem, /Настройки конструктора/);
     assert.match(orderItem, /Комментарий клиента/);
-    assert.match(clientDetails, /Последний заказ/);
+    assert.match(clientDetails, /История заказов/);
+    assert.match(clientDetails, /История обращений/);
+    assert.match(clientDetails, /Данные клиента/);
+    assert.match(clientDetails, /clients\/detail\?key=/);
+    assert.match(clientDetails, /onTicket\(ticket\.id\)/);
+    assert.match(css, /\.clientProfileGrid/);
+    assert.match(
+        css,
+        /@media \(max-width: 720px\)[\s\S]*\.clientProfileGrid\s*\{[^}]*grid-template-columns:\s*1fr/s,
+    );
+    assert.doesNotMatch(records, /Покупатели с заказами/);
     assert.match(payoutReview, /canReview/);
     assert.match(payoutReview, /PiX/);
 });

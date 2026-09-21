@@ -18,7 +18,7 @@ STATIONS = {
     "application": "Нанесение",
     "sewing": "Пошив",
     "press": "ВТО",
-    "qc": "ОТК",
+    "qc": "Проверка качества",
     "packing": "Упаковка",
     "shipping": "Отгрузка",
 }

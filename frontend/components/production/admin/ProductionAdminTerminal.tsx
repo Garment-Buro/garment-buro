@@ -100,7 +100,7 @@ export function ProductionAdminTerminal() {
                         </p>
                         <h1>
                             {user?.admin_scope === 'production'
-                                ? 'Производственный администратор'
+                                ? 'Менеджер'
                                 : 'Системный администратор'}
                         </h1>
                         <p>{user?.name}</p>

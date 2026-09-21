@@ -12,7 +12,7 @@ import {
     type AdminSection,
     type Page,
     type AdminPayout,
-    productionStations,
+    employeeStations,
     sectionLabels,
     stationLabels,
     statusLabels,
@@ -80,8 +80,8 @@ const availabilityOptions = [
 ] as const;
 const employeeRoleOptions = [
     ['', 'Любая роль'],
-    ['production_admin', 'Производственный администратор'],
-    ...productionStations.map(
+    ['manager', 'Менеджер'],
+    ...employeeStations.map(
         (station) => [station, stationLabels[station]] as const,
     ),
 ] as const;
@@ -282,13 +282,6 @@ export function AdminRecords({
                     Найти
                 </button>
             </form>
-            {section === 'clients' && (
-                <p className={styles.muted}>
-                    Покупатели с заказами. Контакты взяты из последнего заказа.
-                    Гостевые заказы сгруппированы по почте или телефону; это не
-                    подтверждённое совпадение личности.
-                </p>
-            )}
             {section === 'payouts' && (
                 <p className={styles.muted}>
                     Одобрение заявки не отправляет деньги. Создание платёжки и
@@ -429,6 +422,10 @@ export function AdminRecords({
                         setClient(null);
                         setOrderId(id);
                     }}
+                    onTicket={(id) => {
+                        setClient(null);
+                        setInboxId(id);
+                    }}
                 />
             )}
             {payout && (
@@ -461,9 +458,9 @@ export function AdminRecords({
                     onClose={() => setAccessCode(null)}
                 />
             )}
-            {inboxId !== null && isInbox && (
+            {inboxId !== null && (isInbox || section === 'clients') && (
                 <AdminInboxDetails
-                    section={section}
+                    section={section === 'clients' ? 'support' : section}
                     id={inboxId}
                     onClose={() => setInboxId(null)}
                     onSaved={() => {

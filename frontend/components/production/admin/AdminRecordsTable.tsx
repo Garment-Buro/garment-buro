@@ -7,6 +7,7 @@ import {
     type AdminPayout,
     type AdminInboxItem,
     date,
+    employeeStation,
     money,
     priorityLabels,
     sectionLabels,
@@ -153,7 +154,7 @@ export function AdminRecordsTable({
                                     <Contact {...row} />
                                     {row.is_production_admin && (
                                         <span className={styles.demoBadge}>
-                                            Производственный администратор
+                                            Менеджер
                                         </span>
                                     )}
                                     <small>Сотрудник №{row.id}</small>
@@ -161,10 +162,18 @@ export function AdminRecordsTable({
                                 <td data-label="Участки">
                                     <strong>
                                         Основной:{' '}
-                                        {stationLabels[row.primary_station]}
+                                        {stationLabels[
+                                            employeeStation(row.primary_station)
+                                        ]}
                                     </strong>
                                     <small>
-                                        {row.stations
+                                        {Array.from(
+                                            new Set(
+                                                row.stations.map((station) =>
+                                                    employeeStation(station),
+                                                ),
+                                            ),
+                                        )
                                             .map(
                                                 (station) =>
                                                     stationLabels[station],

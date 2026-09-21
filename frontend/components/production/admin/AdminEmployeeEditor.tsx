@@ -7,7 +7,8 @@ import {
     type AdminEmployeeCodeResponse,
     type AdminEmployeeWrite,
     type ProductionStation,
-    productionStations,
+    employeeStation,
+    employeeStations,
     stationLabels,
 } from '@/lib/production/adminTypes';
 import { useProductionAuthStore } from '@/store/productionAuthStore';
@@ -27,6 +28,9 @@ const emptyEmployee: AdminEmployeeWrite = {
 
 function values(employee: AdminEmployee | null): AdminEmployeeWrite {
     if (!employee) return emptyEmployee;
+    const stations = Array.from(
+        new Set(employee.stations.map((station) => employeeStation(station))),
+    );
     return {
         first_name: employee.first_name,
         last_name: employee.last_name,
@@ -35,8 +39,8 @@ function values(employee: AdminEmployee | null): AdminEmployeeWrite {
         status: employee.status,
         availability: employee.availability ?? 'available',
         is_production_admin: employee.is_production_admin,
-        stations: employee.stations,
-        primary_station: employee.primary_station,
+        stations,
+        primary_station: employeeStation(employee.primary_station),
     };
 }
 
@@ -294,11 +298,11 @@ export function AdminEmployeeEditor({
                                     })
                                 }
                             />
-                            <span>Производственный администратор</span>
+                            <span>Менеджер</span>
                         </label>
                         <small>
-                            Получит отдельный восьмизначный код и доступ только
-                            к заказам, этапам производства и проблемам.
+                            Контролирует производство заказов и проблемы. Для
+                            входа использует обычный личный код своего участка.
                         </small>
                     </fieldset>
 
@@ -309,7 +313,7 @@ export function AdminEmployeeEditor({
                             основной. Выбрано: {form.stations.length}.
                         </p>
                         <div className={styles.roleGrid}>
-                            {productionStations.map((station) => (
+                            {employeeStations.map((station) => (
                                 <label
                                     key={station}
                                     className={styles.roleOption}
@@ -344,9 +348,8 @@ export function AdminEmployeeEditor({
                                 ))}
                             </select>
                             <small>
-                                Для обычного сотрудника по нему формируется
-                                первая цифра кода. Администратору выдаётся код с
-                                префиксом 99.
+                                По основному участку формируется первая цифра
+                                личного кода сотрудника или менеджера.
                             </small>
                         </label>
                     </fieldset>

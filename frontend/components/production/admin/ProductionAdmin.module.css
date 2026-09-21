@@ -850,7 +850,7 @@
     width: min(100%, 640px);
 }
 .clientDialog {
-    width: min(100%, 640px);
+    width: min(100%, 880px);
 }
 .orderDetailsBody {
     display: grid;
@@ -1246,6 +1246,110 @@
 }
 .clientDialog > .primaryButton {
     width: 100%;
+}
+.clientSection {
+    margin-top: 24px;
+    padding: 20px;
+    border: 1px solid #e3e0e2;
+    border-radius: 16px;
+    background: #fff;
+}
+.clientProfileGrid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin: 16px 0 0;
+}
+.clientProfileGrid > div {
+    min-width: 0;
+    padding: 12px;
+    border-radius: 8px;
+    background: #f2f0ef;
+}
+.clientProfileGrid dt {
+    color: #656166;
+    font-size: 12px;
+    line-height: 16px;
+}
+.clientProfileGrid dd {
+    margin: 4px 0 0;
+    overflow-wrap: anywhere;
+    font-weight: 600;
+}
+.clientHistoryList {
+    display: grid;
+    gap: 8px;
+    margin-top: 16px;
+}
+.screen .clientHistoryList > button {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+    align-items: center;
+    width: 100%;
+    min-width: 0;
+    min-height: 72px;
+    padding: 12px;
+    border-radius: 12px;
+    text-align: left;
+}
+.clientHistoryList > button > span:nth-child(2),
+.clientHistoryValue {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+.clientHistoryList strong,
+.clientHistoryList small {
+    overflow-wrap: anywhere;
+}
+.clientHistoryIcon {
+    display: grid;
+    width: 40px;
+    height: 40px;
+    place-items: center;
+    border-radius: 8px;
+    color: #5e4274;
+    background: #eee8f2;
+}
+.clientHistoryIcon svg {
+    width: 20px;
+    height: 20px;
+}
+.clientHistoryValue {
+    align-items: flex-end;
+    padding-left: 12px;
+    text-align: right;
+    white-space: nowrap;
+}
+.clientEmptyHistory,
+.clientLocation {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px;
+    border-radius: 8px;
+    background: #f2f0ef;
+}
+.clientEmptyHistory svg,
+.clientLocation svg {
+    width: 20px;
+    height: 20px;
+    flex: 0 0 20px;
+    color: #5e4274;
+}
+.clientLocation {
+    margin-bottom: 0 !important;
+}
+.clientHistorySkeleton {
+    display: grid;
+    gap: 12px;
+    margin-top: 24px;
+}
+.clientHistorySkeleton > span:not(.srOnly) {
+    min-height: 96px;
+    border-radius: 16px;
+    background: #ece9e8;
+    animation: assortmentPulse 1.4s ease-in-out infinite alternate;
 }
 .modalDescription {
     max-width: 520px;
@@ -1911,6 +2015,23 @@
     .clientContactList p {
         padding: 8px;
     }
+    .clientSection {
+        margin-top: 16px;
+        padding: 12px;
+    }
+    .clientProfileGrid {
+        grid-template-columns: 1fr;
+    }
+    .screen .clientHistoryList > button {
+        grid-template-columns: 40px minmax(0, 1fr);
+    }
+    .clientHistoryValue {
+        grid-column: 2;
+        align-items: flex-start;
+        padding: 4px 0 0;
+        text-align: left;
+        white-space: normal;
+    }
     .employeeEditor > .sectionHeading,
     .inboxDialog > .sectionHeading,
     .orderDialog > .sectionHeading,
@@ -1961,7 +2082,8 @@
 }
 @media (prefers-reduced-motion: reduce) {
     .assortmentSkeleton span:not(.srOnly),
-    .orderSkeleton i {
+    .orderSkeleton i,
+    .clientHistorySkeleton > span:not(.srOnly) {
         animation: none;
     }
 }
