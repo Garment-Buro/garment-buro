@@ -53,8 +53,12 @@ export function ProductionAdminTerminal() {
     const logout = useProductionAuthStore((state) => state.logout);
     const error = useProductionAuthStore((state) => state.error);
     useEffect(() => {
-        if (!sections.includes(section)) setSection(sections[0]);
-    }, [section, sections]);
+        const payoutDetailsOpen =
+            user?.admin_scope !== 'production' && section === 'payouts';
+        if (!sections.includes(section) && !payoutDetailsOpen) {
+            setSection(sections[0]);
+        }
+    }, [section, sections, user?.admin_scope]);
     const selectSection = (next: AdminSection) => {
         setSection(next);
         if (window.matchMedia('(max-width: 720px)').matches) {

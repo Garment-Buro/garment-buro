@@ -1,0 +1,58 @@
+name: Seed production demo
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  seed:
+    name: Create safe production demo scenarios
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: garment-buro-server-cutover
+      cancel-in-progress: false
+    environment:
+      name: production
+      url: https://production.garment-buro.ru/production
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_PORT: ${{ secrets.DEPLOY_SSH_PORT || '22' }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Configure SSH
+        shell: bash
+        run: |
+          install -d -m 0700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" >~/.ssh/garment_buro_ci
+          chmod 0600 ~/.ssh/garment_buro_ci
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" >~/.ssh/known_hosts
+          chmod 0600 ~/.ssh/known_hosts
+          printf 'Host *\n  BatchMode yes\n  ConnectTimeout 15\n  ConnectionAttempts 3\n  ServerAliveInterval 15\n  ServerAliveCountMax 4\n  StrictHostKeyChecking yes\n' >~/.ssh/config
+      - name: Upload demo seeder
+        shell: bash
+        run: |
+          target=/srv/garment-buro/production
+          ssh -p "$DEPLOY_PORT" -i ~/.ssh/garment_buro_ci -o IdentitiesOnly=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p '$target'"
+          scp -P "$DEPLOY_PORT" -i ~/.ssh/garment_buro_ci -o IdentitiesOnly=yes \
+            deploy/scripts/seed-production-demo.sh \
+            "$DEPLOY_USER@$DEPLOY_HOST:$target/seed-production-demo.next.sh"
+      - name: Seed demo orders
+        shell: bash
+        run: |
+          ssh -p "$DEPLOY_PORT" -i ~/.ssh/garment_buro_ci -o IdentitiesOnly=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "bash /srv/garment-buro/production/seed-production-demo.next.sh production"
+      - name: Verify production terminal
+        shell: bash
+        run: |
+          curl --fail --silent --show-error --location --max-time 30 --retry 3 \
+            https://production.garment-buro.ru/production -o /dev/null

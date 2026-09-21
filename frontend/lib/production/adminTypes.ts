@@ -240,11 +240,10 @@ export const sectionLabels: Record<AdminSection, string> = {
 };
 export const systemAdminSections: AdminSection[] = [
     'stats',
-    'orders',
-    'payouts',
     'employees',
-    'clients',
     'assortment',
+    'orders',
+    'clients',
     'problems',
     'support',
 ];
