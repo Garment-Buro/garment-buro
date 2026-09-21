@@ -36,6 +36,7 @@ from app.modules.production.security import (
     ProductionDenied,
     can_administer,
     can_system_administer,
+    is_production_manager,
     stations_for_user,
 )
 from app.modules.production.service import ProductionService
@@ -73,22 +74,17 @@ def active_roles(auth, station):
 @router.get("/me")
 async def me(auth: Auth, request: Request, session: Session):
     user, stations = auth
-    administers = getattr(request.state, "production_station", None) == "admin" and (
-        await can_administer(session, user.id)
-    )
+    station = getattr(request.state, "production_station", None)
+    manager = await is_production_manager(session, user.id)
+    system_admin = station == "admin" and await can_system_administer(session, user.id)
+    administers = manager or (station == "admin" and await can_administer(session, user.id))
     return {
         "id": user.id,
         "name": user.first_name or user.email or "Сотрудник",
         "stations": stations,
         "is_demo": await is_demo_employee(session, user.id),
         "can_administer": administers,
-        "admin_scope": (
-            "system"
-            if administers and await can_system_administer(session, user.id)
-            else "production"
-            if administers
-            else None
-        ),
+        "admin_scope": ("system" if system_admin else "production" if administers else None),
     }
 
 

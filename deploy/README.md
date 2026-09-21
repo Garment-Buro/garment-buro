@@ -66,6 +66,18 @@ ports on public interfaces.
   flag is enabled (identity notifications, payments, reconciliation,
   fulfillment, or CDEK creation).
 
+## Production demo scenarios
+
+Run the manual `Seed production demo` workflow from `main` after the production
+deployment has finished. It uses the deployed backend image to create only
+explicitly marked demo orders for the current production stages. Demo orders
+cannot start payments, delivery, notifications, or appear in customer
+statistics. Repeating the run preserves scenarios that employees have already
+advanced.
+
+Generated employee codes stay in the private deployment directory and are
+never printed to CI logs.
+
 ## One-time host bootstrap
 
 Run these steps as root from a trusted terminal:

@@ -30,14 +30,18 @@ test('admin navigation has separate problems and support tabs', () => {
 
 test('production and system administrators receive different sections', () => {
     assert.match(types, /productionAdminSections[\s\S]*'orders', 'problems'/);
-    assert.match(types, /systemAdminSections[\s\S]*'support'/);
+    assert.match(
+        types,
+        /systemAdminSections: AdminSection\[\] = \[\s*'stats',\s*'employees',\s*'assortment',\s*'orders',\s*'clients',\s*'problems',\s*'support',\s*\]/,
+    );
     assert.match(terminal, /user\?\.admin_scope === 'production'/);
-    assert.match(terminal, /Производственный администратор/);
+    assert.match(terminal, /section === 'payouts'/);
+    assert.match(terminal, /Менеджер/);
     assert.match(terminal, /Системный администратор/);
 });
 
 test('admin inbox lists filterable messages with distinct source context', () => {
-    assert.match(records, /Все приоритеты/);
+    assert.match(records, /Любой приоритет/);
     assert.match(records, /Сообщения пользователей/);
     assert.match(records, /Сбои и препятствия на производстве/);
     assert.match(table, /priorityLabels\[row\.priority\]/);

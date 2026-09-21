@@ -205,6 +205,7 @@ export interface ProductReference {
     garment_model_id: number | null;
     price: string;
     old_price: string | null;
+    image_url: string | null;
     is_active: boolean;
     stock_quantity: number;
     variants: ProductVariantReference[];

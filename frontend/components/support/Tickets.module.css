@@ -10,6 +10,14 @@
   font-size: 14px;
   line-height: 20px;
 }
+.panel[data-embedded="true"] {
+  gap: 12px;
+  margin-top: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
 .panel h2,
 .panel h3,
 .panel h4,

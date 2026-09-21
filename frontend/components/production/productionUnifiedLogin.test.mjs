@@ -15,6 +15,10 @@ const adminTerminal = readFileSync(
     new URL('./admin/ProductionAdminTerminal.tsx', import.meta.url),
     'utf8',
 );
+const authStore = readFileSync(
+    new URL('../../store/productionAuthStore.ts', import.meta.url),
+    'utf8',
+);
 const legacyAdminRoute = readFileSync(
     new URL('../../app/production/admin/page.tsx', import.meta.url),
     'utf8',
@@ -24,8 +28,23 @@ test('production has one login form for employees and administrators', () => {
     assert.match(terminal, /if \(!authenticated\) return <ProductionLogin \/>/);
     assert.doesNotMatch(terminal, /mode === 'admin'/);
     assert.doesNotMatch(login, /Вход администратора/);
-    assert.match(login, /6 цифр для сотрудника или 8 для/);
+    assert.doesNotMatch(login, /6 цифр для сотрудника или 8 для/);
+    assert.doesNotMatch(login, /Без подключения к сети/);
+    assert.match(login, /placeholder="Личный код сотрудника"/);
     assert.match(login, /pattern="\(\[0-9\]\{6\}\|99\[0-9\]\{6\}\)"/);
+});
+
+test('production uses the animated logo for session loading and admin identity', () => {
+    assert.match(terminal, /src="\/logo_anim\.mp4"/);
+    assert.doesNotMatch(terminal, /Проверяем рабочую сессию/);
+    assert.match(adminTerminal, /src="\/logo_anim_cart\.mp4"/);
+});
+
+test('expired production credentials clear the local administrator session', () => {
+    assert.match(authStore, /const signedOut/);
+    assert.match(authStore, /isUnauthorized\(error\)[\s\S]*set\(signedOut\(\)\)/);
+    assert.match(authStore, /set\(signedOut\(error\)\)/);
+    assert.doesNotMatch(authStore, /set\(\{ error: 'Не удалось завершить сессию/);
 });
 
 test('administrator is selected by the existing session role', () => {

@@ -15,6 +15,16 @@ type ProductionAuth = {
     runAuthenticated: <T>(operation: (token: string) => Promise<T>) => Promise<T>;
 };
 
+const signedOut = (error = '') => ({
+    user: null,
+    isSessionReady: true,
+    isAuthenticated: false,
+    error,
+});
+
+const isUnauthorized = (error: unknown) =>
+    error instanceof ApiError && error.status === 401;
+
 export const useProductionAuthStore = create<ProductionAuth>((set) => ({
     user: null, isSessionReady: false, isAuthenticated: false, error: '',
     initialize: async () => {
@@ -22,8 +32,13 @@ export const useProductionAuthStore = create<ProductionAuth>((set) => ({
             const user = await requestJson<Employee>('/production/me', { cache: 'no-store' });
             set({ user, isAuthenticated: true, isSessionReady: true, error: '' });
         } catch (error) {
-            set({ user: null, isAuthenticated: false, isSessionReady: true,
-                error: error instanceof ApiError && error.status === 401 ? '' : 'Не удалось проверить сессию. Проверьте подключение.' });
+            set(
+                signedOut(
+                    isUnauthorized(error)
+                        ? ''
+                        : 'Не удалось проверить сессию. Проверьте подключение.',
+                ),
+            );
         }
     },
     login: async (code) => {
@@ -34,18 +49,23 @@ export const useProductionAuthStore = create<ProductionAuth>((set) => ({
         set({ user, isAuthenticated: true, isSessionReady: true, error: '' });
     },
     logout: async () => {
+        let error = '';
         try {
             await requestJson('/production/auth/logout', { method: 'POST' });
-            set({ user: null, isAuthenticated: false, error: '' });
-        } catch {
-            set({ error: 'Не удалось завершить сессию. Повторите выход после восстановления связи.' });
+        } catch (failure) {
+            if (!isUnauthorized(failure)) {
+                error =
+                    'Сеанс закрыт на этом устройстве. Сервер не подтвердил выход из-за соединения.';
+            }
         }
+        set(signedOut(error));
     },
     runAuthenticated: async (operation) => {
         try { return await operation(''); }
         catch (error) {
-            if (error instanceof ApiError && error.status === 401) {
-                set({ user: null, isAuthenticated: false });
+            if (isUnauthorized(error)) {
+                set(signedOut());
+                throw new ApiError('Сессия завершена. Войдите снова.', 401);
             }
             throw error;
         }

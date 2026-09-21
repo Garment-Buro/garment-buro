@@ -1,17 +1,25 @@
 'use client';
 import { useState } from 'react';
-import { CreateTicket } from '@/components/support/CreateTicket';
+import { PiArrowClockwise } from 'react-icons/pi';
 import { useAdminResource } from '@/hooks/production/useAdminResource';
+import { requestJson } from '@/lib/api/http';
 import {
     type AdminEmployee,
     type AdminEmployeeCodeResponse,
+    type AdminClient,
+    type AdminOrder,
     type AdminSection,
     type Page,
     type AdminPayout,
+    employeeStations,
     sectionLabels,
+    stationLabels,
     statusLabels,
 } from '@/lib/production/adminTypes';
+import { useProductionAuthStore } from '@/store/productionAuthStore';
 import { AdminOrderDetails } from './AdminOrderDetails';
+import { AdminClientDetails } from './AdminClientDetails';
+import { AdminFilters, type AdminFilterGroup } from './AdminFilters';
 import { AdminEmployeeAccessCode } from './AdminEmployeeAccessCode';
 import { AdminEmployeeEditor } from './AdminEmployeeEditor';
 import { AdminInboxDetails } from './AdminInboxDetails';
@@ -41,11 +49,65 @@ const filters: Record<Section, string[]> = {
     problems: ['new', 'in_progress', 'resolved', 'closed'],
     support: ['new', 'in_progress', 'resolved', 'closed'],
 };
-export function AdminRecords({ section }: { section: Section }) {
-    const [search, setSearch] = useState('');
-    const [query, setQuery] = useState('');
+const sortingOptions = {
+    orders: [
+        ['created_at:desc', 'Сначала новые'],
+        ['created_at:asc', 'Сначала старые'],
+        ['total:desc', 'Сначала дорогие'],
+        ['total:asc', 'Сначала дешёвые'],
+        ['client:asc', 'Клиент: А–Я'],
+        ['client:desc', 'Клиент: Я–А'],
+        ['status:asc', 'По этапу'],
+        ['payment_status:asc', 'По оплате'],
+    ],
+    payouts: [
+        ['created_at:desc', 'Сначала новые'],
+        ['created_at:asc', 'Сначала старые'],
+        ['amount:desc', 'Сначала крупные'],
+        ['amount:asc', 'Сначала небольшие'],
+        ['partner:asc', 'Партнёр: А–Я'],
+        ['partner:desc', 'Партнёр: Я–А'],
+        ['status:asc', 'По статусу'],
+    ],
+} as const;
+const availabilityOptions = [
+    ['', 'Любое состояние'],
+    ['available', 'Работает'],
+    ['sick', 'Болеет'],
+    ['vacation', 'В отпуске'],
+    ['absent', 'Отсутствует'],
+] as const;
+const employeeRoleOptions = [
+    ['', 'Любая роль'],
+    ['manager', 'Менеджер'],
+    ...employeeStations.map(
+        (station) => [station, stationLabels[station]] as const,
+    ),
+] as const;
+const priorityOptions = [
+    ['', 'Любой приоритет'],
+    ['critical', 'Критический'],
+    ['high', 'Высокий'],
+    ['normal', 'Обычный'],
+    ['low', 'Низкий'],
+] as const;
+
+export function AdminRecords({
+    section,
+    initialQuery = '',
+    onClient,
+}: {
+    section: Section;
+    initialQuery?: string;
+    onClient: (client: AdminOrder | AdminClient) => void;
+}) {
+    const [search, setSearch] = useState(initialQuery);
+    const [query, setQuery] = useState(initialQuery);
     const [status, setStatus] = useState('');
     const [priority, setPriority] = useState('');
+    const [availability, setAvailability] = useState('');
+    const [station, setStation] = useState('');
+    const [sorting, setSorting] = useState('created_at:desc');
     const [offset, setOffset] = useState(0);
     const [orderId, setOrderId] = useState<number | null>(null);
     const [payout, setPayout] = useState<AdminPayout | null>(null);
@@ -56,6 +118,10 @@ export function AdminRecords({ section }: { section: Section }) {
         useState<AdminEmployeeCodeResponse | null>(null);
     const [notice, setNotice] = useState('');
     const [inboxId, setInboxId] = useState<number | null>(null);
+    const [client, setClient] = useState<AdminClient | null>(null);
+    const [actionError, setActionError] = useState('');
+    const [codeBusyId, setCodeBusyId] = useState<number | null>(null);
+    const run = useProductionAuthStore((state) => state.runAuthenticated);
     const isInbox = section === 'problems' || section === 'support';
     const params = new URLSearchParams({
         q: query,
@@ -64,10 +130,82 @@ export function AdminRecords({ section }: { section: Section }) {
         limit: '30',
     });
     if (isInbox) params.set('priority', priority);
+    if (section === 'employees') {
+        params.set('availability', availability);
+        params.set('station', station);
+    }
+    if (section === 'orders' || section === 'payouts') {
+        const [sort, direction] = sorting.split(':');
+        params.set('sort', sort);
+        params.set('direction', direction);
+    }
     const { data, loading, error, reload } = useAdminResource<Page<RecordRow>>(
         `${section}?${params}`,
         30_000,
     );
+    const filterGroups: AdminFilterGroup[] = [];
+    if (filters[section].length > 0) {
+        filterGroups.push({
+            key: 'status',
+            label: section === 'employees' ? 'Доступ' : 'Статус',
+            options: [
+                ['', section === 'employees' ? 'Любой доступ' : 'Все статусы'],
+                ...filters[section].map(
+                    (value) =>
+                        [
+                            value,
+                            section === 'employees'
+                                ? value === 'active'
+                                    ? 'Доступ открыт'
+                                    : 'Доступ закрыт'
+                                : statusLabels[value],
+                        ] as const,
+                ),
+            ],
+        });
+    }
+    if (section === 'employees') {
+        filterGroups.push(
+            {
+                key: 'availability',
+                label: 'Состояние',
+                options: availabilityOptions,
+            },
+            {
+                key: 'station',
+                label: 'Роль',
+                options: employeeRoleOptions,
+            },
+        );
+    }
+    if (isInbox) {
+        filterGroups.push({
+            key: 'priority',
+            label: 'Приоритет',
+            options: priorityOptions,
+        });
+    }
+    if (section === 'orders' || section === 'payouts') {
+        filterGroups.push({
+            key: 'sorting',
+            label: 'Сортировка',
+            options: sortingOptions[section],
+        });
+    }
+    const filterValues = {
+        status,
+        priority,
+        availability,
+        station,
+        sorting,
+    };
+    const filterDefaults = {
+        status: '',
+        priority: '',
+        availability: '',
+        station: '',
+        sorting: 'created_at:desc',
+    };
     return (
         <section aria-busy={loading}>
             <div className={styles.sectionHeading}>
@@ -79,6 +217,9 @@ export function AdminRecords({ section }: { section: Section }) {
                         </button>
                     )}
                     <button
+                        className={styles.iconButton}
+                        aria-label={`Обновить раздел «${sectionLabels[section]}»`}
+                        title={`Обновить раздел «${sectionLabels[section]}»`}
                         disabled={loading}
                         onClick={() => {
                             setPayout(null);
@@ -86,7 +227,7 @@ export function AdminRecords({ section }: { section: Section }) {
                             reload();
                         }}
                     >
-                        Обновить
+                        <PiArrowClockwise aria-hidden />
                     </button>
                 </div>
             </div>
@@ -118,66 +259,28 @@ export function AdminRecords({ section }: { section: Section }) {
                         onChange={(event) => setSearch(event.target.value)}
                     />
                 </label>
-                {filters[section].length > 0 && (
-                    <label>
-                        Статус
-                        <select
-                            value={status}
-                            onChange={(event) => {
-                                setStatus(event.target.value);
-                                setOffset(0);
-                                setPayout(null);
-                                setOrderId(null);
-                                setInboxId(null);
-                            }}
-                        >
-                            <option value="">Все статусы</option>
-                            {filters[section].map((value) => (
-                                <option key={value} value={value}>
-                                    {statusLabels[value]}
-                                </option>
-                            ))}
-                        </select>
-                    </label>
-                )}
-                {isInbox && (
-                    <label>
-                        Приоритет
-                        <select
-                            value={priority}
-                            onChange={(event) => {
-                                setPriority(event.target.value);
-                                setOffset(0);
-                                setInboxId(null);
-                            }}
-                        >
-                            <option value="">Все приоритеты</option>
-                            <option value="critical">Критический</option>
-                            <option value="high">Высокий</option>
-                            <option value="normal">Обычный</option>
-                            <option value="low">Низкий</option>
-                        </select>
-                    </label>
+                {filterGroups.length > 0 && (
+                    <AdminFilters
+                        groups={filterGroups}
+                        values={filterValues}
+                        defaults={filterDefaults}
+                        onApply={(next) => {
+                            setStatus(next.status);
+                            setPriority(next.priority);
+                            setAvailability(next.availability);
+                            setStation(next.station);
+                            setSorting(next.sorting);
+                            setOffset(0);
+                            setPayout(null);
+                            setOrderId(null);
+                            setInboxId(null);
+                        }}
+                    />
                 )}
                 <button type="submit" disabled={loading}>
                     Найти
                 </button>
             </form>
-            {section === 'clients' && (
-                <p className={styles.muted}>
-                    Покупатели с заказами. Контакты взяты из последнего заказа.
-                    Гостевые заказы сгруппированы по почте или телефону; это не
-                    подтверждённое совпадение личности.
-                </p>
-            )}
-            {section === 'employees' && (
-                <p className={styles.muted}>
-                    Здесь показаны сотрудники и тестовые доступы производства.
-                    Тестовые доступы отмечены отдельно и не входят в статистику
-                    сотрудников. Искать можно в том числе по действующему личному
-                    коду. Покупатели и их заказы находятся в разделе «Клиенты».
-                </p>
-            )}
             {section === 'payouts' && (
                 <p className={styles.muted}>
                     Одобрение заявки не отправляет деньги. Создание платёжки и
@@ -185,13 +288,10 @@ export function AdminRecords({ section }: { section: Section }) {
                 </p>
             )}
             {section === 'support' && (
-                <>
-                <CreateTicket admin onCreated={(id) => { setInboxId(id); reload(); }} />
                 <p className={styles.muted}>
                     Сообщения пользователей о заказах, оплате и работе сайта.
                     Ответы и сообщения клиентам сохраняются в личном кабинете.
                 </p>
-                </>
             )}
             {section === 'problems' && (
                 <p className={styles.muted}>
@@ -205,12 +305,17 @@ export function AdminRecords({ section }: { section: Section }) {
                     {error}
                 </p>
             )}
+            {actionError && (
+                <p role="alert" className={styles.error}>
+                    {actionError}
+                </p>
+            )}
             {loading && <p role="status">Загружаем записи…</p>}
             {data && !data.items.length && (
                 <div className={styles.empty}>
                     <h3>Записей не найдено</h3>
                     <p>
-                        Проверьте поиск и выбранный статус. Новые записи
+                        Проверьте поиск и выбранные фильтры. Новые записи
                         появятся здесь после сохранения в системе.
                     </p>
                 </div>
@@ -236,6 +341,37 @@ export function AdminRecords({ section }: { section: Section }) {
                         onInbox={(row) => {
                             setInboxId(row.id);
                             setNotice('');
+                        }}
+                        onClient={(row) => {
+                            if (section === 'clients') {
+                                setClient(row as AdminClient);
+                            } else {
+                                onClient(row);
+                            }
+                        }}
+                        codeBusyId={codeBusyId}
+                        onCode={async (employee) => {
+                            if (codeBusyId !== null) return;
+                            setCodeBusyId(employee.id);
+                            setActionError('');
+                            try {
+                                const result = await run(() =>
+                                    requestJson<AdminEmployeeCodeResponse>(
+                                        `/production/admin/employees/${employee.id}/code`,
+                                        { method: 'POST' },
+                                    ),
+                                );
+                                setAccessCode(result);
+                                reload();
+                            } catch (failure) {
+                                setActionError(
+                                    failure instanceof Error
+                                        ? failure.message
+                                        : 'Не удалось выдать новый код',
+                                );
+                            } finally {
+                                setCodeBusyId(null);
+                            }
                         }}
                     />
                 </div>
@@ -270,7 +406,22 @@ export function AdminRecords({ section }: { section: Section }) {
                 <AdminOrderDetails
                     key={orderId}
                     id={orderId}
+                    onClient={onClient}
                     onClose={() => setOrderId(null)}
+                />
+            )}
+            {client && (
+                <AdminClientDetails
+                    client={client}
+                    onClose={() => setClient(null)}
+                    onOrder={(id) => {
+                        setClient(null);
+                        setOrderId(id);
+                    }}
+                    onTicket={(id) => {
+                        setClient(null);
+                        setInboxId(id);
+                    }}
                 />
             )}
             {payout && (
@@ -303,9 +454,9 @@ export function AdminRecords({ section }: { section: Section }) {
                     onClose={() => setAccessCode(null)}
                 />
             )}
-            {inboxId !== null && isInbox && (
+            {inboxId !== null && (isInbox || section === 'clients') && (
                 <AdminInboxDetails
-                    section={section}
+                    section={section === 'clients' ? 'support' : section}
                     id={inboxId}
                     onClose={() => setInboxId(null)}
                     onSaved={() => {

@@ -66,10 +66,10 @@ export const stationRoles: Record<Station, string> = {
     cut: 'Закройщик',
     dtf: 'DTF-печатник',
     workshop: 'Цех',
-    application: 'Нанесение',
-    sewing: 'Швея',
+    application: 'Цех',
+    sewing: 'Цех',
     press: 'ВТО',
-    qc: 'ОТК',
+    qc: 'Цех',
     packing: 'Упаковщик',
     shipping: 'Отправка',
 };
@@ -108,7 +108,7 @@ export const stationGuides: Record<Station, { task: string; result: string }> =
             result: 'Изделие подготовлено к проверке качества.',
         },
         qc: {
-            task: 'Выполнить все проверки ОТК. При дефекте описать проблему и назначить переделку.',
+            task: 'Выполнить все проверки качества. При дефекте описать проблему и назначить переделку.',
             result: 'Качество подтверждено либо вещь возвращена на нужный участок.',
         },
         packing: {

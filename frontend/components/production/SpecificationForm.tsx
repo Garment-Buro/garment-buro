@@ -392,7 +392,7 @@ export function SpecificationForm({
                     />
                 </label>
                 <label>
-                    Проверки ОТК — одна на строку
+                    Проверки качества — одна на строку
                     <textarea
                         required
                         rows={3}

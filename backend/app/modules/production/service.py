@@ -388,7 +388,7 @@ class ProductionService:
                 raise ProductionConflict("Нельзя наносить DTF до подтверждения вложения")
             if stage == "qc":
                 if set(command.quality_confirmed) != set(range(len(spec["quality_checks"]))):
-                    raise ProductionConflict("Подтвердите все проверки ОТК")
+                    raise ProductionConflict("Подтвердите все проверки качества")
                 if unit.status == "in_progress":
                     await self._unit_status(
                         session, unit, CrmProductionUnitStatus.QUALITY_CONTROL, actor
@@ -466,7 +466,7 @@ class ProductionService:
                 x.issue or x.stage_index != len(specs[x.specification_id].specification["route"])
                 for x in work
             ):
-                raise ProductionConflict("Все вещи должны пройти ОТК и упаковку")
+                raise ProductionConflict("Все вещи должны пройти проверку качества и упаковку")
             await self.projects.transition(
                 session,
                 project_id=project.id,

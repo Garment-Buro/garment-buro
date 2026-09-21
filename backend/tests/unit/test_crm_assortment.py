@@ -10,6 +10,8 @@ from app.core.config import AppEnvironment, Settings
 from app.db import models as database_models  # noqa: F401
 from app.db.base import Base
 from app.db.session import DatabaseManager
+from app.modules.catalog.mapper import CatalogResponseMapper
+from app.modules.catalog.models import Product
 from app.modules.crm.assortment_schemas import (
     CrmAccessoryCategoryWrite,
     CrmAccessoryWrite,
@@ -30,7 +32,12 @@ from app.modules.crm.reference_schemas import (
     CrmGarmentSizeWrite,
 )
 from app.modules.crm.reference_service import CrmReferenceConflictError, CrmReferenceService
-from app.modules.media.models import MediaObject, MediaStatus
+from app.modules.media.models import (
+    MediaObject,
+    MediaStatus,
+    ProductMedia,
+    ProductMediaRole,
+)
 
 
 async def _database(path: Path) -> DatabaseManager:
@@ -248,6 +255,54 @@ def test_assortment_models_patterns_materials_accessories_and_boxes(tmp_path: Pa
                 assert accessories[0].model_ids == [model.id]
                 boxes = await assortment.list_boxes(session, active=True)
                 assert boxes[0].stock_quantity == 50
+        finally:
+            await database.shutdown()
+
+    asyncio.run(scenario())
+
+
+def test_product_references_include_admin_card_image(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        database = await _database(tmp_path / "assortment-products.db")
+        try:
+            async with database.session() as session:
+                image = MediaObject(
+                    provider="minio",
+                    bucket_name="public",
+                    object_key="uploads/catalog-card.webp",
+                    original_filename="catalog-card.webp",
+                    content_type="image/webp",
+                    size_bytes=1024,
+                    checksum_sha256="c" * 64,
+                    is_public=True,
+                    status=MediaStatus.READY.value,
+                )
+                product = Product(
+                    title="Catalog card",
+                    price=Decimal("3500.00"),
+                    stock_quantity=4,
+                )
+                session.add_all([image, product])
+                await session.flush()
+                session.add(
+                    ProductMedia(
+                        product_id=product.id,
+                        media_object_id=image.id,
+                        role=ProductMediaRole.IMAGE_LEFT.value,
+                        sort_order=0,
+                    )
+                )
+                await session.commit()
+
+            async with database.session() as session:
+                products = await CrmAssortmentService().list_products(
+                    session,
+                    model_id=None,
+                    category_id=None,
+                    active=None,
+                    mapper=CatalogResponseMapper(database.settings),
+                )
+                assert products[0].image_url == "/uploads/catalog-card.webp"
         finally:
             await database.shutdown()
 

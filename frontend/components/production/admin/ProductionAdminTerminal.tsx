@@ -11,9 +11,12 @@ import {
     PiWarningCircle,
     PiLifebuoy,
     PiStorefront,
+    PiFactory,
 } from 'react-icons/pi';
 import { useProductionAuthStore } from '@/store/productionAuthStore';
 import {
+    type AdminClient,
+    type AdminOrder,
     type AdminSection,
     productionAdminSections,
     sectionLabels,
@@ -41,38 +44,90 @@ export function ProductionAdminTerminal() {
             ? productionAdminSections
             : systemAdminSections;
     const [section, setSection] = useState<AdminSection>(sections[0]);
+    const [clientSearch, setClientSearch] = useState({
+        value: '',
+        revision: 0,
+    });
     const [leaving, setLeaving] = useState(false);
     const contentRef = useRef<HTMLDivElement>(null);
     const logout = useProductionAuthStore((state) => state.logout);
     const error = useProductionAuthStore((state) => state.error);
     useEffect(() => {
-        if (!sections.includes(section)) setSection(sections[0]);
-    }, [section, sections]);
+        const payoutDetailsOpen =
+            user?.admin_scope !== 'production' && section === 'payouts';
+        if (!sections.includes(section) && !payoutDetailsOpen) {
+            setSection(sections[0]);
+        }
+    }, [section, sections, user?.admin_scope]);
+    const selectSection = (next: AdminSection) => {
+        setSection(next);
+        if (window.matchMedia('(max-width: 720px)').matches) {
+            requestAnimationFrame(() =>
+                contentRef.current?.scrollIntoView({ block: 'start' }),
+            );
+        }
+    };
+    const openClient = (client: AdminOrder | AdminClient) => {
+        if (!sections.includes('clients')) return;
+        const value = client.user_id
+            ? String(client.user_id)
+            : client.email || client.phone || client.name;
+        setClientSearch((current) => ({
+            value,
+            revision: current.revision + 1,
+        }));
+        selectSection('clients');
+    };
     return (
         <main className={styles.screen}>
             <a className={styles.skip} href="#production-admin-content">
                 К содержимому
             </a>
             <header className={styles.header}>
-                <div>
-                    <p className={styles.eyebrow}>
-                        GARMENT BURO ·{' '}
-                        {user?.admin_scope === 'production'
-                            ? 'ПРОИЗВОДСТВО'
-                            : 'УПРАВЛЕНИЕ'}
-                    </p>
-                    <h1>
-                        {user?.admin_scope === 'production'
-                            ? 'Производственный администратор'
-                            : 'Системный администратор'}
-                    </h1>
-                    <p>{user?.name}</p>
+                <div className={styles.identity}>
+                    <video
+                        className={styles.adminLogo}
+                        src="/logo_anim_cart.mp4"
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                        preload="auto"
+                        aria-hidden="true"
+                    />
+                    <div className={styles.identityCopy}>
+                        <p className={styles.eyebrow}>
+                            GARMENT BURO ·{' '}
+                            {user?.admin_scope === 'production'
+                                ? 'ПРОИЗВОДСТВО'
+                                : 'УПРАВЛЕНИЕ'}
+                        </p>
+                        <h1>
+                            {user?.admin_scope === 'production'
+                                ? 'Менеджер'
+                                : 'Системный администратор'}
+                        </h1>
+                        <p>{user?.name}</p>
+                    </div>
                 </div>
                 <div className={styles.actions}>
                     {Boolean(user?.stations.length) && (
-                        <Link href="/production/floor">Производство</Link>
+                        <Link
+                            className={styles.headerAction}
+                            href="/production/floor"
+                            aria-label="Открыть производство"
+                            title="Открыть производство"
+                        >
+                            <PiFactory aria-hidden />
+                            <span className={styles.actionLabel}>
+                                Производство
+                            </span>
+                        </Link>
                     )}
                     <button
+                        className={styles.headerAction}
+                        aria-label={leaving ? 'Выходим' : 'Выйти'}
+                        title={leaving ? 'Выходим' : 'Выйти'}
                         disabled={leaving}
                         onClick={async () => {
                             setLeaving(true);
@@ -84,7 +139,9 @@ export function ProductionAdminTerminal() {
                         }}
                     >
                         <PiSignOut aria-hidden />
-                        {leaving ? 'Выходим…' : 'Выйти'}
+                        <span className={styles.actionLabel}>
+                            {leaving ? 'Выходим…' : 'Выйти'}
+                        </span>
                     </button>
                 </div>
             </header>
@@ -96,19 +153,7 @@ export function ProductionAdminTerminal() {
                             key={key}
                             aria-current={section === key ? 'page' : undefined}
                             aria-controls="production-admin-content"
-                            onClick={() => {
-                                setSection(key);
-                                if (
-                                    window.matchMedia('(max-width: 720px)')
-                                        .matches
-                                ) {
-                                    requestAnimationFrame(() =>
-                                        contentRef.current?.scrollIntoView({
-                                            block: 'start',
-                                        }),
-                                    );
-                                }
-                            }}
+                            onClick={() => selectSection(key)}
                         >
                             <Icon aria-hidden />
                             {sectionLabels[key]}
@@ -127,11 +172,20 @@ export function ProductionAdminTerminal() {
                     </p>
                 )}
                 {section === 'stats' ? (
-                    <AdminStatistics />
+                    <AdminStatistics onNavigate={selectSection} />
                 ) : section === 'assortment' ? (
                     <AdminAssortment />
                 ) : (
-                    <AdminRecords key={section} section={section} />
+                    <AdminRecords
+                        key={`${section}:${
+                            section === 'clients' ? clientSearch.revision : 0
+                        }`}
+                        section={section}
+                        initialQuery={
+                            section === 'clients' ? clientSearch.value : ''
+                        }
+                        onClient={openClient}
+                    />
                 )}
             </div>
         </main>

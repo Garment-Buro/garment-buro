@@ -29,7 +29,7 @@ STAGE_LABELS = {
     "application": "Нанесение",
     "sewing": "Пошив",
     "press": "ВТО",
-    "qc": "ОТК",
+    "qc": "Проверка качества",
     "packing": "Упаковка",
     "shipping": "Отправка",
 }
@@ -64,7 +64,7 @@ class SpecificationWrite(StrictModel):
         ):
             raise ValueError("Маршрут должен идти по порядку без повторов")
         if self.route[-2:] != ["qc", "packing"]:
-            raise ValueError("Маршрут должен завершаться ОТК и упаковкой")
+            raise ValueError("Маршрут должен завершаться проверкой качества и упаковкой")
         if "cut" in self.route and not self.pattern_file_ids:
             raise ValueError("Для раскроя нужны сохранённые лекала")
         if ("application" in self.route) != bool(self.print_file_ids):
@@ -74,9 +74,9 @@ class SpecificationWrite(StrictModel):
         if len({x.key for x in self.components}) != len(self.components):
             raise ValueError("Коды комплектующих должны быть уникальны")
         if any(not x.strip() or len(x) > 300 for x in self.quality_checks):
-            raise ValueError("Заполните проверки ОТК")
+            raise ValueError("Заполните проверки качества")
         if len(set(self.quality_checks)) != len(self.quality_checks):
-            raise ValueError("Проверки ОТК не должны повторяться")
+            raise ValueError("Проверки качества не должны повторяться")
         return self
 
 

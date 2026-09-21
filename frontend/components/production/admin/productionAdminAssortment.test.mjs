@@ -22,6 +22,26 @@ const css = readFileSync(
     new URL('./ProductionAdmin.module.css', import.meta.url),
     'utf8',
 );
+const patterns = readFileSync(
+    new URL('./assortment/AdminPatterns.tsx', import.meta.url),
+    'utf8',
+);
+const models = readFileSync(
+    new URL('./assortment/AdminModels.tsx', import.meta.url),
+    'utf8',
+);
+const dialog = readFileSync(
+    new URL('./assortment/AssortmentDialog.tsx', import.meta.url),
+    'utf8',
+);
+const products = readFileSync(
+    new URL('./assortment/AdminProducts.tsx', import.meta.url),
+    'utf8',
+);
+const boxes = readFileSync(
+    new URL('./assortment/AdminBoxes.tsx', import.meta.url),
+    'utf8',
+);
 
 test('admin exposes one product and warehouse workspace', () => {
     assert.match(terminal, /assortment: PiStorefront/);
@@ -53,6 +73,77 @@ test('assortment remains usable on phones', () => {
         css,
         /\.assortmentCards,[\s\S]*grid-template-columns:\s*1fr/,
     );
-    assert.match(css, /\.assortmentDialog\s*\{[^}]*min-height:\s*100dvh/s);
+    assert.match(
+        css,
+        /\.assortmentDialog\s*\{[^}]*height:\s*calc\(100dvh - max\(16px, env\(safe-area-inset-top\)\)\)/s,
+    );
     assert.match(css, /\.measureGrid\s*\{[^}]*repeat\(2, minmax\(0, 1fr\)\)/s);
+    assert.match(
+        css,
+        /\.patternIdentityGrid,[\s\S]*\.patternMeasurements\s*\{[^}]*grid-template-columns:\s*1fr/s,
+    );
+});
+
+test('pattern editor uses visual measurements and compact header controls', () => {
+    assert.match(patterns, /type="range"/);
+    assert.match(patterns, /step="2"/);
+    assert.match(patterns, /className=\{styles\.patternFilePicker\}/);
+    assert.match(patterns, /PDF, JPEG, PNG или WebP/);
+    assert.match(patterns, /headerActions=/);
+    assert.match(patterns, /name: editor\.code/);
+    assert.doesNotMatch(patterns, />\s*Название\s*</);
+    assert.doesNotMatch(patterns, /Ширина и длина должны попадать/);
+    assert.match(dialog, />\s*Закрыть\s*</);
+    assert.doesNotMatch(dialog, /PiX/);
+});
+
+test('model editor explains the flow and keeps one compact size editor open', () => {
+    assert.match(models, /1\. Модель/);
+    assert.match(models, /2\. Размеры/);
+    assert.match(models, /3\. Диапазоны/);
+    assert.match(models, /className=\{styles\.sizeCardList\}/);
+    assert.match(models, /aria-selected=\{activeSizeIndex === index\}/);
+    assert.match(models, /className=\{styles\.sizeDetailCard\}/);
+    assert.match(models, /<SizeRangeEditor/);
+    assert.match(models, /step="2"/);
+    assert.doesNotMatch(models, /Сначала задайте общие параметры/);
+});
+
+test('assortment dialog scrolls below an opaque fixed header', () => {
+    assert.match(dialog, /className=\{styles\.assortmentDialogBody\}/);
+    assert.match(
+        css,
+        /\.assortmentDialog\s*\{[^}]*overflow:\s*hidden/s,
+    );
+    assert.match(
+        css,
+        /\.assortmentDialogBody\s*\{[^}]*overflow-y:\s*auto/s,
+    );
+    assert.doesNotMatch(
+        css,
+        /\.dialogHeading\s*\{[^}]*position:\s*sticky/s,
+    );
+});
+
+test('product cards show catalog images and keep compact mobile structure', () => {
+    assert.match(types, /image_url: string \| null/);
+    assert.match(products, /safeImage\(product\.image_url\)/);
+    assert.match(products, /className=\{styles\.productMedia\}/);
+    assert.match(products, /Нет фото/);
+    assert.match(products, /className=\{styles\.productFacts\}/);
+    assert.match(
+        css,
+        /\.productCard\s*\{[^}]*grid-template-columns:\s*152px minmax\(0, 1fr\)/s,
+    );
+    assert.match(
+        css,
+        /@media \(max-width: 640px\)[\s\S]*\.productCard\s*\{[^}]*grid-template-columns:\s*104px minmax\(0, 1fr\)/s,
+    );
+});
+
+test('packaging rule explains capacity and selection order', () => {
+    assert.match(boxes, /Модель[\s\S]*Коробка[\s\S]*Количество/);
+    assert.match(boxes, /Максимум изделий этой модели/);
+    assert.match(boxes, /0 — основная коробка, 1 и далее — запасные/);
+    assert.match(boxes, /меньшее число означает более высокий приоритет/);
 });

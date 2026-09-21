@@ -33,10 +33,10 @@ export const labels: Record<Station, string> = {
     cut: 'Раскрой',
     dtf: 'DTF печать',
     workshop: 'Цех',
-    application: 'Нанесение',
-    sewing: 'Пошив',
+    application: 'Цех',
+    sewing: 'Цех',
     press: 'ВТО',
-    qc: 'ОТК',
+    qc: 'Цех',
     packing: 'Упаковка',
     shipping: 'Отправка',
 };

@@ -14,7 +14,7 @@ from app.modules.partners.service import (
 )
 from app.modules.production.admin_reads import ProductionAdminReads
 from app.modules.production.auth_router import get_production_user
-from app.modules.production.employee_schemas import EmployeeCodeResponse, EmployeeWrite
+from app.modules.production.employee_schemas import EmployeeCodeResponse, EmployeeWrite, Station
 from app.modules.production.employee_service import (
     EmployeeConflictError,
     EmployeeNotFoundError,
@@ -33,7 +33,11 @@ from app.modules.production.inbox_service import (
     AdminInboxNotFoundError,
     AdminInboxService,
 )
-from app.modules.production.security import can_administer, can_system_administer
+from app.modules.production.security import (
+    can_administer,
+    can_system_administer,
+    is_production_manager,
+)
 from app.modules.production.ticket_routing import route_ticket
 from app.modules.production.ticket_schemas import AdminTicketCreate, TicketReply, TicketRoute
 from app.modules.production.ticket_service import TicketService
@@ -49,9 +53,9 @@ async def require_admin(
     user: Annotated[User, Depends(get_production_user)],
 ):
     response.headers["Cache-Control"] = "no-store"
-    if getattr(request.state, "production_station", None) != "admin" or not await can_administer(
-        session, user.id
-    ):
+    station = getattr(request.state, "production_station", None)
+    manager = await is_production_manager(session, user.id)
+    if not manager and (station != "admin" or not await can_administer(session, user.id)):
         raise HTTPException(
             403, "Нужен личный код администратора", headers={"Cache-Control": "no-store"}
         )
@@ -68,7 +72,9 @@ async def require_system_admin(
     user: Annotated[User, Depends(get_production_user)],
 ):
     await require_admin(request, response, session, user)
-    if not await can_system_administer(session, user.id):
+    if getattr(
+        request.state, "production_station", None
+    ) != "admin" or not await can_system_administer(session, user.id):
         raise HTTPException(
             403,
             "Раздел доступен только системному администратору",
@@ -152,6 +158,22 @@ class ListQuery(BaseModel):
     offset: int = Field(default=0, ge=0, le=1000000)
 
 
+class OrderListQuery(ListQuery):
+    sort: Literal["created_at", "total", "client", "status", "payment_status"] = "created_at"
+    direction: Literal["asc", "desc"] = "desc"
+
+
+class PayoutListQuery(ListQuery):
+    sort: Literal["created_at", "amount", "partner", "status"] = "created_at"
+    direction: Literal["asc", "desc"] = "desc"
+
+
+class EmployeeListQuery(ListQuery):
+    status: Literal["active", "blocked", ""] = ""
+    availability: Literal["available", "sick", "vacation", "absent", ""] = ""
+    station: Station | Literal["manager", ""] = ""
+
+
 class InboxListQuery(BaseModel):
     q: str = Field(default="", max_length=100)
     status: InboxStatus | Literal[""] = ""
@@ -166,7 +188,7 @@ async def statistics(_admin: SystemAdmin, session: Session):
 
 
 @router.get("/orders")
-async def orders(_admin: Admin, session: Session, query: Annotated[ListQuery, Query()]):
+async def orders(_admin: Admin, session: Session, query: Annotated[OrderListQuery, Query()]):
     return await ProductionAdminReads().orders(session, **query.model_dump())
 
 
@@ -180,7 +202,10 @@ async def order(order_id: int, _admin: Admin, session: Session):
 
 @router.get("/users")
 async def users(
-    request: Request, _admin: SystemAdmin, session: Session, query: Annotated[ListQuery, Query()]
+    request: Request,
+    _admin: SystemAdmin,
+    session: Session,
+    query: Annotated[EmployeeListQuery, Query()],
 ):
     return await ProductionAdminReads().users(
         session, **query.model_dump(), pepper=employee_pepper(request)
@@ -192,11 +217,26 @@ async def employees(
     request: Request,
     _admin: SystemAdmin,
     session: Session,
-    query: Annotated[ListQuery, Query()],
+    query: Annotated[EmployeeListQuery, Query()],
 ):
     return await ProductionAdminReads().employees(
         session, **query.model_dump(), pepper=employee_pepper(request)
     )
+
+
+@router.get("/clients/detail")
+async def client_detail(
+    _admin: SystemAdmin,
+    session: Session,
+    key: str = Query(min_length=3, max_length=512),
+):
+    try:
+        result = await ProductionAdminReads().client_detail(session, key=key)
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from error
+    if result is None:
+        raise HTTPException(404, "Клиент не найден")
+    return result
 
 
 def employee_pepper(request: Request) -> str:
@@ -338,7 +378,9 @@ async def clients(_admin: SystemAdmin, session: Session, query: Annotated[ListQu
 
 
 @router.get("/payouts")
-async def payouts(_admin: SystemAdmin, session: Session, query: Annotated[ListQuery, Query()]):
+async def payouts(
+    _admin: SystemAdmin, session: Session, query: Annotated[PayoutListQuery, Query()]
+):
     return await ProductionAdminReads().payouts(session, **query.model_dump())
 
 

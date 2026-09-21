@@ -223,7 +223,9 @@ export function AdminBoxes() {
                                     <strong>{modelName(rule.garment_model_id)}</strong>
                                     <small>{boxName(rule.box_id)}</small>
                                 </span>
-                                <span>до {rule.max_items} шт.</span>
+                                <span>
+                                    до {rule.max_items} шт. · очередь {rule.priority + 1}
+                                </span>
                             </button>
                         ))}
                     </div>
@@ -416,9 +418,17 @@ export function AdminBoxes() {
             {ruleEditor && (
                 <AssortmentDialog
                     title="Правило упаковки"
+                    description="Укажите, сколько изделий выбранной модели помещается в конкретную коробку. Если коробок несколько, меньшее число означает более высокий приоритет."
                     onClose={() => setRuleEditor(null)}
                 >
                     <form onSubmit={submitRule}>
+                        <div className={styles.packagingRuleGuide}>
+                            <span>Модель</span>
+                            <strong aria-hidden>→</strong>
+                            <span>Коробка</span>
+                            <strong aria-hidden>→</strong>
+                            <span>Количество</span>
+                        </div>
                         <div className={styles.formGrid}>
                             <label>
                                 Модель
@@ -469,7 +479,7 @@ export function AdminBoxes() {
                                 </select>
                             </label>
                             <label>
-                                Изделий в коробке
+                                Максимум изделий этой модели
                                 <input
                                     required
                                     type="number"
@@ -489,7 +499,7 @@ export function AdminBoxes() {
                                 />
                             </label>
                             <label>
-                                Приоритет
+                                Очередь выбора
                                 <input
                                     type="number"
                                     min="0"
@@ -501,6 +511,7 @@ export function AdminBoxes() {
                                         })
                                     }
                                 />
+                                <small>0 — основная коробка, 1 и далее — запасные.</small>
                             </label>
                         </div>
                         {formError && <p className={styles.error}>{formError}</p>}

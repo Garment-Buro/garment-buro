@@ -25,8 +25,20 @@ export function ProductionTerminal({
     );
     if (!ready)
         return (
-            <main className={styles.login}>
-                <p role="status">Проверяем рабочую сессию…</p>
+            <main className={`${styles.login} ${styles.sessionLoading}`}>
+                <video
+                    className={styles.sessionLogo}
+                    src="/logo_anim.mp4"
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
+                    preload="auto"
+                    aria-hidden="true"
+                />
+                <span className={styles.srOnly} role="status">
+                    Загрузка терминала
+                </span>
             </main>
         );
     if (!authenticated) return <ProductionLogin />;

@@ -1,17 +1,18 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { PiX } from 'react-icons/pi';
 import styles from '../ProductionAdmin.module.css';
 
 export function AssortmentDialog({
     title,
     description,
+    headerActions,
     onClose,
     children,
 }: {
     title: string;
-    description?: string;
+    description?: ReactNode;
+    headerActions?: ReactNode;
     onClose: () => void;
     children: ReactNode;
 }) {
@@ -23,7 +24,7 @@ export function AssortmentDialog({
                 aria-modal="true"
                 aria-labelledby="assortment-dialog-title"
             >
-                <div className={styles.dialogHeading}>
+                <header className={styles.dialogHeading}>
                     <div>
                         <h2 id="assortment-dialog-title">{title}</h2>
                         {description && (
@@ -32,17 +33,14 @@ export function AssortmentDialog({
                             </p>
                         )}
                     </div>
-                    <button
-                        type="button"
-                        className={styles.iconButton}
-                        onClick={onClose}
-                        aria-label="Закрыть окно"
-                        title="Закрыть"
-                    >
-                        <PiX aria-hidden />
-                    </button>
-                </div>
-                {children}
+                    <div className={styles.dialogHeaderActions}>
+                        {headerActions}
+                        <button type="button" onClick={onClose}>
+                            Закрыть
+                        </button>
+                    </div>
+                </header>
+                <div className={styles.assortmentDialogBody}>{children}</div>
             </section>
         </div>
     );
@@ -91,4 +89,3 @@ export const textOrNull = (value: FormDataEntryValue | null) => {
     const normalized = String(value ?? '').trim();
     return normalized || null;
 };
-

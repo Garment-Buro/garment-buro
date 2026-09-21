@@ -1,8 +1,8 @@
 """Bounded administrative projections over existing source-of-truth tables."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import String, case, cast, func, or_, select
+from sqlalchemy import String, and_, case, cast, func, or_, select, union
 from sqlalchemy.orm import selectinload
 
 from app.modules.bank_payouts.models import PartnerBankPayment
@@ -11,6 +11,7 @@ from app.modules.identity.models import Role, User, UserRole
 from app.modules.orders.models import Order
 from app.modules.orders.workflow_models import OrderWorkflow
 from app.modules.partners.models import PartnerPayoutRequest, PartnerProfile
+from app.modules.payments.models import Payment
 from app.modules.production.auth_models import ProductionCredential, ProductionEmployee
 from app.modules.production.auth_service import code_digest
 from app.modules.production.inbox_models import AdminInboxItem
@@ -54,7 +55,7 @@ def order_row(row):
 
 
 class ProductionAdminReads:
-    async def orders(self, session, *, q, status, limit, offset):
+    async def orders(self, session, *, q, status, limit, offset, sort, direction):
         state = func.coalesce(OrderWorkflow.state, Order.status)
         statement = select(Order, OrderWorkflow.state).outerjoin(
             OrderWorkflow, OrderWorkflow.order_id == Order.id
@@ -64,9 +65,26 @@ class ProductionAdminReads:
         )
         if status:
             statement = statement.where(state == status)
+        order_fields = {
+            "created_at": Order.created_at,
+            "total": Order.total_price,
+            "client": func.lower(
+                func.coalesce(
+                    Order.last_name,
+                    Order.first_name,
+                    Order.email,
+                    Order.phone,
+                    "",
+                )
+            ),
+            "status": state,
+            "payment_status": Order.payment_status,
+        }
+        ordered = order_fields[sort].asc() if direction == "asc" else order_fields[sort].desc()
+        tie_breaker = Order.id.asc() if direction == "asc" else Order.id.desc()
         rows = (
             await session.execute(
-                statement.order_by(Order.id.desc()).offset(offset).limit(limit + 1)
+                statement.order_by(ordered, tie_breaker).offset(offset).limit(limit + 1)
             )
         ).all()
         return page(rows, limit, offset, order_row)
@@ -113,9 +131,12 @@ class ProductionAdminReads:
                 {
                     "id": x.id,
                     "title": x.title_snapshot,
+                    "sku": x.sku_snapshot,
+                    "image": x.image_url_snapshot,
                     "quantity": x.quantity,
                     "size": x.size_snapshot,
                     "color": x.color_snapshot,
+                    "unit_price": money(x.unit_price),
                     "total": money(x.line_total),
                     "customization": x.customization_snapshot,
                 }
@@ -123,7 +144,18 @@ class ProductionAdminReads:
             ],
         }
 
-    async def employees(self, session, *, q, status, limit, offset, pepper):
+    async def employees(
+        self,
+        session,
+        *,
+        q,
+        status,
+        limit,
+        offset,
+        pepper,
+        availability="",
+        station="",
+    ):
         q = q.strip()
         active_station = (
             select(ProductionCredential.station)
@@ -169,6 +201,30 @@ class ProductionAdminReads:
         )
         if status:
             statement = statement.where(User.status == status)
+        if availability:
+            statement = statement.where(
+                func.coalesce(ProductionEmployee.availability, "available") == availability
+            )
+        if station:
+            role_names = (
+                ("production_supervisor",)
+                if station == "manager"
+                else (
+                    "production_workshop",
+                    "production_application",
+                    "production_sewing",
+                    "production_qc",
+                )
+                if station == "workshop"
+                else (f"production_{station}",)
+            )
+            statement = statement.where(
+                User.id.in_(
+                    select(UserRole.user_id)
+                    .join(Role, Role.id == UserRole.role_id)
+                    .where(Role.name.in_(role_names))
+                )
+            )
         rows = (
             await session.execute(
                 statement.order_by(User.id.desc()).offset(offset).limit(limit + 1)
@@ -213,7 +269,7 @@ class ProductionAdminReads:
             offset,
             lambda row: {
                 "id": row[0].id,
-                "is_demo": row[2] is not None,
+                "is_demo": False,
                 "availability": row[1].availability if row[1] else "available",
                 "is_production_admin": row[0].id in production_admin_ids,
                 "first_name": row[0].first_name or "",
@@ -234,10 +290,28 @@ class ProductionAdminReads:
             },
         )
 
-    async def users(self, session, *, q, status, limit, offset, pepper):
+    async def users(
+        self,
+        session,
+        *,
+        q,
+        status,
+        limit,
+        offset,
+        pepper,
+        availability="",
+        station="",
+    ):
         """Compatibility alias: terminal users are production employees."""
         return await self.employees(
-            session, q=q, status=status, limit=limit, offset=offset, pepper=pepper
+            session,
+            q=q,
+            status=status,
+            availability=availability,
+            station=station,
+            limit=limit,
+            offset=offset,
+            pepper=pepper,
         )
 
     def clients_query(self):
@@ -257,6 +331,7 @@ class ProductionAdminReads:
                 func.max(Order.user_id).label("user_id"),
                 func.max(Order.id).label("last_order_id"),
                 func.max(Order.created_at).label("last_order_at"),
+                func.min(Order.created_at).label("first_order_at"),
                 func.count(Order.id).label("orders_count"),
                 func.sum(Order.total_price).label("orders_total"),
                 func.sum(case((Order.payment_status == "paid", Order.total_price), else_=0)).label(
@@ -313,7 +388,132 @@ class ProductionAdminReads:
             },
         )
 
-    async def payouts(self, session, *, q, status, limit, offset):
+    @staticmethod
+    def client_identity(key: str):
+        kind, separator, value = key.partition(":")
+        if not separator or not value:
+            raise ValueError("Некорректный идентификатор клиента")
+        if kind in {"user", "order"}:
+            if not value.isdigit() or int(value) < 1:
+                raise ValueError("Некорректный идентификатор клиента")
+            value = int(value)
+        if kind == "user":
+            return kind, value, Order.user_id == value
+        if kind == "email":
+            return kind, value, and_(Order.user_id.is_(None), Order.email_normalized == value)
+        if kind == "phone":
+            return (
+                kind,
+                value,
+                and_(
+                    Order.user_id.is_(None),
+                    func.nullif(Order.email_normalized, "").is_(None),
+                    Order.phone == value,
+                ),
+            )
+        if kind == "order":
+            return kind, value, Order.id == value
+        raise ValueError("Некорректный идентификатор клиента")
+
+    async def client_detail(self, session, *, key: str):
+        kind, value, order_filter = self.client_identity(key)
+        rows = (
+            await session.execute(
+                select(Order, OrderWorkflow.state)
+                .outerjoin(OrderWorkflow, OrderWorkflow.order_id == Order.id)
+                .where(Order.is_demo.is_(False), order_filter)
+                .order_by(Order.created_at.desc(), Order.id.desc())
+                .limit(100)
+            )
+        ).all()
+        if not rows:
+            return None
+        orders = [row[0] for row in rows]
+        latest = orders[0]
+        account = await session.get(User, value) if kind == "user" else None
+        direct_ticket_filter = (
+            AdminInboxItem.reporter_user_id == value
+            if kind == "user"
+            else and_(
+                AdminInboxItem.reporter_user_id.is_(None),
+                func.lower(AdminInboxItem.reporter_email) == str(value).lower(),
+            )
+            if kind == "email"
+            else and_(
+                AdminInboxItem.reporter_user_id.is_(None),
+                AdminInboxItem.reporter_email.is_(None),
+                AdminInboxItem.reporter_phone == value,
+            )
+            if kind == "phone"
+            else AdminInboxItem.order_id == value
+        )
+        order_ids = [order.id for order in orders]
+        tickets = list(
+            await session.scalars(
+                select(AdminInboxItem)
+                .where(
+                    AdminInboxItem.kind == "support",
+                    or_(direct_ticket_filter, AdminInboxItem.order_id.in_(order_ids)),
+                )
+                .order_by(AdminInboxItem.updated_at.desc(), AdminInboxItem.id.desc())
+                .limit(100)
+            )
+        )
+        return {
+            "key": key,
+            "name": " ".join(value for value in (latest.first_name, latest.last_name) if value),
+            "email": latest.email,
+            "phone": latest.phone,
+            "account": None
+            if account is None
+            else {
+                "id": account.id,
+                "email": account.email,
+                "phone": account.phone,
+                "username": account.username,
+                "registered_at": account.created_at,
+                "email_verified": account.email_verified_at is not None,
+                "gender": account.gender,
+                "birth_date": account.birth_date,
+                "height_cm": money(account.height_cm) if account.height_cm is not None else None,
+                "weight_kg": money(account.weight_kg) if account.weight_kg is not None else None,
+            },
+            "recipient": {
+                "patronymic": latest.patronymic,
+                "city": latest.delivery_city,
+                "address": latest.delivery_address,
+                "delivery_method": latest.delivery_method,
+                "pickup_point": latest.cdek_point_code,
+            },
+            "orders": [
+                {
+                    "id": order.id,
+                    "created_at": order.created_at,
+                    "total": money(order.total_price),
+                    "status": order.status,
+                    "payment_status": order.payment_status,
+                    "workflow_state": workflow_state,
+                    "delivery_city": order.delivery_city,
+                    "delivery_method": order.delivery_method,
+                    "payment_method": order.payment_method,
+                }
+                for order, workflow_state in rows
+            ],
+            "tickets": [
+                {
+                    "id": ticket.id,
+                    "subject": ticket.subject,
+                    "status": ticket.status,
+                    "priority": ticket.priority,
+                    "order_id": ticket.order_id,
+                    "created_at": ticket.created_at,
+                    "updated_at": ticket.updated_at,
+                }
+                for ticket in tickets
+            ],
+        }
+
+    async def payouts(self, session, *, q, status, limit, offset, sort, direction):
         statement = (
             select(PartnerPayoutRequest, PartnerProfile.display_name, PartnerBankPayment.state)
             .join(PartnerProfile, PartnerProfile.id == PartnerPayoutRequest.partner_id)
@@ -324,9 +524,19 @@ class ProductionAdminReads:
         )
         if status:
             statement = statement.where(PartnerPayoutRequest.status == status)
+        payout_fields = {
+            "created_at": PartnerPayoutRequest.created_at,
+            "amount": PartnerPayoutRequest.amount,
+            "partner": func.lower(PartnerProfile.display_name),
+            "status": PartnerPayoutRequest.status,
+        }
+        ordered = payout_fields[sort].asc() if direction == "asc" else payout_fields[sort].desc()
+        tie_breaker = (
+            PartnerPayoutRequest.id.asc() if direction == "asc" else PartnerPayoutRequest.id.desc()
+        )
         rows = (
             await session.execute(
-                statement.order_by(PartnerPayoutRequest.id.desc()).offset(offset).limit(limit + 1)
+                statement.order_by(ordered, tie_breaker).offset(offset).limit(limit + 1)
             )
         ).all()
         return page(
@@ -348,6 +558,8 @@ class ProductionAdminReads:
         )
 
     async def stats(self, session):
+        now = datetime.now(timezone.utc)
+        week_ago = now - timedelta(days=7)
         count, total, paid = (
             await session.execute(
                 select(
@@ -375,27 +587,84 @@ class ProductionAdminReads:
                 .group_by(state)
             )
         ]
+        recent_orders, recent_total = (
+            await session.execute(
+                select(func.count(Order.id), func.sum(Order.total_price)).where(
+                    Order.is_demo.is_(False),
+                    Order.created_at >= week_ago,
+                )
+            )
+        ).one()
+        recent_paid = await session.scalar(
+            select(func.sum(Payment.amount))
+            .join(Order, Order.id == Payment.order_id)
+            .where(
+                Payment.status == "succeeded",
+                Payment.succeeded_at >= week_ago,
+                Order.is_demo.is_(False),
+            )
+        )
+        employee_roster = union(
+            select(
+                ProductionEmployee.user_id.label("user_id"),
+                ProductionEmployee.created_at.label("created_at"),
+            ),
+            select(
+                ProductionDemoEmployee.user_id.label("user_id"),
+                User.created_at.label("created_at"),
+            ).join(User, User.id == ProductionDemoEmployee.user_id),
+        ).subquery()
+        employees_count = await session.scalar(select(func.count()).select_from(employee_roster))
+        recent_employees = await session.scalar(
+            select(func.count())
+            .select_from(employee_roster)
+            .where(employee_roster.c.created_at >= week_ago)
+        )
+        clients = self.clients_query()
+        clients_count = await session.scalar(select(func.count()).select_from(clients))
+        recent_clients = await session.scalar(
+            select(func.count()).select_from(clients).where(clients.c.first_order_at >= week_ago)
+        )
+
+        async def open_inbox(kind: str):
+            current = await session.scalar(
+                select(func.count(AdminInboxItem.id)).where(
+                    AdminInboxItem.kind == kind,
+                    AdminInboxItem.status.in_(("new", "in_progress")),
+                )
+            )
+            at_week_start = await session.scalar(
+                select(func.count(AdminInboxItem.id)).where(
+                    AdminInboxItem.kind == kind,
+                    AdminInboxItem.created_at <= week_ago,
+                    or_(
+                        AdminInboxItem.resolved_at.is_(None),
+                        AdminInboxItem.resolved_at > week_ago,
+                    ),
+                )
+            )
+            return current or 0, (current or 0) - (at_week_start or 0)
+
+        support_open, support_change = await open_inbox("support")
+        problems_open, problems_change = await open_inbox("production_problem")
         return {
-            "as_of": datetime.now(timezone.utc),
+            "as_of": now,
             "orders_count": count,
             "orders_total": money(total),
             "paid_orders_total": money(paid),
-            "employees_count": await session.scalar(select(func.count(ProductionEmployee.id))),
-            "clients_count": await session.scalar(
-                select(func.count()).select_from(self.clients_query())
-            ),
-            "support_open_count": await session.scalar(
-                select(func.count(AdminInboxItem.id)).where(
-                    AdminInboxItem.kind == "support",
-                    AdminInboxItem.status.in_(("new", "in_progress")),
-                )
-            ),
-            "problems_open_count": await session.scalar(
-                select(func.count(AdminInboxItem.id)).where(
-                    AdminInboxItem.kind == "production_problem",
-                    AdminInboxItem.status.in_(("new", "in_progress")),
-                )
-            ),
+            "employees_count": employees_count,
+            "clients_count": clients_count,
+            "support_open_count": support_open,
+            "problems_open_count": problems_open,
+            "week_change": {
+                "orders_count": recent_orders or 0,
+                "orders_total": money(recent_total),
+                "paid_orders_total": money(recent_paid),
+                "employees_count": recent_employees or 0,
+                "clients_count": recent_clients or 0,
+                "support_open_count": support_change,
+                "problems_open_count": problems_change,
+            },
             "order_states": order_states,
             "payout_states": payout_states,
         }

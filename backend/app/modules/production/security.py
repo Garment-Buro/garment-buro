@@ -31,6 +31,21 @@ async def can_system_administer(session, user_id: int) -> bool:
     )
 
 
+async def is_production_manager(session, user_id: int) -> bool:
+    return (
+        await session.scalar(
+            select(UserRole.user_id)
+            .join(Role, Role.id == UserRole.role_id)
+            .where(
+                UserRole.user_id == user_id,
+                Role.name == RoleName.PRODUCTION_SUPERVISOR.value,
+            )
+            .limit(1)
+        )
+        is not None
+    )
+
+
 async def stations_for_user(session, user_id: int) -> list[str]:
     availability = await session.scalar(
         select(ProductionEmployee.availability).where(ProductionEmployee.user_id == user_id)

@@ -42,9 +42,12 @@ export interface AdminOrderDetail extends AdminOrder {
     items: {
         id: number;
         title: string;
+        sku: string | null;
+        image: string;
         quantity: number;
         size: string;
         color: string;
+        unit_price: string;
         total: string;
         customization: Record<string, unknown> | null;
     }[];
@@ -63,6 +66,22 @@ export const productionStations = [
     'shipping',
 ] as const;
 export type ProductionStation = (typeof productionStations)[number];
+export const employeeStations = [
+    'tech',
+    'kit',
+    'cut',
+    'dtf',
+    'workshop',
+    'press',
+    'packing',
+    'shipping',
+] as const satisfies readonly ProductionStation[];
+export const employeeStation = (
+    station: ProductionStation,
+): (typeof employeeStations)[number] =>
+    station === 'application' || station === 'sewing' || station === 'qc'
+        ? 'workshop'
+        : station;
 export interface AdminEmployee {
     availability: 'available' | 'sick' | 'vacation' | 'absent';
     is_production_admin: boolean;
@@ -106,6 +125,51 @@ export interface AdminClient {
     orders_count: number;
     orders_total: string;
     paid_orders_total: string;
+}
+export interface AdminClientDetail {
+    key: string;
+    name: string;
+    email: string | null;
+    phone: string | null;
+    account: {
+        id: number;
+        email: string | null;
+        phone: string | null;
+        username: string | null;
+        registered_at: string;
+        email_verified: boolean;
+        gender: string | null;
+        birth_date: string | null;
+        height_cm: string | null;
+        weight_kg: string | null;
+    } | null;
+    recipient: {
+        patronymic: string | null;
+        city: string | null;
+        address: string | null;
+        delivery_method: string | null;
+        pickup_point: string | null;
+    };
+    orders: {
+        id: number;
+        created_at: string;
+        total: string;
+        status: string;
+        payment_status: string;
+        workflow_state: string | null;
+        delivery_city: string | null;
+        delivery_method: string | null;
+        payment_method: string | null;
+    }[];
+    tickets: {
+        id: number;
+        subject: string;
+        status: AdminInboxStatus;
+        priority: AdminInboxPriority;
+        order_id: number | null;
+        created_at: string;
+        updated_at: string;
+    }[];
 }
 export interface AdminPayout {
     id: number;
@@ -152,6 +216,15 @@ export interface AdminStats {
     clients_count: number;
     support_open_count: number;
     problems_open_count: number;
+    week_change: {
+        orders_count: number;
+        orders_total: string;
+        paid_orders_total: string;
+        employees_count: number;
+        clients_count: number;
+        support_open_count: number;
+        problems_open_count: number;
+    };
     order_states: { status: string; count: number }[];
     payout_states: { status: string; count: number; amount: string }[];
 }
@@ -167,11 +240,10 @@ export const sectionLabels: Record<AdminSection, string> = {
 };
 export const systemAdminSections: AdminSection[] = [
     'stats',
-    'orders',
-    'payouts',
     'employees',
-    'clients',
     'assortment',
+    'orders',
+    'clients',
     'problems',
     'support',
 ];
@@ -181,11 +253,11 @@ export const stationLabels: Record<ProductionStation, string> = {
     kit: 'Комплектовка',
     cut: 'Раскрой',
     dtf: 'Печать DTF',
-    workshop: 'Цех (нанесение, пошив, ВТО)',
-    application: 'Нанесение',
-    sewing: 'Пошив',
+    workshop: 'Цех',
+    application: 'Цех',
+    sewing: 'Цех',
     press: 'ВТО',
-    qc: 'ОТК',
+    qc: 'Цех',
     packing: 'Упаковка',
     shipping: 'Отправка',
 };
@@ -208,8 +280,12 @@ export const statusLabels: Record<string, string> = {
     requested: 'На рассмотрении',
     approved: 'Одобрена',
     rejected: 'Отклонена',
-    active: 'Активен',
-    blocked: 'Заблокирован',
+    active: 'Работает',
+    available: 'Работает',
+    sick: 'Болеет',
+    vacation: 'В отпуске',
+    absent: 'Отсутствует',
+    blocked: 'Доступ закрыт',
     deleted: 'Удалён',
     in_progress: 'В работе',
     resolved: 'Решено',

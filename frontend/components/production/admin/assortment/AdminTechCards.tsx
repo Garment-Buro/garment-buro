@@ -10,7 +10,8 @@ import {
 import { useAssortmentResource } from '@/hooks/production/useAssortmentResource';
 import { saveAssortment } from '@/lib/api/productionAssortment';
 import {
-    productionStations,
+    employeeStation,
+    employeeStations,
     stationLabels,
 } from '@/lib/production/adminTypes';
 import type {
@@ -83,6 +84,16 @@ export function AdminTechCards() {
             checkpoints:
                 source?.checkpoints.map((checkpoint, index) => ({
                     ...checkpoint,
+                    stage_code: employeeStation(
+                        checkpoint.stage_code as Parameters<
+                            typeof employeeStation
+                        >[0],
+                    ),
+                    role_code: employeeStation(
+                        checkpoint.role_code as Parameters<
+                            typeof employeeStation
+                        >[0],
+                    ),
                     position: index + 1,
                 })) ?? [newCheckpoint(1)],
         });
@@ -364,7 +375,7 @@ export function AdminTechCards() {
                                                         )
                                                     }
                                                 >
-                                                    {productionStations.map((station) => (
+                                                    {employeeStations.map((station) => (
                                                         <option
                                                             key={station}
                                                             value={station}
@@ -386,7 +397,7 @@ export function AdminTechCards() {
                                                         )
                                                     }
                                                 >
-                                                    {productionStations.map((station) => (
+                                                    {employeeStations.map((station) => (
                                                         <option
                                                             key={station}
                                                             value={station}

@@ -92,7 +92,7 @@ export function PrintSheet({
                                             ),
                                         )}
                                     </ul>
-                                    <h3>ОТК</h3>
+                                    <h3>Проверка качества</h3>
                                     <ul>
                                         {unit.specification.quality_checks.map(
                                             (x) => (
