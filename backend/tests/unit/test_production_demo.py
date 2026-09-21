@@ -174,6 +174,13 @@ def test_demo_seed_is_idempotent_private_and_has_each_workstation(tmp_path):
                 assert detail["state"] == "dispatched"
                 for station, row in codes.items():
                     assert row["code"].startswith(PREFIXES[station])
+            # Losing the private export must not rotate still-active employee codes or
+            # prevent idempotent order provisioning.
+            secret.unlink()
+            assert await provision(db, files, secret, _webp()) == rows
+            preserved = json.loads(secret.read_text())
+            assert all(row["code"] is None for row in preserved.values())
+            assert await provision(db, files, secret, _webp()) == rows
         finally:
             await db.shutdown()
 

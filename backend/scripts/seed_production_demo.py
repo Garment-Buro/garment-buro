@@ -17,7 +17,11 @@ from app.modules.production.demo.scenarios import prepare_scenario
 
 
 async def provision(database, files, credentials_file, image):
-    employees = await ensure_employees(database, credentials_file)
+    employees = await ensure_employees(
+        database,
+        credentials_file,
+        preserve_unexported_existing=True,
+    )
     actor = employees["tech"]["user_id"]
     async with database.session() as session:
         product, size, card = await ensure_references(session, actor)

@@ -24,7 +24,7 @@ STATIONS = {
 }
 
 
-async def ensure_employees(database, credentials_file):
+async def ensure_employees(database, credentials_file, *, preserve_unexported_existing=False):
     """Do not rotate existing codes or take over pre-existing real accounts."""
     pending = credentials_file.with_suffix(".pending")
     source = pending if pending.exists() else credentials_file
@@ -67,14 +67,20 @@ async def ensure_employees(database, credentials_file):
             )
             if credential:
                 code = saved.get(station, {}).get("code", "")
-                if (
-                    credential.station != station
-                    or not code
-                    or credential.code_digest != code_digest(code, pepper)
+                if credential.station != station or (
+                    code and credential.code_digest != code_digest(code, pepper)
                 ):
                     raise ValueError(
                         "Existing demo code missing from private file; no rotation performed"
                     )
+                if not code:
+                    if not preserve_unexported_existing:
+                        raise ValueError(
+                            "Existing demo code missing from private file; no rotation performed"
+                        )
+                    # The digest proves an active code exists, but its plaintext cannot be
+                    # recovered. Keep that access intact and continue provisioning orders.
+                    code = None
             else:
                 if marker:
                     raise ValueError("Demo employee was revoked; do not silently re-enable access")
