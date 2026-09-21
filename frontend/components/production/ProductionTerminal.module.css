@@ -403,6 +403,37 @@
     flex-wrap: wrap;
     margin: 12px 0;
 }
+.approvalPanel {
+    margin-bottom: 20px;
+    padding: 16px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: #f8f7fa;
+}
+.approvalPanel > p {
+    margin-bottom: 12px;
+}
+.approvalGrid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+}
+.approvalGrid > span {
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: #ece9ed;
+    color: var(--muted);
+    font-size: 13px;
+}
+.approvalGrid > span[data-ready='true'] {
+    background: #edf6e9;
+    color: #3c6730;
+}
+.approvalGrid strong {
+    display: block;
+    margin-top: 3px;
+    color: var(--ink);
+}
 .warning,
 .error,
 .success {
@@ -563,7 +594,8 @@
         padding: 12px;
     }
     .componentForm,
-    .statusGrid {
+    .statusGrid,
+    .approvalGrid {
         grid-template-columns: 1fr;
     }
     .componentForm label:first-child {

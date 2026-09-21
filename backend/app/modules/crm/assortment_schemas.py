@@ -50,6 +50,7 @@ class CrmCatalogProductReferenceRead(BaseModel):
 
 
 class CrmGarmentPatternWrite(BaseModel):
+    code: str = Field(min_length=1, max_length=64)
     garment_model_id: int = Field(gt=0)
     garment_size_id: int = Field(gt=0)
     media_object_id: int = Field(gt=0)
@@ -59,6 +60,11 @@ class CrmGarmentPatternWrite(BaseModel):
     sleeve_length_cm: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)
     height_cm: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)
     is_active: bool = True
+
+    @field_validator("code")
+    @classmethod
+    def normalize_code(cls, value: str) -> str:
+        return _code(value)
 
     @field_validator("name")
     @classmethod

@@ -198,13 +198,13 @@ export function ProductionWorkspace() {
                                 aria-current={!cycle ? 'page' : undefined}
                                 onClick={() => setCycle(false)}
                             >
-                                Моя работа
+                                Терминал
                             </button>
                             <button
                                 aria-current={cycle ? 'page' : undefined}
                                 onClick={() => setCycle(true)}
                             >
-                                Весь цикл
+                                Моя работа
                             </button>
                         </nav>
                         <nav
@@ -223,7 +223,7 @@ export function ProductionWorkspace() {
                                     onClick={() => choose(s)}
                                 >
                                     <b>{i + 1}</b>
-                                    {labels[s]}
+                                    {stationRoles[s]}
                                 </button>
                             ))}
                         </nav>
@@ -245,17 +245,19 @@ export function ProductionWorkspace() {
                             <p className={styles.notice}>{terminal.notice}</p>
                         )}
                     </div>
-                    <BagScanner
-                        disabled={busy || printing}
-                        station={station}
-                        onOpen={(id, unit) => {
-                            setCycle(false);
-                            terminal.select(id, unit);
-                        }}
-                    />
+                    {!cycle && (
+                        <BagScanner
+                            disabled={busy || printing}
+                            station={station}
+                            onOpen={(id, unit) => {
+                                setCycle(false);
+                                terminal.select(id, unit);
+                            }}
+                        />
+                    )}
                     {cycle ? (
                         <ProductionCycle
-                            assigned={employee?.stations ?? []}
+                            station={station}
                             onOpen={choose}
                         />
                     ) : (

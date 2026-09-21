@@ -106,6 +106,33 @@ export function ProductionUnit({
             )}
             {spec && (
                 <>
+                    {station === 'tech' && (
+                        <div className={styles.statusGrid}>
+                            <p>
+                                Привязанная техкарта
+                                <strong>
+                                    {(() => {
+                                        const card = unit.cards.find(
+                                            (item) =>
+                                                item.id ===
+                                                spec.tech_card_revision_id,
+                                        );
+                                        return card
+                                            ? `${card.name} · ревизия ${card.revision}`
+                                            : `Ревизия №${spec.tech_card_revision_id}`;
+                                    })()}
+                                </strong>
+                            </p>
+                            <p>
+                                Оригиналы лекал
+                                <strong>
+                                    {spec.pattern_file_ids.length
+                                        ? `${spec.pattern_file_ids.length} файл(а)`
+                                        : 'Не прикреплены'}
+                                </strong>
+                            </p>
+                        </div>
+                    )}
                     <ol className={styles.route}>
                         {spec.route.map((step, index) => (
                             <li

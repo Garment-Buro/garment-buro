@@ -566,6 +566,40 @@
     height: 280px;
     object-fit: contain;
 }
+.constructorCanvas {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1;
+    max-height: 360px;
+    overflow: hidden;
+    background: var(--soft);
+}
+.viewGrid .constructorGarment {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    object-fit: contain;
+    transform: translate(-50%, -50%);
+}
+.viewGrid .constructorDecoration {
+    position: absolute;
+    z-index: 2;
+    display: grid;
+    place-items: center;
+    transform-origin: center;
+}
+.viewGrid .constructorDecoration img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+.constructorDecoration > span {
+    width: max-content;
+    max-width: 200%;
+    white-space: pre-wrap;
+    text-align: center;
+    line-height: 1.15;
+}
 .viewGrid small {
     padding: 8px;
     font-size: 12px;
@@ -712,6 +746,25 @@
 }
 .cycle > p {
     margin-bottom: 16px;
+}
+.roleGuide {
+    max-width: 760px;
+    padding: clamp(20px, 4vw, 40px);
+    border: 1px solid var(--line);
+    border-radius: 22px;
+    background: var(--paper);
+}
+.roleGuide h2 {
+    margin-top: 24px;
+}
+.roleGuideLabel {
+    display: inline-flex;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: var(--violet-wash);
+    color: var(--purple);
+    font-size: 13px;
+    font-weight: 800;
 }
 .cycleStep {
     background: var(--paper);

@@ -89,6 +89,8 @@ async def prepare_scenario(database, files, project_id, unit_id, station, actor,
             if station != "tech":
                 commands += [
                     dict(action="confirm_documents", unit_id=unit_id),
+                    dict(action="approve_order", actor_station="tech"),
+                    dict(action="approve_order", actor_station="dtf"),
                     dict(action="release"),
                 ]
             if station not in {"tech", "cut"}:
@@ -121,7 +123,7 @@ async def prepare_scenario(database, files, project_id, unit_id, station, actor,
                     dict(action="pack_bag"),
                 ]
         for version, payload in enumerate(commands):
-            action_station = {
+            action_station = payload.get("actor_station") or {
                 "plan": "tech",
                 "confirm_documents": "tech",
                 "release": "tech",
@@ -145,7 +147,10 @@ async def prepare_scenario(database, files, project_id, unit_id, station, actor,
                 project_id=project_id,
                 actor_id=command_actor,
                 key=f"demo-v1:{project_id}:{version}",
-                command=ProductionCommand(expected_version=version, **payload),
+                command=ProductionCommand(
+                    expected_version=version,
+                    **{key: value for key, value in payload.items() if key != "actor_station"},
+                ),
             )
             if legacy and version == 0:
                 bag = await session.scalar(

@@ -33,7 +33,11 @@ export function queueItemMatchesStation(
         station !== 'tech' &&
         station !== 'shipping'
     ) {
-        if (station === 'dtf') return (item.dtf_pending ?? 0) > 0;
+        if (station === 'dtf')
+            return (
+                (item.state === 'inbox' && !item.dtf_approved) ||
+                (item.dtf_pending ?? 0) > 0
+            );
         if (station === 'kit')
             return Boolean(
                 item.stage_counts?.kit || item.stage_counts?.waiting_dtf,
@@ -72,8 +76,8 @@ export const stationRoles: Record<Station, string> = {
 export const stationGuides: Record<Station, { task: string; result: string }> =
     {
         tech: {
-            task: 'Проверить заказ, закрепить техкарту и оригиналы. Выпустить QR мешка и листы вещей.',
-            result: 'Техкарты подтверждены. QR мешка заказа напечатан, заказ передан закройщику.',
+            task: 'Сверить макет из конструктора, нанесения, привязанную техкарту и оригиналы лекал. Подтвердить заказ или отправить его администратору в «Проблемы».',
+            result: 'После второго подтверждения от DTF становится доступен QR заказа и передача закройщику.',
         },
         workshop: {
             task: 'Выполнить нанесение, пошив и ВТО по закреплённой техкарте. Работа учитывается за общим цехом.',
@@ -88,8 +92,8 @@ export const stationGuides: Record<Station, { task: string; result: string }> =
             result: 'Пачка кроя передана на следующий участок своего маршрута.',
         },
         dtf: {
-            task: 'Скачать оригиналы, напечатать и нарезать плёнку. Подписать пакет QR мешка.',
-            result: 'Печать готова к забору. Вложение подтверждает комплектовщик, не печатник.',
+            task: 'До выпуска проверить макеты нанесений и подтвердить заказ. После раскроя скачать оригиналы, напечатать и нарезать плёнку.',
+            result: 'Совместно с технологом открыт QR заказа; готовая печать отмечена для комплектовщика.',
         },
         application: {
             task: 'Проверить вложение DTF и нанести печать на крой по техкарте.',

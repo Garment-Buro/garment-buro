@@ -53,7 +53,7 @@ class AdminInboxService:
         reporter_user_id: int,
         order_id: int,
         project_id: int,
-        production_unit_id: int,
+        production_unit_id: int | None,
         station: str,
     ) -> AdminInboxItem:
         reporter = await session.get(User, reporter_user_id)
@@ -66,7 +66,11 @@ class AdminInboxService:
             kind=AdminInboxKind.PRODUCTION_PROBLEM.value,
             status=AdminInboxStatus.NEW.value,
             priority="normal",
-            subject=f"Проблема с изделием №{production_unit_id}",
+            subject=(
+                f"Проблема с изделием №{production_unit_id}"
+                if production_unit_id is not None
+                else f"Заказ №{order_id} отправлен на модерацию"
+            ),
             message=message,
             reporter_user_id=reporter_user_id,
             reporter_name=reporter_name or None,

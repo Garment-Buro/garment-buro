@@ -38,6 +38,16 @@ class ProductionBag(Base, IntegerIdMixin, TimestampMixin):
             "state IN ('inbox','kitting','workshop','waiting_dtf','packed','dispatched')",
             name="production_bag_state_valid",
         ),
+        CheckConstraint(
+            "(tech_approved_at IS NULL AND tech_approved_by_user_id IS NULL) OR "
+            "(tech_approved_at IS NOT NULL AND tech_approved_by_user_id IS NOT NULL)",
+            name="production_bag_tech_approval_consistent",
+        ),
+        CheckConstraint(
+            "(dtf_approved_at IS NULL AND dtf_approved_by_user_id IS NULL) OR "
+            "(dtf_approved_at IS NOT NULL AND dtf_approved_by_user_id IS NOT NULL)",
+            name="production_bag_dtf_approval_consistent",
+        ),
     )
     project_id: Mapped[int] = mapped_column(
         ForeignKey("crm_order_projects.id", ondelete="RESTRICT"), unique=True
@@ -47,6 +57,17 @@ class ProductionBag(Base, IntegerIdMixin, TimestampMixin):
     tracking_number: Mapped[str | None] = mapped_column(String(100))
     flow_version: Mapped[int] = mapped_column(Integer, default=2, server_default="2")
     public_token: Mapped[str | None] = mapped_column(String(64), unique=True)
+    tech_approved_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
+    tech_approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    dtf_approved_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
+    dtf_approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    moderation_inbox_item_id: Mapped[int | None] = mapped_column(
+        ForeignKey("admin_inbox_items.id", ondelete="SET NULL"), nullable=True, index=True
+    )
 
 
 class ProductionSpecification(Base, IntegerIdMixin):

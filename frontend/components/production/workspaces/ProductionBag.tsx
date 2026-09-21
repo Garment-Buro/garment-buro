@@ -74,6 +74,26 @@ export function ProductionBag({
                         <span>
                             Версия<strong>{project.version}</strong>
                         </span>
+                        {project.state === 'inbox' && (
+                            <span>
+                                Технолог
+                                <strong>
+                                    {project.tech_approved
+                                        ? 'Подтвердил'
+                                        : 'Ожидается'}
+                                </strong>
+                            </span>
+                        )}
+                        {project.state === 'inbox' && (
+                            <span>
+                                DTF
+                                <strong>
+                                    {project.dtf_approved
+                                        ? 'Подтвердил'
+                                        : 'Ожидается'}
+                                </strong>
+                            </span>
+                        )}
                     </div>
                     {(station === 'tech' ||
                         station === 'dtf' ||
@@ -215,7 +235,7 @@ export function ProductionBag({
                     </section>
                 );
             })}
-            {['tech', 'kit', 'packing', 'shipping'].includes(station) && (
+            {['tech', 'dtf', 'kit', 'packing', 'shipping'].includes(station) && (
                 <BagActions
                     key={`${project.project_id}-${station}`}
                     project={project}

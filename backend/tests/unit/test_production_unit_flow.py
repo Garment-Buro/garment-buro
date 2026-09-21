@@ -11,6 +11,7 @@ from app.modules.identity.models import RoleName, User, UserRole
 from app.modules.identity.repository import IdentityRepository
 from app.modules.production.auth_models import ProductionEmployee
 from app.modules.production.evidence import ProductionConflict
+from app.modules.production.inbox_models import AdminInboxItem, AdminInboxStatus
 from app.modules.production.models import ProductionBag, ProductionEvent, ProductionWorkItem
 from app.modules.production.read_service import ProductionReadService
 from app.modules.production.router import router
@@ -34,6 +35,45 @@ async def workers(db):
     return result
 
 
+def test_dual_approval_is_invalidated_and_admin_problem_blocks_qr(tmp_path):
+    async def scenario():
+        async with setup(tmp_path) as (db, service, spec):
+            people = await workers(db)
+            await execute(db, service, "plan", unit_id=1, specification=spec)
+            await execute(db, service, "confirm_documents", unit_id=1)
+            await execute(db, service, "approve_order")
+            await execute(db, service, "plan", unit_id=1, specification=spec)
+            async with db.session() as session:
+                bag = await session.scalar(select(ProductionBag))
+                assert bag.tech_approved_at is None and bag.public_token is None
+            await execute(db, service, "confirm_documents", unit_id=1)
+            await execute(
+                db,
+                service,
+                "request_moderation",
+                actor=people["dtf"],
+                note="Проверьте расположение нанесения",
+            )
+            with pytest.raises(ProductionConflict, match="ожидает решения администратора"):
+                await execute(db, service, "approve_order")
+            async with db.session() as session:
+                bag = await session.scalar(select(ProductionBag))
+                problem = await session.get(AdminInboxItem, bag.moderation_inbox_item_id)
+                assert problem.production_unit_id is None
+                assert problem.subject == "Заказ №1 отправлен на модерацию"
+                problem.status = AdminInboxStatus.RESOLVED.value
+                problem.resolved_at = problem.created_at
+                await session.commit()
+            await execute(db, service, "approve_order")
+            await execute(db, service, "approve_order", actor=people["dtf"])
+            async with db.session() as session:
+                bag = await session.scalar(select(ProductionBag))
+                assert bag.tech_approved_at and bag.dtf_approved_at
+                assert len(bag.public_token) == 43
+
+    asyncio.run(scenario())
+
+
 def test_independent_units_qr_dtf_workshop_and_packing(tmp_path):
     async def scenario():
         async with setup(tmp_path, quantity=2) as (db, service, spec):
@@ -53,6 +93,15 @@ def test_independent_units_qr_dtf_workshop_and_packing(tmp_path):
             )
             for unit in (1, 2):
                 await execute(db, service, "confirm_documents", unit_id=unit)
+            with pytest.raises(ProductionConflict, match="технолога и DTF"):
+                await execute(db, service, "release")
+            await execute(db, service, "approve_order")
+            async with db.session() as session:
+                bag = await session.scalar(select(ProductionBag))
+                assert bag.tech_approved_at is not None
+                assert bag.dtf_approved_at is None
+                assert bag.public_token is None
+            await execute(db, service, "approve_order", actor=people["dtf"])
             await execute(db, service, "release")
             with pytest.raises(ProductionDenied):
                 await execute(

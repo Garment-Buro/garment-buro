@@ -369,6 +369,21 @@
     width: min(100%, 520px);
     margin: 16px 0 24px;
 }
+.assortmentFilters {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr);
+    gap: 16px;
+    width: min(100%, 760px);
+}
+.assortmentFilters .assortmentSearch {
+    width: 100%;
+}
+@media (max-width: 640px) {
+    .assortmentFilters {
+        grid-template-columns: 1fr;
+        gap: 0;
+    }
+}
 .assortmentCards {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));

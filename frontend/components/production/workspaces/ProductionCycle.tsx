@@ -3,66 +3,30 @@ import { stationGuides, stationRoles } from '@/lib/production/workspaces';
 import styles from './ProductionFlow.module.css';
 
 export function ProductionCycle({
-    assigned,
+    station,
     onOpen,
 }: {
-    assigned: Station[];
+    station: Station;
     onOpen: (station: Station) => void;
 }) {
+    const guide = stationGuides[station];
     return (
         <section className={styles.cycle}>
-            <h1>Весь цикл</h1>
+            <h1>Моя работа · {stationRoles[station]}</h1>
             <p>
-                Холд ЮKassa → модерация → подтверждение списания → технолог.
-                Один мешок заказа содержит отдельные мешки изделий.
+                Краткая методичка для выбранной роли. Здесь нет заказов и
+                рабочих кнопок — только порядок действий и ожидаемый результат.
             </p>
-            <aside className={styles.callout}>
-                После раскроя вещи без DTF сразу комплектуются. Остальные
-                ожидают доставку наклейки. Готовые мешки изделий передаются в
-                общий цех независимо друг от друга.
-            </aside>
-            {(
-                [
-                    'tech',
-                    'cut',
-                    'dtf',
-                    'kit',
-                    'workshop',
-                    'packing',
-                    'shipping',
-                ] as Station[]
-            ).map((station, index) => (
-                <details
-                    className={styles.cycleStep}
-                    key={station}
-                    open={assigned.includes(station)}
-                >
-                    <summary>
-                        <b>{index + 1}</b>
-                        <span>
-                            <strong>{labels[station]}</strong>
-                            <small>
-                                {stationRoles[station]}
-                                {assigned.includes(station)
-                                    ? ' · ваш участок'
-                                    : ''}
-                            </small>
-                        </span>
-                    </summary>
-                    <div>
-                        <h3>Что сделать</h3>
-                        <p>{stationGuides[station].task}</p>
-                        <h3>Результат</h3>
-                        <p>{stationGuides[station].result}</p>
-                        <button
-                            disabled={!assigned.includes(station)}
-                            onClick={() => onOpen(station)}
-                        >
-                            Открыть рабочий экран →
-                        </button>
-                    </div>
-                </details>
-            ))}
+            <article className={styles.roleGuide}>
+                <span className={styles.roleGuideLabel}>{labels[station]}</span>
+                <h2>Что сделать</h2>
+                <p>{guide.task}</p>
+                <h2>Результат</h2>
+                <p>{guide.result}</p>
+                <button onClick={() => onOpen(station)}>
+                    Открыть терминал роли →
+                </button>
+            </article>
         </section>
     );
 }

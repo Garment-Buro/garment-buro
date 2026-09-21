@@ -28,6 +28,7 @@ class CrmGarmentPattern(Base, IntegerIdMixin, TimestampMixin):
             name="uq_crm_garment_pattern_model_grid",
         ),
         CheckConstraint("length(trim(grid_key)) > 0", name="crm_pattern_grid_key_nonempty"),
+        CheckConstraint("length(trim(code)) > 0", name="crm_pattern_code_nonempty"),
         CheckConstraint("length(trim(name)) > 0", name="crm_pattern_name_nonempty"),
         CheckConstraint("width_cm > 0", name="crm_pattern_width_positive"),
         CheckConstraint("length_cm > 0", name="crm_pattern_length_positive"),
@@ -58,6 +59,7 @@ class CrmGarmentPattern(Base, IntegerIdMixin, TimestampMixin):
         index=True,
     )
     grid_key: Mapped[str] = mapped_column(String(160), nullable=False)
+    code: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     width_cm: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     length_cm: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)

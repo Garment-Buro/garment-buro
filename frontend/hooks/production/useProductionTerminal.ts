@@ -95,9 +95,23 @@ export function useProductionTerminal(station?: Station) {
                 return;
             polling.current = true;
             try {
-                const list = await run((token) =>
-                    productionApi.queue(token, undefined),
-                );
+                const [list, detail] = await Promise.all([
+                    run((token) => productionApi.queue(token, undefined)),
+                    selected
+                        ? run((token) =>
+                              productionApi.project(
+                                  token,
+                                  selected,
+                                  undefined,
+                                  resolveEmployeeStation(
+                                      station,
+                                      employee?.stations ?? [],
+                                  ),
+                              ),
+                          )
+                        : Promise.resolve(null),
+                ]);
+                if (detail) setProject(detail);
                 setQueue((current) => {
                     if (current.items.length <= list.items.length) return list;
                     return {
@@ -128,7 +142,7 @@ export function useProductionTerminal(station?: Station) {
             window.clearInterval(timer);
             document.removeEventListener('visibilitychange', refreshOnReturn);
         };
-    }, [busy, loading, run, userId]);
+    }, [busy, employee?.stations, loading, run, selected, station, userId]);
 
     const select = (id: number | null, unit?: number) => {
         if (locked.current) return;

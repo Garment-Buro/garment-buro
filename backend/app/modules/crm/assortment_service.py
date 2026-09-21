@@ -100,8 +100,11 @@ class CrmAssortmentService:
         *,
         model_id: int | None,
         active: bool | None,
+        query: str | None = None,
     ) -> list[CrmGarmentPatternRead]:
-        rows = await self.repository.list_patterns(session, model_id=model_id, active=active)
+        rows = await self.repository.list_patterns(
+            session, model_id=model_id, active=active, query=query
+        )
         return [CrmGarmentPatternRead.model_validate(row) for row in rows]
 
     async def create_pattern(
@@ -445,6 +448,7 @@ class CrmAssortmentService:
         size: CrmGarmentSize,
     ) -> None:
         row.garment_model_id = payload.garment_model_id
+        row.code = payload.code
         row.garment_size_id = payload.garment_size_id
         row.media_object_id = payload.media_object_id
         row.name = payload.name

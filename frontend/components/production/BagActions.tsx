@@ -16,9 +16,123 @@ export function BagActions({
     busy: boolean;
 }) {
     const [tracking, setTracking] = useState(''),
-        [note, setNote] = useState('');
+        [note, setNote] = useState(''),
+        [moderationNote, setModerationNote] = useState('');
+    const reviewReady = project.units.every(
+        (unit) =>
+            unit.specification &&
+            unit.documents_confirmed &&
+            !unit.issue &&
+            !unit.blockers.length,
+    );
+    const moderationOpen = ['new', 'in_progress'].includes(
+        project.moderation_status ?? '',
+    );
     return (
         <section className={styles.section}>
+            {project.state === 'inbox' &&
+                (canAct(stations, 'tech') || canAct(stations, 'dtf')) && (
+                    <div className={styles.approvalPanel}>
+                        <h3>Приёмка заказа</h3>
+                        <p>
+                            QR откроется только после независимого подтверждения
+                            технолога и DTF.
+                        </p>
+                        <div className={styles.approvalGrid}>
+                            <span data-ready={project.tech_approved}>
+                                Технолог
+                                <strong>
+                                    {project.tech_approved
+                                        ? 'Подтверждено'
+                                        : 'Ожидается'}
+                                </strong>
+                            </span>
+                            <span data-ready={project.dtf_approved}>
+                                DTF
+                                <strong>
+                                    {project.dtf_approved
+                                        ? 'Подтверждено'
+                                        : 'Ожидается'}
+                                </strong>
+                            </span>
+                            <span data-ready={project.qr_ready}>
+                                QR заказа
+                                <strong>
+                                    {project.qr_ready
+                                        ? 'Доступен'
+                                        : 'Заблокирован'}
+                                </strong>
+                            </span>
+                        </div>
+                        {moderationOpen ? (
+                            <p className={styles.warning}>
+                                Заказ отправлен администратору в «Проблемы».
+                                Подтверждение недоступно до решения.
+                            </p>
+                        ) : (
+                            <div className={styles.actions}>
+                                {canAct(stations, 'tech') &&
+                                    !project.tech_approved && (
+                                        <button
+                                            className={styles.primary}
+                                            disabled={busy || !reviewReady}
+                                            onClick={() =>
+                                                void send({
+                                                    action: 'approve_order',
+                                                })
+                                            }
+                                        >
+                                            Всё проверено — подтвердить технологом
+                                        </button>
+                                    )}
+                                {canAct(stations, 'dtf') &&
+                                    !project.dtf_approved && (
+                                        <button
+                                            className={styles.primary}
+                                            disabled={busy || !reviewReady}
+                                            onClick={() =>
+                                                void send({
+                                                    action: 'approve_order',
+                                                })
+                                            }
+                                        >
+                                            Макеты DTF проверены — подтвердить
+                                        </button>
+                                    )}
+                            </div>
+                        )}
+                        {!moderationOpen && (
+                            <details>
+                                <summary>Отправить заказ администратору</summary>
+                                <label>
+                                    Что нужно проверить
+                                    <textarea
+                                        rows={3}
+                                        maxLength={1000}
+                                        value={moderationNote}
+                                        onChange={(event) =>
+                                            setModerationNote(event.target.value)
+                                        }
+                                        placeholder="Опишите несоответствие в макете, лекалах или техкарте"
+                                    />
+                                </label>
+                                <button
+                                    disabled={
+                                        busy || !moderationNote.trim()
+                                    }
+                                    onClick={() =>
+                                        void send({
+                                            action: 'request_moderation',
+                                            note: moderationNote.trim(),
+                                        })
+                                    }
+                                >
+                                    Отправить в «Проблемы»
+                                </button>
+                            </details>
+                        )}
+                    </div>
+                )}
             <h3>Перемещение всего мешка</h3>
             <div className={styles.actions}>
                 {project.state === 'inbox' && canAct(stations, 'tech') && (
@@ -26,6 +140,7 @@ export function BagActions({
                         className={styles.primary}
                         disabled={
                             busy ||
+                            !project.qr_ready ||
                             !project.units.every(
                                 (x) =>
                                     x.specification &&
@@ -36,7 +151,7 @@ export function BagActions({
                         onClick={() => void send({ action: 'release' })}
                     >
                         {project.flow_version === 2
-                            ? 'Подтвердить и передать закройщику'
+                            ? 'QR напечатан — передать закройщику'
                             : 'Передать на комплектовку'}
                     </button>
                 )}

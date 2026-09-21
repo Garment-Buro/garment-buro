@@ -12,6 +12,7 @@ from app.modules.production.evidence import (
     order_evidence,
     verify_specification,
 )
+from app.modules.production.inbox_models import AdminInboxItem
 from app.modules.production.models import (
     ProductionBag,
     ProductionEvent,
@@ -52,6 +53,7 @@ class ProductionReadService:
         # One bounded batch for the page, not one request per bag or station.
         stage_counts = {}
         dtf_counts = {}
+        moderation_statuses = {}
         bag_ids = [bag.id for _, _, bag in rows[:limit] if bag]
         if bag_ids:
             work_rows = await session.execute(
@@ -74,6 +76,18 @@ class ProductionReadService:
                     and (work.lane in {"kit", "waiting_dtf"} or work.lane is None)
                 ):
                     dtf_counts[work.bag_id] = dtf_counts.get(work.bag_id, 0) + 1
+            moderation_ids = [
+                bag.moderation_inbox_item_id
+                for _, _, bag in rows[:limit]
+                if bag and bag.moderation_inbox_item_id
+            ]
+            if moderation_ids:
+                moderation_statuses = {
+                    item.id: item.status
+                    for item in await session.scalars(
+                        select(AdminInboxItem).where(AdminInboxItem.id.in_(moderation_ids))
+                    )
+                }
         return {
             "items": [
                 {
@@ -90,6 +104,14 @@ class ProductionReadService:
                     "version": bag.version if bag else 0,
                     "stage_counts": stage_counts.get(bag.id, {}) if bag else {},
                     "dtf_pending": dtf_counts.get(bag.id, 0) if bag else 0,
+                    "tech_approved": bool(bag and bag.tech_approved_at),
+                    "dtf_approved": bool(bag and bag.dtf_approved_at),
+                    "qr_ready": bool(bag and bag.public_token),
+                    "moderation_status": moderation_statuses.get(
+                        bag.moderation_inbox_item_id
+                    )
+                    if bag
+                    else None,
                     "paid_at": project.payment_succeeded_at_snapshot,
                     "blocked": (not order.is_demo and order.payment_status != "paid")
                     or order.status == "cancelled"
@@ -221,6 +243,11 @@ class ProductionReadService:
             else []
         )
         delivery = None
+        moderation = (
+            await session.get(AdminInboxItem, bag.moderation_inbox_item_id)
+            if bag and bag.moderation_inbox_item_id
+            else None
+        )
         if set(stations) & {"packing", "shipping"}:
             delivery = {
                 "recipient": " ".join(
@@ -241,6 +268,12 @@ class ProductionReadService:
             "flow_version": bag.flow_version if bag else 2,
             "display_state": bag_display_state(bag, [row.lane for row in work]),
             "public_token": bag.public_token if bag else None,
+            "tech_approved": bool(bag and bag.tech_approved_at),
+            "tech_approved_at": bag.tech_approved_at if bag else None,
+            "dtf_approved": bool(bag and bag.dtf_approved_at),
+            "dtf_approved_at": bag.dtf_approved_at if bag else None,
+            "qr_ready": bool(bag and bag.public_token),
+            "moderation_status": moderation.status if moderation else None,
             "customer": f"Заказ №{order.id}",
             "units_count": project.units_count,
             "paid_at": project.payment_succeeded_at_snapshot,

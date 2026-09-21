@@ -72,6 +72,8 @@ export const actionLabels: Record<string, string> = {
     send_unit: 'Изделие передано в цех',
     complete_workshop: 'Цех завершил работу и ВТО',
     set_dtf_deadline: 'Назначен срок DTF',
+    approve_order: 'Заказ подтверждён',
+    request_moderation: 'Заказ отправлен администратору',
 };
 export interface Component {
     key: string;
@@ -135,6 +137,10 @@ export interface QueueItem {
     flow_version?: number;
     public_token?: string | null;
     dtf_pending?: number;
+    tech_approved?: boolean;
+    dtf_approved?: boolean;
+    qr_ready?: boolean;
+    moderation_status?: string | null;
     project_id: number;
     order_id: number;
     customer: string;
@@ -149,6 +155,8 @@ export interface Queue {
     next_cursor: number | null;
 }
 export interface Project extends Omit<QueueItem, 'blocked'> {
+    tech_approved_at?: string | null;
+    dtf_approved_at?: string | null;
     order_status: string;
     payment_status: string;
     project_status: string;
@@ -198,7 +206,9 @@ export interface Command {
         | 'resolve_issue'
         | 'rework'
         | 'pack_bag'
-        | 'dispatch';
+        | 'dispatch'
+        | 'approve_order'
+        | 'request_moderation';
     unit_id?: number;
     specification?: Specification;
     component_key?: string;

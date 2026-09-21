@@ -72,6 +72,7 @@ export interface Fabric {
 
 export interface Pattern {
     id: number;
+    code: string;
     garment_model_id: number;
     garment_size_id: number;
     media_object_id: number;
@@ -272,4 +273,3 @@ export const assortmentLabels: Record<AssortmentSection, string> = {
     boxes: 'Коробки',
     products: 'Товары',
 };
-

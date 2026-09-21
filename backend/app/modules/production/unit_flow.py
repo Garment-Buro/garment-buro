@@ -26,6 +26,7 @@ async def apply_unit_flow(
     if action == "release":
         require_station(stations, "tech")
         service._state(bag, "inbox")
+        await service._require_order_approvals(session, bag)
         if any(not x.documents_confirmed or x.issue for x in work):
             raise ProductionConflict("Подтвердите техкарты всех вещей")
         await service.projects.transition(
@@ -37,7 +38,6 @@ async def apply_unit_flow(
             actor_user_id=actor,
             from_terminal=True,
         )
-        bag.public_token = secrets.token_urlsafe(32)
         bag.state = "workshop"
         for row in work:
             garment = next(u for u in units if u.id == row.unit_id)

@@ -101,6 +101,8 @@ class ProductionCommand(StrictModel):
         "send_unit",
         "complete_workshop",
         "set_dtf_deadline",
+        "approve_order",
+        "request_moderation",
     ]
     unit_id: int | None = Field(default=None, gt=0)
     specification: SpecificationWrite | None = None
@@ -129,6 +131,7 @@ class ProductionCommand(StrictModel):
             "resolve_issue": {"unit_id"},
             "rework": {"unit_id", "stage"},
             "dispatch": {"tracking_number"},
+            "request_moderation": set(),
         }
         allowed = fields.get(self.action, set()) | {"action", "expected_version", "note"}
         if self.model_fields_set - allowed:

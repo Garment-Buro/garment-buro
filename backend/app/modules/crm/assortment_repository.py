@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -70,12 +70,22 @@ class CrmAssortmentRepository:
         *,
         model_id: int | None,
         active: bool | None,
+        query: str | None = None,
     ) -> Sequence[CrmGarmentPattern]:
         statement = select(CrmGarmentPattern)
         if model_id is not None:
             statement = statement.where(CrmGarmentPattern.garment_model_id == model_id)
         if active is not None:
             statement = statement.where(CrmGarmentPattern.is_active.is_(active))
+        if query:
+            value = f"%{query.strip()}%"
+            statement = statement.where(
+                or_(
+                    CrmGarmentPattern.code.ilike(value),
+                    CrmGarmentPattern.name.ilike(value),
+                    CrmGarmentPattern.grid_key.ilike(value),
+                )
+            )
         return list(await session.scalars(statement.order_by(CrmGarmentPattern.id.desc())))
 
     @staticmethod

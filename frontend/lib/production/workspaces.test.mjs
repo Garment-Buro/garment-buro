@@ -105,6 +105,20 @@ test('terminal queue respects display states and station counters', () => {
     assert.equal(queueItemMatchesStation(item, 'workshop'), true);
     assert.equal(queueItemMatchesStation(item, 'dtf'), true);
     assert.equal(queueItemMatchesStation(item, 'packing'), false);
+    assert.equal(
+        queueItemMatchesStation(
+            { ...item, state: 'inbox', stage_counts: {}, dtf_pending: 0, dtf_approved: false },
+            'dtf',
+        ),
+        true,
+    );
+    assert.equal(
+        queueItemMatchesStation(
+            { ...item, state: 'inbox', stage_counts: {}, dtf_pending: 0, dtf_approved: true },
+            'dtf',
+        ),
+        false,
+    );
 });
 
 test('the first assigned station is also used for API actions before manual switching', () => {

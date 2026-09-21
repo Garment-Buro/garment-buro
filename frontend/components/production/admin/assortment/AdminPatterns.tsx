@@ -22,6 +22,7 @@ type PatternForm = Omit<Pattern, 'id' | 'version' | 'grid_key'> & {
 };
 
 const emptyPattern = (model?: GarmentModel): PatternForm => ({
+    code: '',
     garment_model_id: model?.id ?? 0,
     garment_size_id: model?.sizes[0]?.id ?? 0,
     media_object_id: 0,
@@ -38,16 +39,26 @@ export function AdminPatterns() {
     const modelsResource =
         useAssortmentResource<ReferencePage<GarmentModel>>('models');
     const [modelFilter, setModelFilter] = useState(0);
+    const [query, setQuery] = useState('');
     const [editor, setEditor] = useState<PatternForm | null>(null);
     const [saving, setSaving] = useState(false);
     const [uploading, setUploading] = useState(false);
     const [formError, setFormError] = useState('');
     const patterns = useMemo(
         () =>
-            (patternsResource.data ?? []).filter(
-                (item) => !modelFilter || item.garment_model_id === modelFilter,
-            ),
-        [modelFilter, patternsResource.data],
+            (patternsResource.data ?? []).filter((item) => {
+                const matchesModel =
+                    !modelFilter || item.garment_model_id === modelFilter;
+                const needle = query.trim().toLowerCase();
+                return (
+                    matchesModel &&
+                    (!needle ||
+                        `${item.code} ${item.name} ${item.grid_key}`
+                            .toLowerCase()
+                            .includes(needle))
+                );
+            }),
+        [modelFilter, patternsResource.data, query],
     );
     const models = modelsResource.data?.items ?? [];
     const modelName = (id: number) =>
@@ -71,6 +82,7 @@ export function AdminPatterns() {
                 editor.id ? `patterns/${editor.id}` : 'patterns',
                 editor.id ? 'PUT' : 'POST',
                 {
+                    code: editor.code,
                     garment_model_id: editor.garment_model_id,
                     garment_size_id: editor.garment_size_id,
                     media_object_id: editor.media_object_id,
@@ -116,20 +128,31 @@ export function AdminPatterns() {
                     <PiPlus aria-hidden /> Добавить лекало
                 </button>
             </div>
-            <label className={styles.assortmentSearch}>
-                Модель
-                <select
-                    value={modelFilter}
-                    onChange={(event) => setModelFilter(Number(event.target.value))}
-                >
-                    <option value={0}>Все модели</option>
-                    {models.map((model) => (
-                        <option key={model.id} value={model.id}>
-                            {model.name}
-                        </option>
-                    ))}
-                </select>
-            </label>
+            <div className={styles.assortmentFilters}>
+                <label className={styles.assortmentSearch}>
+                    Поиск по коду или названию
+                    <input
+                        type="search"
+                        value={query}
+                        placeholder="Например, PAT-HOODIE-M"
+                        onChange={(event) => setQuery(event.target.value)}
+                    />
+                </label>
+                <label className={styles.assortmentSearch}>
+                    Модель
+                    <select
+                        value={modelFilter}
+                        onChange={(event) => setModelFilter(Number(event.target.value))}
+                    >
+                        <option value={0}>Все модели</option>
+                        {models.map((model) => (
+                            <option key={model.id} value={model.id}>
+                                {model.name}
+                            </option>
+                        ))}
+                    </select>
+                </label>
+            </div>
             <AssortmentFeedback
                 loading={patternsResource.loading || modelsResource.loading}
                 error={patternsResource.error || modelsResource.error}
@@ -151,6 +174,7 @@ export function AdminPatterns() {
                                             pattern.garment_size_id,
                                         )}
                                     </span>
+                                    <small>{pattern.code}</small>
                                     <h4>{pattern.name}</h4>
                                 </div>
                                 <button
@@ -188,6 +212,22 @@ export function AdminPatterns() {
                 >
                     <form onSubmit={submit}>
                         <div className={styles.formGrid}>
+                            <label className={styles.fullField}>
+                                Код лекала
+                                <input
+                                    required
+                                    maxLength={64}
+                                    value={editor.code}
+                                    placeholder="PAT-HOODIE-M-001"
+                                    onChange={(event) =>
+                                        setEditor({
+                                            ...editor,
+                                            code: event.target.value.toUpperCase(),
+                                        })
+                                    }
+                                />
+                                <small>Латиница, цифры, дефис или подчёркивание.</small>
+                            </label>
                             <label>
                                 Модель
                                 <select

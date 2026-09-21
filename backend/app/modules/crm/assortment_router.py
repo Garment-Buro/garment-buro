@@ -100,9 +100,12 @@ async def list_patterns(
     service: Annotated[CrmAssortmentService, Depends(get_assortment_service)],
     garment_model_id: Annotated[int | None, Query(ge=1)] = None,
     active: bool | None = None,
+    query: Annotated[str | None, Query(min_length=1, max_length=100)] = None,
 ) -> list[CrmGarmentPatternRead]:
     _no_store(response)
-    return await service.list_patterns(session, model_id=garment_model_id, active=active)
+    return await service.list_patterns(
+        session, model_id=garment_model_id, active=active, query=query
+    )
 
 
 @write_router.post("/patterns", response_model=CrmGarmentPatternRead, status_code=201)

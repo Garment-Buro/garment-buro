@@ -126,6 +126,7 @@ def test_assortment_models_patterns_materials_accessories_and_boxes(tmp_path: Pa
                 assert model.size_chart_media_object_id == size_chart.id
                 size = model.sizes[0]
                 pattern_payload = CrmGarmentPatternWrite(
+                    code="PAT-TSHIRT-M-001",
                     garment_model_id=model.id,
                     garment_size_id=size.id,
                     media_object_id=media.id,
@@ -137,6 +138,16 @@ def test_assortment_models_patterns_materials_accessories_and_boxes(tmp_path: Pa
                 )
                 pattern = await assortment.create_pattern(session, pattern_payload)
                 assert pattern.grid_key == "M:46.00:70.00:22.00:168.00"
+                assert pattern.code == "PAT-TSHIRT-M-001"
+                assert [
+                    item.id
+                    for item in await assortment.list_patterns(
+                        session,
+                        model_id=None,
+                        active=None,
+                        query="tshirt-m-001",
+                    )
+                ] == [pattern.id]
 
                 with pytest.raises(CrmAssortmentConflictError, match="2 cm grid"):
                     await assortment.create_pattern(
