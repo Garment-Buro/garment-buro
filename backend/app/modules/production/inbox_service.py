@@ -4,7 +4,12 @@ from sqlalchemy import func, select
 
 from app.modules.identity.models import SecurityAuditEvent, User
 from app.modules.orders.models import Order
-from app.modules.production.inbox_models import AdminInboxItem, AdminInboxKind, AdminInboxStatus
+from app.modules.production.inbox_models import (
+    AdminInboxItem,
+    AdminInboxKind,
+    AdminInboxStatus,
+    TicketMessage,
+)
 from app.modules.production.inbox_repository import AdminInboxRepository
 from app.modules.production.inbox_schemas import AdminInboxPage, AdminInboxRead, AdminInboxUpdate
 from app.modules.production.security import can_administer
@@ -154,6 +159,7 @@ class AdminInboxService:
         *,
         item_id: int | None,
         actor_user_id: int,
+        note: str | None = None,
     ) -> None:
         if item_id is None:
             return
@@ -172,6 +178,15 @@ class AdminInboxService:
         item.status = AdminInboxStatus.RESOLVED.value
         item.resolved_at = datetime.now(timezone.utc)
         item.version += 1
+        session.add(
+            TicketMessage(
+                ticket_id=item.id,
+                author_user_id=actor_user_id,
+                author_role="system",
+                visibility="public",
+                body=f"Проблема устранена на производстве. {note or ''}".strip(),
+            )
+        )
         session.add(
             SecurityAuditEvent(
                 event_type="production.admin_inbox_resolved_from_floor",
@@ -201,6 +216,25 @@ class AdminInboxService:
             raise AdminInboxNotFoundError()
         if item.version != payload.expected_version:
             raise AdminInboxConflictError("Запись уже изменена. Обновите карточку")
+        if kind == "production_problem":
+            from app.modules.production.models import ProductionWorkItem
+
+            active_issue = await session.scalar(
+                select(ProductionWorkItem.id).where(
+                    ProductionWorkItem.problem_inbox_item_id == item.id,
+                    ProductionWorkItem.issue.is_not(None),
+                )
+            )
+            if active_issue and payload.status in {"resolved", "closed"}:
+                raise AdminInboxConflictError("Выберите участок и сохраните решение по изделию")
+            if (
+                not active_issue
+                and item.status in {"resolved", "closed"}
+                and payload.status in {"new", "in_progress"}
+            ):
+                raise AdminInboxConflictError(
+                    "Для новой остановки изделия сотрудник должен сообщить о новой проблеме"
+                )
         if payload.assigned_to_user_id is not None:
             assignee = await session.scalar(
                 select(User).where(
@@ -212,6 +246,32 @@ class AdminInboxService:
                 raise AdminInboxConflictError("Ответственный администратор не найден")
 
         previous_status = item.status
+        if item.admin_note != payload.admin_note and payload.admin_note:
+            session.add(
+                TicketMessage(
+                    ticket_id=item.id,
+                    author_user_id=actor_user_id,
+                    author_role="admin",
+                    visibility="internal",
+                    body=payload.admin_note,
+                )
+            )
+        if previous_status != payload.status:
+            labels = {
+                "new": "Новое",
+                "in_progress": "В работе",
+                "resolved": "Решено",
+                "closed": "Закрыто",
+            }
+            session.add(
+                TicketMessage(
+                    ticket_id=item.id,
+                    author_user_id=actor_user_id,
+                    author_role="system",
+                    visibility="public",
+                    body=f"Статус: {labels[payload.status]}",
+                )
+            )
         item.status = payload.status
         item.priority = payload.priority
         item.assigned_to_user_id = payload.assigned_to_user_id

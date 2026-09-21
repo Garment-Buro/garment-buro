@@ -34,6 +34,9 @@ from app.modules.production.inbox_service import (
     AdminInboxService,
 )
 from app.modules.production.security import can_administer
+from app.modules.production.ticket_routing import route_ticket
+from app.modules.production.ticket_schemas import AdminTicketCreate, TicketReply, TicketRoute
+from app.modules.production.ticket_service import TicketService
 
 router = APIRouter(prefix="/admin", tags=["production-admin"])
 Session = Annotated[AsyncSession, Depends(get_database_session)]
@@ -56,6 +59,60 @@ async def require_admin(
 
 
 Admin = Annotated[User, Depends(require_admin)]
+
+
+async def ticket_command(session, operation):
+    try:
+        result = await operation
+        await session.commit()
+        return result
+    except AdminInboxNotFoundError as error:
+        await session.rollback()
+        raise HTTPException(404, "Тикет не найден") from error
+    except AdminInboxConflictError as error:
+        await session.rollback()
+        raise HTTPException(409, str(error)) from error
+
+
+@router.post("/tickets", status_code=201)
+async def create_ticket(payload: AdminTicketCreate, admin: Admin, session: Session):
+    from app.modules.production.inbox_service import SupportRateLimitError
+
+    try:
+        return await ticket_command(
+            session, TicketService().create_for_customer(session, actor=admin, payload=payload)
+        )
+    except SupportRateLimitError as error:
+        await session.rollback()
+        raise HTTPException(429, str(error)) from error
+
+
+@router.get("/tickets/{ticket_id}")
+async def ticket_thread(
+    ticket_id: int, _admin: Admin, session: Session, after: int = Query(0, ge=0)
+):
+    try:
+        service = TicketService()
+        return await service.detail(
+            session, await service.item(session, ticket_id), admin=True, after=after
+        )
+    except AdminInboxNotFoundError as error:
+        raise HTTPException(404, "Тикет не найден") from error
+
+
+@router.post("/tickets/{ticket_id}/messages")
+async def ticket_reply(ticket_id: int, payload: TicketReply, admin: Admin, session: Session):
+    return await ticket_command(
+        session,
+        TicketService().reply(
+            session, ticket_id=ticket_id, actor=admin, payload=payload, admin=True
+        ),
+    )
+
+
+@router.post("/tickets/{ticket_id}/route")
+async def ticket_route(ticket_id: int, payload: TicketRoute, admin: Admin, session: Session):
+    return await ticket_command(session, route_ticket(session, ticket_id, admin, payload))
 
 
 class ModerationDecision(BaseModel):

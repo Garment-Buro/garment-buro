@@ -1,5 +1,7 @@
 'use client';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { CreateTicket } from '@/components/support/CreateTicket';
+import { TicketConversation } from '@/components/support/TicketConversation';
 import { useAdminResource } from '@/hooks/production/useAdminResource';
 import {
     type AdminOrderDetail,
@@ -17,6 +19,7 @@ export function AdminOrderDetails({
     id: number;
     onClose: () => void;
 }) {
+    const [ticketId, setTicketId] = useState<number | null>(null);
     const { data, loading, error, reload } = useAdminResource<AdminOrderDetail>(
         `orders/${id}`,
     );
@@ -62,6 +65,8 @@ export function AdminOrderDetails({
                 {data && (
                     <>
                         <AdminOrderModeration order={data} reload={reload} />
+                        <CreateTicket admin orderId={id} onCreated={setTicketId} />
+                        {ticketId !== null && <TicketConversation key={ticketId} id={ticketId} mode="admin" />}
                         <p>
                             {data.name || 'Имя не указано'} ·{' '}
                             {data.email || 'Без почты'} ·{' '}

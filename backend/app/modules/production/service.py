@@ -112,12 +112,8 @@ class ProductionService:
                 "Состав производственных вещей отличается от всех позиций заказа"
             )
         if bag is None:
-            if command.action == "plan":
-                require_station(stations, "tech")
-            elif command.action == "request_moderation":
-                if not set(stations) & {"tech", "dtf"}:
-                    require_station(stations, "tech")
-            if command.action not in {"plan", "request_moderation"} or any(
+            require_station(stations, "tech")
+            if command.action not in {"plan", "report_issue"} or any(
                 x.status != "queued" for x in units
             ):
                 raise ProductionConflict(
@@ -214,6 +210,8 @@ class ProductionService:
         return receipt
 
     async def _plan(self, session, bag, unit, work, payload, actor_id, now):
+        if work.issue:
+            raise ProductionConflict("Сначала обработайте открытый тикет изделия")
         source = await session.get(OrderItem, unit.order_item_id)
         if (
             source is None
@@ -281,7 +279,6 @@ class ProductionService:
         work.specification_id = spec.id
         work.documents_confirmed = False
         work.component_checks = {}
-        work.issue = None
         self._invalidate_order_approvals(bag)
 
     async def _apply(
@@ -443,7 +440,7 @@ class ProductionService:
                 raise ProductionConflict("Нет вещей, ожидающих DTF")
             bag.state = "waiting_dtf"
         elif action == "report_issue":
-            self._state(bag, "inbox", "kitting", "workshop", "waiting_dtf")
+            self._state(bag, "inbox", "kitting", "workshop", "waiting_dtf", "packed")
             if not command.note:
                 raise ProductionConflict("Опишите проблему")
             if item.issue:
@@ -451,7 +448,13 @@ class ProductionService:
             allowed = (
                 {"tech", "kit"}
                 if bag.state != "workshop"
-                else {"tech", "dtf", spec["route"][min(item.stage_index, len(spec["route"]) - 1)]}
+                else {
+                    "tech",
+                    "dtf",
+                    spec["route"][min(item.stage_index, len(spec["route"]) - 1)]
+                    if spec
+                    else "tech",
+                }
             )
             if bag.flow_version == 2:
                 allowed = {
@@ -460,6 +463,10 @@ class ProductionService:
                     item.lane,
                     "kit" if item.lane == "waiting_dtf" else item.lane,
                 }
+            if bag.state == "packed":
+                allowed = {"packing", "shipping", "tech"}
+            if bag.flow_version == 2 and item.lane == "done":
+                allowed |= {"packing", "shipping"}
             if not set(stations) & allowed:
                 require_station(stations, "tech")
             item.issue = command.note
@@ -503,6 +510,7 @@ class ProductionService:
                 session,
                 item_id=item.problem_inbox_item_id,
                 actor_user_id=actor,
+                note=command.note,
             )
             item.issue = None
         elif action == "pack_bag":
@@ -524,6 +532,8 @@ class ProductionService:
             )
             bag.state = "packed"
         elif action == "dispatch":
+            if any(row.issue for row in work):
+                raise ProductionConflict("Перед отгрузкой обработайте открытые проблемы изделий")
             require_station(stations, "shipping")
             self._state(bag, "packed")
             if not command.tracking_number or not command.note:

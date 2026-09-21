@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { CreateTicket } from '@/components/support/CreateTicket';
 import { useAdminResource } from '@/hooks/production/useAdminResource';
 import {
     type AdminEmployee,
@@ -184,10 +185,13 @@ export function AdminRecords({ section }: { section: Section }) {
                 </p>
             )}
             {section === 'support' && (
+                <>
+                <CreateTicket admin onCreated={(id) => { setInboxId(id); reload(); }} />
                 <p className={styles.muted}>
                     Сообщения пользователей о заказах, оплате и работе сайта.
-                    Ответы пользователям добавим на этапе клиентской роли.
+                    Ответы и сообщения клиентам сохраняются в личном кабинете.
                 </p>
+                </>
             )}
             {section === 'problems' && (
                 <p className={styles.muted}>
@@ -305,7 +309,6 @@ export function AdminRecords({ section }: { section: Section }) {
                     id={inboxId}
                     onClose={() => setInboxId(null)}
                     onSaved={() => {
-                        setInboxId(null);
                         setNotice('Обращение обновлено.');
                         reload();
                     }}

@@ -289,7 +289,7 @@ test("profile route renders the mobile profile surface", () => {
     assert.match(pageSource, /Получен/);
     assert.match(pageSource, /ЛИЧНАЯ ИНФОРМАЦИЯ/);
     assert.match(pageSource, /ПОЛУЧИТЬ КОД/);
-    assert.match(pageSource, /ОТПРАВИТЬ/);
+    assert.match(pageSource, /<CustomerSupport\s*\/>/);
     assert.match(pageSource, /Удалить аккаунт/);
     assert.match(pageSource, /width=\{28\}[\s\S]{0,80}height=\{20\}[\s\S]{0,100}styles\.profileDiscountIcon/);
     assert.match(pageSource, /const isExpandedOnlyProfileTab = \(tab: ProfilePanelTab\) => tab === "support" \|\| tab === "settings"/);

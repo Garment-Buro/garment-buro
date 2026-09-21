@@ -34,6 +34,7 @@ from app.modules.production.read_service import ProductionReadService
 from app.modules.production.schemas import CommandReceipt, ProductionCommand
 from app.modules.production.security import ProductionDenied, can_administer, stations_for_user
 from app.modules.production.service import ProductionService
+from app.modules.production.ticket_schemas import TicketReply
 
 router = APIRouter(prefix="/api/production", tags=["production-terminal"])
 router.include_router(auth_router, prefix="")
@@ -56,6 +57,51 @@ async def access(request: Request, response: Response, user: CurrentUser, sessio
 
 
 Auth = Annotated[tuple[User, list[str]], Depends(access)]
+
+
+@router.get("/projects/{project_id}/tickets/{ticket_id}")
+async def floor_ticket(
+    project_id: int, ticket_id: int, _auth: Auth, session: Session, after: int = Query(0, ge=0)
+):
+    from app.modules.production.inbox_service import AdminInboxNotFoundError
+    from app.modules.production.ticket_service import TicketService
+
+    try:
+        service = TicketService()
+        item = await service.item(session, ticket_id)
+        if item.kind != "production_problem" or item.project_id != project_id:
+            raise AdminInboxNotFoundError()
+        return await service.detail(session, item, after=after)
+    except AdminInboxNotFoundError as error:
+        raise HTTPException(404, "Тикет не найден") from error
+
+
+@router.post("/projects/{project_id}/tickets/{ticket_id}/messages")
+async def floor_ticket_reply(
+    project_id: int, ticket_id: int, payload: TicketReply, auth: Auth, session: Session
+):
+    from app.modules.production.inbox_service import (
+        AdminInboxConflictError,
+        AdminInboxNotFoundError,
+    )
+    from app.modules.production.ticket_service import TicketService
+
+    try:
+        service = TicketService()
+        item = await service.item(session, ticket_id)
+        if item.kind != "production_problem" or item.project_id != project_id:
+            raise AdminInboxNotFoundError()
+        result = await service.reply(
+            session, ticket_id=ticket_id, actor=auth[0], payload=payload, employee=True
+        )
+        await session.commit()
+        return result
+    except AdminInboxNotFoundError as error:
+        await session.rollback()
+        raise HTTPException(404, "Тикет не найден") from error
+    except AdminInboxConflictError as error:
+        await session.rollback()
+        raise HTTPException(409, str(error)) from error
 
 
 def active_roles(auth, station):

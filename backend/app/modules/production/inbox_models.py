@@ -91,3 +91,23 @@ class AdminInboxItem(Base, IntegerIdMixin, TimestampMixin):
     admin_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+
+class TicketMessage(Base, IntegerIdMixin, TimestampMixin):
+    __tablename__ = "ticket_messages"
+    __table_args__ = (
+        CheckConstraint("visibility IN ('public','internal')", name="ticket_visibility_valid"),
+        CheckConstraint(
+            "author_role IN ('customer','admin','employee','system')", name="ticket_author_valid"
+        ),
+        Index("ix_ticket_messages_ticket_id_id", "ticket_id", "id"),
+    )
+
+    ticket_id: Mapped[int] = mapped_column(ForeignKey("admin_inbox_items.id", ondelete="CASCADE"))
+    author_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    author_role: Mapped[str] = mapped_column(String(16))
+    visibility: Mapped[str] = mapped_column(String(16), default="public")
+    body: Mapped[str] = mapped_column(Text)

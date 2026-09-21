@@ -1,6 +1,6 @@
 from sqlalchemy import String, cast, or_, select
 
-from app.modules.production.inbox_models import AdminInboxItem
+from app.modules.production.inbox_models import AdminInboxItem, TicketMessage
 
 
 def _search(query: str):
@@ -19,6 +19,12 @@ def _search(query: str):
         cast(AdminInboxItem.project_id, String).ilike(pattern, escape="\\"),
         cast(AdminInboxItem.production_unit_id, String).ilike(pattern, escape="\\"),
         AdminInboxItem.station.ilike(pattern, escape="\\"),
+        select(TicketMessage.id)
+        .where(
+            TicketMessage.ticket_id == AdminInboxItem.id,
+            TicketMessage.body.ilike(pattern, escape="\\"),
+        )
+        .exists(),
     )
 
 

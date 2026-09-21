@@ -214,6 +214,7 @@ class ProductionReadService:
                     "public_token": row.public_token if row else None,
                     "dtf_due_at": row.dtf_due_at if row else None,
                     "issue": row.issue if row else None,
+                    "ticket_id": row.problem_inbox_item_id if row else None,
                     "blockers": blockers,
                     "sizes": sizes,
                     "cards": cards,
@@ -292,7 +293,7 @@ class ProductionReadService:
                     "actor_id": x.actor_user_id,
                     "at": x.occurred_at,
                     "note": x.evidence.get("command", {}).get("note")
-                    if "tech" in stations
+                    if "tech" in stations or x.action == "ticket_routed"
                     else None,
                 }
                 for x in events

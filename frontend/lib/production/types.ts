@@ -64,6 +64,7 @@ export const actionLabels: Record<string, string> = {
     complete_stage: 'Этап завершён',
     return_to_dtf: 'Возвращён на ожидание DTF',
     report_issue: 'Зафиксирована проблема',
+    ticket_routed: 'Решение администратора по тикету',
     resolve_issue: 'Проблема устранена',
     rework: 'Назначена переделка',
     pack_bag: 'Мешок упакован',
@@ -125,6 +126,7 @@ export interface Unit {
     dtf_ready: boolean;
     dtf_inserted: boolean;
     issue: string | null;
+    ticket_id?: number | null;
     blockers: string[];
     sizes: { id: number; code: string }[];
     cards: { id: number; name: string; revision: number }[];

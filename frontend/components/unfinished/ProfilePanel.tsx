@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { CustomerSupport } from '@/components/support/CustomerSupport';
 
 import { AppIcon } from "@/components/icons/AppIcon";
 import type { UnfinishedSurfaceViewModel } from "@/hooks/unfinished/useUnfinishedSurface";
@@ -266,14 +267,7 @@ function ProfileSettings({ surface }: ProfilePanelProps) {
 }
 
 function ProfileSupport() {
-    return (
-        <div className={styles.profileSettingsCard}>
-            <span className={styles.profileSectionLabel}>ПОДДЕРЖКА</span>
-            <h2>Напишите нам</h2>
-            <p className={styles.profileSupportText}>Ответим на вопросы по заказу, доставке и настройкам профиля.</p>
-            <button className={styles.profilePrimaryButton} type="button">ОТПРАВИТЬ</button>
-        </div>
-    );
+    return <CustomerSupport />;
 }
 
 function ProfileContent({ surface }: ProfilePanelProps) {

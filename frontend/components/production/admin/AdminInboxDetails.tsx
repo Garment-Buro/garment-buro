@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { TicketConversation } from '@/components/support/TicketConversation';
 import { useAdminResource } from '@/hooks/production/useAdminResource';
 import { requestJson } from '@/lib/api/http';
 import {
@@ -266,15 +267,17 @@ export function AdminInboxDetails({
                     </div>
                 )}
                 {data && (
+                    <>
+                    <TicketConversation id={id} mode="admin" onChanged={reload} />
                     <InboxForm
                         key={data.version}
                         item={data}
                         section={section}
-                        onSaved={onSaved}
+                        onSaved={() => { reload(); onSaved(); }}
                     />
+                    </>
                 )}
             </section>
         </div>
     );
 }
-

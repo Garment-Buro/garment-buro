@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { TicketConversation } from '@/components/support/TicketConversation';
 import {
     labels,
     type Project,
@@ -40,6 +41,7 @@ export function ProductionUnit({
     );
     const [error, setError] = useState('');
     const [downloading, setDownloading] = useState(false);
+    const [ticketOpen, setTicketOpen] = useState(false);
     const stage =
             project.flow_version === 2 && unit.lane === 'cut'
                 ? 'cut'
@@ -415,13 +417,16 @@ export function ProductionUnit({
                         )}
                 </>
             )}
-            {!['packed', 'dispatched'].includes(project.state) &&
-                project.version > 0 && (
+            {unit.ticket_id && <details className={styles.section} onToggle={(event) => setTicketOpen(event.currentTarget.open)}>
+                <summary>Тикет №{unit.ticket_id} · Переписка и решение</summary>
+                {ticketOpen && <TicketConversation key={unit.ticket_id} id={unit.ticket_id} mode="employee" projectId={project.project_id} />}
+            </details>}
+            {project.state !== 'dispatched' && (
                     <details className={styles.section}>
                         <summary>
                             {unit.issue
                                 ? 'Решение проблемы'
-                                : 'Сообщить о проблеме'}
+                                : 'Проблема'}
                         </summary>
                         <label>
                             Описание
@@ -446,7 +451,7 @@ export function ProductionUnit({
                                         })
                                     }
                                 >
-                                    Остановить вещь и записать проблему
+                                    Отправить тикет администратору
                                 </button>
                             )}
                             {unit.issue && tech && (
