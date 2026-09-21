@@ -1,7 +1,6 @@
 'use client';
 import { useState } from 'react';
 import { PiArrowClockwise } from 'react-icons/pi';
-import { CreateTicket } from '@/components/support/CreateTicket';
 import { useAdminResource } from '@/hooks/production/useAdminResource';
 import { requestJson } from '@/lib/api/http';
 import {
@@ -289,13 +288,10 @@ export function AdminRecords({
                 </p>
             )}
             {section === 'support' && (
-                <>
-                <CreateTicket admin onCreated={(id) => { setInboxId(id); reload(); }} />
                 <p className={styles.muted}>
                     Сообщения пользователей о заказах, оплате и работе сайта.
                     Ответы и сообщения клиентам сохраняются в личном кабинете.
                 </p>
-                </>
             )}
             {section === 'problems' && (
                 <p className={styles.muted}>

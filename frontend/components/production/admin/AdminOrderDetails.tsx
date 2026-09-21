@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import {
     PiArrowClockwise,
     PiCheckCircle,
@@ -9,8 +9,6 @@ import {
     PiWarningCircle,
     PiX,
 } from 'react-icons/pi';
-import { CreateTicket } from '@/components/support/CreateTicket';
-import { TicketConversation } from '@/components/support/TicketConversation';
 import { useAdminResource } from '@/hooks/production/useAdminResource';
 import {
     type AdminOrder,
@@ -20,7 +18,6 @@ import {
     statusLabels,
 } from '@/lib/production/adminTypes';
 import { labels, stateLabels } from '@/lib/production/types';
-import { useProductionAuthStore } from '@/store/productionAuthStore';
 import { AdminOrderItem } from './AdminOrderItem';
 import styles from './ProductionAdmin.module.css';
 
@@ -33,10 +30,6 @@ export function AdminOrderDetails({
     onClient: (order: AdminOrder) => void;
     onClose: () => void;
 }) {
-    const [ticketId, setTicketId] = useState<number | null>(null);
-    const systemAdmin = useProductionAuthStore(
-        (state) => state.user?.admin_scope === 'system',
-    );
     const { data, loading, error, reload } = useAdminResource<AdminOrderDetail>(
         `orders/${id}`,
     );
@@ -316,23 +309,6 @@ export function AdminOrderDetails({
                             </div>
                         </section>
 
-                        {systemAdmin && (
-                            <details className={styles.orderSupport}>
-                                <summary>Связаться с клиентом</summary>
-                                <CreateTicket
-                                    admin
-                                    orderId={id}
-                                    onCreated={setTicketId}
-                                />
-                            </details>
-                        )}
-                        {ticketId !== null && (
-                            <TicketConversation
-                                key={ticketId}
-                                id={ticketId}
-                                mode="admin"
-                            />
-                        )}
                     </div>
                 )}
             </section>

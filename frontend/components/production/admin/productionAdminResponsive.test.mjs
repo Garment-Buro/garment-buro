@@ -119,6 +119,10 @@ test('orders and payouts expose sorting, client navigation and readable details'
     assert.match(clientDetails, /Данные клиента/);
     assert.match(clientDetails, /clients\/detail\?key=/);
     assert.match(clientDetails, /onTicket\(ticket\.id\)/);
+    assert.match(clientDetails, /<CreateTicket/);
+    assert.match(clientDetails, /customerUserId=\{client\.user_id \?\? undefined\}/);
+    assert.doesNotMatch(records, /CreateTicket/);
+    assert.doesNotMatch(orderDetails, /CreateTicket/);
     assert.match(css, /\.clientProfileGrid/);
     assert.match(
         css,

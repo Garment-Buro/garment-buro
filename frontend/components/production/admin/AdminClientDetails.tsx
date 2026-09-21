@@ -10,6 +10,7 @@ import {
     PiUserCircle,
     PiX,
 } from 'react-icons/pi';
+import { CreateTicket } from '@/components/support/CreateTicket';
 import { useAdminResource } from '@/hooks/production/useAdminResource';
 import {
     type AdminClient,
@@ -220,6 +221,31 @@ export function AdminClientDetails({
                                 </div>
                             </dl>
                         </section>
+
+                        {(client.user_id || data.orders[0]?.id) && (
+                            <section className={styles.clientSection}>
+                                <div className={styles.orderSectionHeading}>
+                                    <PiChatCircle aria-hidden />
+                                    <div>
+                                        <h3>Связаться с клиентом</h3>
+                                        <small>
+                                            Сообщение появится в личном кабинете
+                                        </small>
+                                    </div>
+                                </div>
+                                <CreateTicket
+                                    admin
+                                    embedded
+                                    customerUserId={client.user_id ?? undefined}
+                                    orderId={
+                                        client.user_id
+                                            ? undefined
+                                            : data.orders[0]?.id
+                                    }
+                                    onCreated={onTicket}
+                                />
+                            </section>
+                        )}
 
                         <section className={styles.clientSection}>
                             <div className={styles.orderSectionHeading}>

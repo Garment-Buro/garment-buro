@@ -5,10 +5,14 @@ import styles from "./Tickets.module.css";
 
 export function CreateTicket({
   admin = false,
+  customerUserId,
+  embedded = false,
   orderId,
   onCreated,
 }: {
   admin?: boolean;
+  customerUserId?: number;
+  embedded?: boolean;
   orderId?: number;
   onCreated: (id: number) => void;
 }) {
@@ -17,11 +21,13 @@ export function CreateTicket({
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
   const [order, setOrder] = useState(orderId ? String(orderId) : "");
-  const [customer, setCustomer] = useState("");
+  const [customer, setCustomer] = useState(
+    customerUserId ? String(customerUserId) : "",
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   return (
-    <section className={styles.panel}>
+    <section className={styles.panel} data-embedded={embedded || undefined}>
       <button type="button" aria-expanded={open} onClick={() => setOpen(!open)}>
         {open
           ? "Свернуть форму"
@@ -89,7 +95,7 @@ export function CreateTicket({
               onChange={(event) => setOrder(event.target.value)}
             />
           </label>
-          {admin && !orderId && (
+          {admin && !orderId && !customerUserId && (
             <label>
               Номер клиента (если нет заказа)
               <input
