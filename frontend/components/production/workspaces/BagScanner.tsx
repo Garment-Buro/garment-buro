@@ -7,6 +7,7 @@ import styles from './ProductionFlow.module.css';
 import { CameraScanner } from './CameraScanner';
 import { requestJson } from '@/lib/api/http';
 import type { Station } from '@/lib/production/types';
+import { PiCamera, PiQrCode } from 'react-icons/pi';
 
 export function BagScanner({
     disabled,
@@ -37,25 +38,25 @@ export function BagScanner({
     }, [value, camera]);
     return (
         <section className={styles.scan}>
-            <button
-                type="button"
-                className={styles.scanDock}
-                disabled={disabled || pending}
-                onClick={() => setCamera(true)}
-            >
-                Сканировать QR
-            </button>
             {camera && (
                 <CameraScanner
                     onRead={onRead}
                     onClose={() => setCamera(false)}
                 />
             )}
-            <h1>Скан мешка</h1>
-            <p>Считайте QR сканером в поле или введите номер заказа.</p>
-            <form
-                ref={form}
-                onSubmit={async (event) => {
+            <div className={styles.scanCopy}>
+                <span className={styles.scanIcon} aria-hidden="true">
+                    <PiQrCode />
+                </span>
+                <div>
+                    <h2>Открыть мешок</h2>
+                    <p>Отсканируйте QR или введите номер заказа.</p>
+                </div>
+            </div>
+            <div className={styles.scanControls}>
+                <form
+                    ref={form}
+                    onSubmit={async (event) => {
                     event.preventDefault();
                     if (pending || disabled) return;
                     setError('');
@@ -113,24 +114,34 @@ export function BagScanner({
                     } finally {
                         setPending(false);
                     }
-                }}
-            >
-                <input
-                    aria-label="QR мешка или номер заказа"
-                    placeholder="QR мешка или номер заказа"
-                    autoComplete="off"
-                    value={value}
-                    onChange={(e) => setValue(e.target.value)}
-                    maxLength={2048}
-                    disabled={pending || disabled}
-                />
-                <button
-                    className={styles.primary}
-                    disabled={pending || disabled || !value.trim()}
+                    }}
                 >
-                    {pending ? 'Проверяем…' : 'Открыть'}
+                    <input
+                        aria-label="QR мешка или номер заказа"
+                        placeholder="QR или номер заказа"
+                        autoComplete="off"
+                        value={value}
+                        onChange={(e) => setValue(e.target.value)}
+                        maxLength={2048}
+                        disabled={pending || disabled}
+                    />
+                    <button
+                        className={styles.primary}
+                        disabled={pending || disabled || !value.trim()}
+                    >
+                        {pending ? 'Проверяем…' : 'Открыть'}
+                    </button>
+                </form>
+                <button
+                    type="button"
+                    className={styles.scanCamera}
+                    disabled={disabled || pending}
+                    onClick={() => setCamera(true)}
+                >
+                    <PiCamera aria-hidden="true" />
+                    Сканировать камерой
                 </button>
-            </form>
+            </div>
             {error && (
                 <p role="alert" className={styles.error}>
                     {error}

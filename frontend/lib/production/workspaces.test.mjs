@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { bagCanMove, parseBagReference, stationGuides } from './workspaces.ts';
+import {
+    bagCanMove,
+    parseBagReference,
+    queueItemMatchesPocket,
+    queueItemMatchesStation,
+    resolveEmployeeStation,
+    stationGuides,
+} from './workspaces.ts';
 
 test('scanner resolves numbers and local bag QR without falling back to another order', () => {
     const origin = 'https://production.garment-buro.ru';
@@ -76,4 +83,32 @@ test('public labels only accept local random tokens', () => {
     assert.deepEqual(parseBagReference(`${origin}/production/label?token=${token}`, origin), {kind:'label',token});
     assert.equal(parseBagReference(`${origin}/production/label?token=1`, origin), null);
     assert.equal(parseBagReference(`https://evil.test/production/label?token=${token}`, origin), null);
+});
+
+test('terminal queue respects display states and station counters', () => {
+    const item = {
+        project_id: 1,
+        order_id: 10,
+        customer: 'Test',
+        units_count: 2,
+        state: 'in_production',
+        display_state: 'done',
+        version: 1,
+        paid_at: null,
+        blocked: false,
+        flow_version: 2,
+        stage_counts: { workshop: 2, waiting_dtf: 1 },
+        dtf_pending: 1,
+    };
+    assert.equal(queueItemMatchesPocket(item, 'done'), true);
+    assert.equal(queueItemMatchesPocket(item, 'holds'), true);
+    assert.equal(queueItemMatchesStation(item, 'workshop'), true);
+    assert.equal(queueItemMatchesStation(item, 'dtf'), true);
+    assert.equal(queueItemMatchesStation(item, 'packing'), false);
+});
+
+test('the first assigned station is also used for API actions before manual switching', () => {
+    assert.equal(resolveEmployeeStation(undefined, ['cut', 'packing']), 'cut');
+    assert.equal(resolveEmployeeStation('packing', ['cut', 'packing']), 'packing');
+    assert.equal(resolveEmployeeStation(undefined, []), undefined);
 });

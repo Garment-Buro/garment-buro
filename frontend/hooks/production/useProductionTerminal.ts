@@ -3,9 +3,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { productionApi } from '@/lib/api/production';
 import { useProductionAuthStore } from '@/store/productionAuthStore';
-import type { Command, Employee, Project, Queue } from '@/lib/production/types';
+import type {
+    Command,
+    Employee,
+    Project,
+    Queue,
+    Station,
+} from '@/lib/production/types';
+import { resolveEmployeeStation } from '@/lib/production/workspaces';
 
-export function useProductionTerminal(station?: string) {
+export function useProductionTerminal(station?: Station) {
     const run = useProductionAuthStore((state) => state.runAuthenticated);
     const userId = useProductionAuthStore((state) => state.user?.id);
     const [employee, setEmployee] = useState<Employee | null>(null);
@@ -51,7 +58,7 @@ export function useProductionTerminal(station?: string) {
                               token,
                               selected,
                               controller.signal,
-                              station,
+                              resolveEmployeeStation(station, me.stations),
                           ),
                       )
                     : null;
@@ -152,7 +159,10 @@ export function useProductionTerminal(station?: string) {
                     project.version,
                     key,
                     command,
-                    station,
+                    resolveEmployeeStation(
+                        station,
+                        employee?.stations ?? [],
+                    ),
                 ),
             );
             setNotice('Действие сохранено в журнале');

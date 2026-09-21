@@ -558,6 +558,30 @@
         border: 0;
     }
 }
+@media (max-width: 480px) {
+    .terminal fieldset {
+        padding: 12px;
+    }
+    .componentForm,
+    .statusGrid {
+        grid-template-columns: 1fr;
+    }
+    .componentForm label:first-child {
+        grid-column: auto;
+    }
+    .actions {
+        align-items: stretch;
+    }
+    .actions > button,
+    .file > button,
+    .section > button {
+        width: 100%;
+    }
+    .component {
+        align-items: flex-start;
+        flex-wrap: wrap;
+    }
+}
 @media print {
     .terminal {
         display: none !important;

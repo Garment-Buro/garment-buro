@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import {
+    PiArrowLeft,
     PiArrowClockwise,
     PiCaretDown,
     PiPackage,
@@ -15,11 +16,18 @@ import {
     type QueueItem,
     type Station,
 } from '@/lib/production/types';
-import { stationRoles, thingsCount } from '@/lib/production/workspaces';
+import {
+    queueItemMatchesPocket,
+    queueItemMatchesStation,
+    stationRoles,
+    thingsCount,
+    type QueuePocket,
+} from '@/lib/production/workspaces';
 import { ProductionCycle } from './ProductionCycle';
 import { BagScanner } from './BagScanner';
 import { ProductionBag } from './ProductionBag';
 import { PrintSheet } from '../PrintSheet';
+import { ProductionMark, TerminalState } from './ProductionUi';
 import styles from './ProductionFlow.module.css';
 import legacy from '../ProductionTerminal.module.css';
 
@@ -29,13 +37,12 @@ export function ProductionWorkspace() {
     const logout = useProductionAuthStore((s) => s.logout);
     const authError = useProductionAuthStore((s) => s.error);
     const [cycle, setCycle] = useState(false);
-    const [pocket, setPocket] = useState('work');
+    const [pocket, setPocket] = useState<QueuePocket>('work');
     const [query, setQuery] = useState('');
     const [printing, setPrinting] = useState(false);
     const [printError, setPrintError] = useState('');
     const { employee, project, busy, loading, queue } = terminal;
     const station = chosen ?? employee?.stations[0] ?? 'tech';
-    const wide = station === 'tech' || station === 'dtf';
     const print = async () => {
         setPrinting(true);
         setPrintError('');
@@ -82,42 +89,13 @@ export function ProductionWorkspace() {
         );
     }
     const relevant = (item: QueueItem) => {
-        if (pocket === 'all') return true;
-        if (pocket === 'holds')
-            return (
-                item.state === 'waiting_dtf' ||
-                Boolean(item.stage_counts?.waiting_dtf)
-            );
-        if (pocket === 'done')
-            return ['packed', 'dispatched'].includes(item.state);
-        if (
-            item.flow_version === 2 &&
-            station !== 'tech' &&
-            station !== 'shipping'
-        ) {
-            if (station === 'dtf') return (item.dtf_pending ?? 0) > 0;
-            if (station === 'kit')
-                return Boolean(
-                    item.stage_counts?.kit || item.stage_counts?.waiting_dtf,
-                );
-            return Boolean(item.stage_counts?.[station]);
-        }
-        if (station === 'tech') return item.state === 'inbox';
-        if (station === 'kit') return item.state === 'kitting';
-        if (station === 'shipping') return item.state === 'packed';
-        if (station === 'dtf')
-            return (
-                ['kitting', 'workshop', 'waiting_dtf'].includes(item.state) &&
-                (item.dtf_pending ?? 0) > 0
-            );
-        return (
-            item.state === 'workshop' && Boolean(item.stage_counts?.[station])
-        );
+        if (pocket !== 'work') return queueItemMatchesPocket(item, pocket);
+        return queueItemMatchesStation(item, station);
     };
     const items = queue.items
         .filter(relevant)
         .filter((x) =>
-            `${x.order_id} ${x.customer}`
+            `${x.order_id} ${x.project_id} ${x.customer}`
                 .toLowerCase()
                 .includes(query.toLowerCase()),
         );
@@ -156,12 +134,12 @@ export function ProductionWorkspace() {
                 </span>
                 <PiCaretDown aria-hidden />
             </button>
-            {!wide && terminal.selected === item.project_id && detail}
         </article>
     );
     const detail =
         project && employee ? (
             <ProductionBag
+                key={`${project.project_id}-${station}-${terminal.focusedUnit ?? 'root'}`}
                 project={project}
                 employee={employee}
                 station={station}
@@ -180,73 +158,76 @@ export function ProductionWorkspace() {
         <>
             <div className={`${legacy.terminal} ${styles.flow}`}>
                 <header className={styles.topbar}>
-                    <div className={styles.avatar}>
-                        {employee?.name.slice(0, 1) ?? 'GB'}
-                    </div>
-                    <div className={styles.account}>
-                        <small>Аккаунт · Garment Buro</small>
-                        <strong title={employee?.name}>
-                            {employee?.name ?? 'Сотрудник'}
-                        </strong>
-                    </div>
-                    <span className={styles.role}>{stationRoles[station]}</span>
-                    {employee?.can_administer && (
-                        <Link
-                            className={styles.adminLink}
-                            href="/production"
-                        >
-                            Администратор
-                        </Link>
-                    )}
-                    <button
-                        className={styles.logout}
-                        aria-label="Выйти из терминала"
-                        disabled={busy || printing}
-                        onClick={() => void logout()}
-                    >
-                        <PiSignOut />
-                    </button>
-                </header>
-                <main
-                    className={styles.page}
-                    data-wide={wide && !cycle}
-                    data-cut={station === 'cut' && !cycle}
-                >
-                    <nav
-                        className={styles.modeSwitch}
-                        aria-label="Режим терминала"
-                    >
-                        <button
-                            aria-current={!cycle ? 'page' : undefined}
-                            onClick={() => setCycle(false)}
-                        >
-                            Моя работа
-                        </button>
-                        <button
-                            aria-current={cycle ? 'page' : undefined}
-                            onClick={() => setCycle(true)}
-                        >
-                            Весь цикл
-                        </button>
-                    </nav>
-                    <nav
-                        className={styles.processNav}
-                        aria-label="Производственный контур"
-                    >
-                        {(employee?.stations ?? []).map((s, i) => (
-                            <button
-                                key={s}
-                                aria-current={
-                                    station === s && !cycle ? 'page' : undefined
-                                }
-                                disabled={busy || printing}
-                                onClick={() => choose(s)}
+                    <div className={styles.topbarInner}>
+                        <ProductionMark />
+                        <div className={styles.account}>
+                            <small>Производственный терминал</small>
+                            <strong title={employee?.name}>
+                                {employee?.name ?? 'Сотрудник'}
+                            </strong>
+                        </div>
+                        <span className={styles.role}>
+                            {stationRoles[station]}
+                        </span>
+                        {employee?.can_administer && (
+                            <Link
+                                className={styles.adminLink}
+                                href="/production"
                             >
-                                <b>{i + 1}</b>
-                                {labels[s]}
+                                Администратор
+                            </Link>
+                        )}
+                        <button
+                            className={styles.logout}
+                            aria-label="Выйти из терминала"
+                            title="Выйти"
+                            disabled={busy || printing}
+                            onClick={() => void logout()}
+                        >
+                            <PiSignOut aria-hidden="true" />
+                        </button>
+                    </div>
+                </header>
+                <main className={styles.page}>
+                    <div className={styles.navigation}>
+                        <nav
+                            className={styles.modeSwitch}
+                            aria-label="Режим терминала"
+                        >
+                            <button
+                                aria-current={!cycle ? 'page' : undefined}
+                                onClick={() => setCycle(false)}
+                            >
+                                Моя работа
                             </button>
-                        ))}
-                    </nav>
+                            <button
+                                aria-current={cycle ? 'page' : undefined}
+                                onClick={() => setCycle(true)}
+                            >
+                                Весь цикл
+                            </button>
+                        </nav>
+                        <nav
+                            className={styles.processNav}
+                            aria-label="Производственный контур"
+                        >
+                            {(employee?.stations ?? []).map((s, i) => (
+                                <button
+                                    key={s}
+                                    aria-current={
+                                        station === s && !cycle
+                                            ? 'page'
+                                            : undefined
+                                    }
+                                    disabled={busy || printing}
+                                    onClick={() => choose(s)}
+                                >
+                                    <b>{i + 1}</b>
+                                    {labels[s]}
+                                </button>
+                            ))}
+                        </nav>
+                    </div>
                     <div aria-live="polite">
                         {employee?.is_demo && (
                             <p className={styles.notice}>
@@ -279,7 +260,10 @@ export function ProductionWorkspace() {
                         />
                     ) : (
                         <>
-                            <div className={styles.layout}>
+                            <div
+                                className={styles.layout}
+                                data-selected={Boolean(terminal.selected)}
+                            >
                                 <section className={styles.queue}>
                                     <div className={styles.queueHeading}>
                                         <div>
@@ -313,12 +297,14 @@ export function ProductionWorkspace() {
                                         role="group"
                                         aria-label="Состояние мешков"
                                     >
-                                        {[
-                                            ['work', 'В работе'],
-                                            ['holds', 'Ждут вложения'],
-                                            ['done', 'Завершённые'],
-                                            ['all', 'Все мешки'],
-                                        ].map(([key, label]) => (
+                                        {(
+                                            [
+                                                ['work', 'В работе'],
+                                                ['holds', 'Ждут вложения'],
+                                                ['done', 'Завершённые'],
+                                                ['all', 'Все мешки'],
+                                            ] as [QueuePocket, string][]
+                                        ).map(([key, label]) => (
                                             <button
                                                 key={key}
                                                 aria-pressed={pocket === key}
@@ -341,26 +327,18 @@ export function ProductionWorkspace() {
                                             onChange={(e) =>
                                                 setQuery(e.target.value)
                                             }
-                                            placeholder="Имя или номер заказа"
+                                            placeholder="Имя, заказ или проект"
                                         />
                                     </label>
                                     {loading && !queue.items.length ? (
-                                        <div
-                                            role="status"
-                                            className={styles.skeleton}
-                                        >
+                                        <TerminalState loading>
                                             Загружаем заказы…
-                                        </div>
+                                        </TerminalState>
                                     ) : !items.length ? (
-                                        <div className={styles.empty}>
-                                            <PiPackage />
-                                            <h2>Здесь пока нет мешков</h2>
-                                            <p>
-                                                Проверьте другие состояния или
-                                                загрузите следующую часть
-                                                списка.
-                                            </p>
-                                        </div>
+                                        <TerminalState title="Здесь пока нет мешков">
+                                            Проверьте другие состояния или
+                                            загрузите следующую часть списка.
+                                        </TerminalState>
                                     ) : (
                                         items.map(renderBag)
                                     )}
@@ -373,39 +351,36 @@ export function ProductionWorkspace() {
                                         </button>
                                     )}
                                 </section>
-                                {wide && (
-                                    <section className={styles.detail}>
-                                        {detail ?? (
-                                            <div className={styles.empty}>
-                                                <PiPackage />
-                                                <h2>Выберите мешок</h2>
-                                                <p>
-                                                    Здесь появятся вещи,
-                                                    развёртки и рабочие
-                                                    действия.
-                                                </p>
-                                            </div>
-                                        )}
-                                    </section>
-                                )}
-                            </div>
-                            {!wide &&
-                                terminal.selected &&
-                                !items.some(
-                                    (x) => x.project_id === terminal.selected,
-                                ) && (
-                                    <section className={styles.detail}>
+                                <section className={styles.detail}>
+                                    {terminal.selected && (
                                         <button
-                                            onClick={() =>
-                                                terminal.select(null)
-                                            }
+                                            className={styles.mobileDetailBack}
+                                            onClick={() => terminal.select(null)}
                                             disabled={busy || printing}
                                         >
-                                            Закрыть открытый мешок
+                                            <PiArrowLeft aria-hidden="true" />
+                                            К списку мешков
                                         </button>
-                                        {detail}
-                                    </section>
-                                )}
+                                    )}
+                                    {detail ?? (
+                                        <TerminalState
+                                            title={
+                                                terminal.selected && loading
+                                                    ? undefined
+                                                    : 'Выберите мешок'
+                                            }
+                                            loading={
+                                                Boolean(terminal.selected) &&
+                                                loading
+                                            }
+                                        >
+                                            {terminal.selected && loading
+                                                ? 'Загружаем состав мешка…'
+                                                : 'Здесь появятся вещи, развёртки и рабочие действия.'}
+                                        </TerminalState>
+                                    )}
+                                </section>
+                            </div>
                         </>
                     )}
                 </main>

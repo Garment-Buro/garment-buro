@@ -1,4 +1,55 @@
-import type { Project, Station } from './types';
+import type { Project, QueueItem, Station } from './types';
+
+export type QueuePocket = 'work' | 'holds' | 'done' | 'all';
+
+export function resolveEmployeeStation(
+    requested: Station | undefined,
+    assigned: Station[],
+): Station | undefined {
+    return requested ?? assigned[0];
+}
+
+export function queueItemMatchesPocket(
+    item: QueueItem,
+    pocket: QueuePocket,
+): boolean {
+    const state = item.display_state || item.state;
+    if (pocket === 'all') return true;
+    if (pocket === 'holds')
+        return (
+            state === 'waiting_dtf' || Boolean(item.stage_counts?.waiting_dtf)
+        );
+    if (pocket === 'done')
+        return ['packed', 'dispatched', 'done'].includes(state);
+    return true;
+}
+
+export function queueItemMatchesStation(
+    item: QueueItem,
+    station: Station,
+): boolean {
+    if (
+        item.flow_version === 2 &&
+        station !== 'tech' &&
+        station !== 'shipping'
+    ) {
+        if (station === 'dtf') return (item.dtf_pending ?? 0) > 0;
+        if (station === 'kit')
+            return Boolean(
+                item.stage_counts?.kit || item.stage_counts?.waiting_dtf,
+            );
+        return Boolean(item.stage_counts?.[station]);
+    }
+    if (station === 'tech') return item.state === 'inbox';
+    if (station === 'kit') return item.state === 'kitting';
+    if (station === 'shipping') return item.state === 'packed';
+    if (station === 'dtf')
+        return (
+            ['kitting', 'workshop', 'waiting_dtf'].includes(item.state) &&
+            (item.dtf_pending ?? 0) > 0
+        );
+    return item.state === 'workshop' && Boolean(item.stage_counts?.[station]);
+}
 
 export function thingsCount(count: number) {
     const form = new Intl.PluralRules('ru').select(count);
