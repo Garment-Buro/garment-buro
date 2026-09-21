@@ -15,6 +15,8 @@ import {
 } from 'react-icons/pi';
 import { useProductionAuthStore } from '@/store/productionAuthStore';
 import {
+    type AdminClient,
+    type AdminOrder,
     type AdminSection,
     productionAdminSections,
     sectionLabels,
@@ -42,6 +44,10 @@ export function ProductionAdminTerminal() {
             ? productionAdminSections
             : systemAdminSections;
     const [section, setSection] = useState<AdminSection>(sections[0]);
+    const [clientSearch, setClientSearch] = useState({
+        value: '',
+        revision: 0,
+    });
     const [leaving, setLeaving] = useState(false);
     const contentRef = useRef<HTMLDivElement>(null);
     const logout = useProductionAuthStore((state) => state.logout);
@@ -56,6 +62,17 @@ export function ProductionAdminTerminal() {
                 contentRef.current?.scrollIntoView({ block: 'start' }),
             );
         }
+    };
+    const openClient = (client: AdminOrder | AdminClient) => {
+        if (!sections.includes('clients')) return;
+        const value = client.user_id
+            ? String(client.user_id)
+            : client.email || client.phone || client.name;
+        setClientSearch((current) => ({
+            value,
+            revision: current.revision + 1,
+        }));
+        selectSection('clients');
     };
     return (
         <main className={styles.screen}>
@@ -155,7 +172,16 @@ export function ProductionAdminTerminal() {
                 ) : section === 'assortment' ? (
                     <AdminAssortment />
                 ) : (
-                    <AdminRecords key={section} section={section} />
+                    <AdminRecords
+                        key={`${section}:${
+                            section === 'clients' ? clientSearch.revision : 0
+                        }`}
+                        section={section}
+                        initialQuery={
+                            section === 'clients' ? clientSearch.value : ''
+                        }
+                        onClient={openClient}
+                    />
                 )}
             </div>
         </main>

@@ -55,7 +55,7 @@ def order_row(row):
 
 
 class ProductionAdminReads:
-    async def orders(self, session, *, q, status, limit, offset):
+    async def orders(self, session, *, q, status, limit, offset, sort, direction):
         state = func.coalesce(OrderWorkflow.state, Order.status)
         statement = select(Order, OrderWorkflow.state).outerjoin(
             OrderWorkflow, OrderWorkflow.order_id == Order.id
@@ -65,9 +65,26 @@ class ProductionAdminReads:
         )
         if status:
             statement = statement.where(state == status)
+        order_fields = {
+            "created_at": Order.created_at,
+            "total": Order.total_price,
+            "client": func.lower(
+                func.coalesce(
+                    Order.last_name,
+                    Order.first_name,
+                    Order.email,
+                    Order.phone,
+                    "",
+                )
+            ),
+            "status": state,
+            "payment_status": Order.payment_status,
+        }
+        ordered = order_fields[sort].asc() if direction == "asc" else order_fields[sort].desc()
+        tie_breaker = Order.id.asc() if direction == "asc" else Order.id.desc()
         rows = (
             await session.execute(
-                statement.order_by(Order.id.desc()).offset(offset).limit(limit + 1)
+                statement.order_by(ordered, tie_breaker).offset(offset).limit(limit + 1)
             )
         ).all()
         return page(rows, limit, offset, order_row)
@@ -114,9 +131,12 @@ class ProductionAdminReads:
                 {
                     "id": x.id,
                     "title": x.title_snapshot,
+                    "sku": x.sku_snapshot,
+                    "image": x.image_url_snapshot,
                     "quantity": x.quantity,
                     "size": x.size_snapshot,
                     "color": x.color_snapshot,
+                    "unit_price": money(x.unit_price),
                     "total": money(x.line_total),
                     "customization": x.customization_snapshot,
                 }
@@ -315,7 +335,7 @@ class ProductionAdminReads:
             },
         )
 
-    async def payouts(self, session, *, q, status, limit, offset):
+    async def payouts(self, session, *, q, status, limit, offset, sort, direction):
         statement = (
             select(PartnerPayoutRequest, PartnerProfile.display_name, PartnerBankPayment.state)
             .join(PartnerProfile, PartnerProfile.id == PartnerPayoutRequest.partner_id)
@@ -326,9 +346,19 @@ class ProductionAdminReads:
         )
         if status:
             statement = statement.where(PartnerPayoutRequest.status == status)
+        payout_fields = {
+            "created_at": PartnerPayoutRequest.created_at,
+            "amount": PartnerPayoutRequest.amount,
+            "partner": func.lower(PartnerProfile.display_name),
+            "status": PartnerPayoutRequest.status,
+        }
+        ordered = payout_fields[sort].asc() if direction == "asc" else payout_fields[sort].desc()
+        tie_breaker = (
+            PartnerPayoutRequest.id.asc() if direction == "asc" else PartnerPayoutRequest.id.desc()
+        )
         rows = (
             await session.execute(
-                statement.order_by(PartnerPayoutRequest.id.desc()).offset(offset).limit(limit + 1)
+                statement.order_by(ordered, tie_breaker).offset(offset).limit(limit + 1)
             )
         ).all()
         return page(

@@ -6,6 +6,8 @@ import { useAdminResource } from '@/hooks/production/useAdminResource';
 import {
     type AdminEmployee,
     type AdminEmployeeCodeResponse,
+    type AdminClient,
+    type AdminOrder,
     type AdminSection,
     type Page,
     type AdminPayout,
@@ -13,6 +15,7 @@ import {
     statusLabels,
 } from '@/lib/production/adminTypes';
 import { AdminOrderDetails } from './AdminOrderDetails';
+import { AdminClientDetails } from './AdminClientDetails';
 import { AdminEmployeeAccessCode } from './AdminEmployeeAccessCode';
 import { AdminEmployeeEditor } from './AdminEmployeeEditor';
 import { AdminInboxDetails } from './AdminInboxDetails';
@@ -42,11 +45,42 @@ const filters: Record<Section, string[]> = {
     problems: ['new', 'in_progress', 'resolved', 'closed'],
     support: ['new', 'in_progress', 'resolved', 'closed'],
 };
-export function AdminRecords({ section }: { section: Section }) {
-    const [search, setSearch] = useState('');
-    const [query, setQuery] = useState('');
+const sortingOptions = {
+    orders: [
+        ['created_at:desc', 'Сначала новые'],
+        ['created_at:asc', 'Сначала старые'],
+        ['total:desc', 'Сначала дорогие'],
+        ['total:asc', 'Сначала дешёвые'],
+        ['client:asc', 'Клиент: А–Я'],
+        ['client:desc', 'Клиент: Я–А'],
+        ['status:asc', 'По этапу'],
+        ['payment_status:asc', 'По оплате'],
+    ],
+    payouts: [
+        ['created_at:desc', 'Сначала новые'],
+        ['created_at:asc', 'Сначала старые'],
+        ['amount:desc', 'Сначала крупные'],
+        ['amount:asc', 'Сначала небольшие'],
+        ['partner:asc', 'Партнёр: А–Я'],
+        ['partner:desc', 'Партнёр: Я–А'],
+        ['status:asc', 'По статусу'],
+    ],
+} as const;
+
+export function AdminRecords({
+    section,
+    initialQuery = '',
+    onClient,
+}: {
+    section: Section;
+    initialQuery?: string;
+    onClient: (client: AdminOrder | AdminClient) => void;
+}) {
+    const [search, setSearch] = useState(initialQuery);
+    const [query, setQuery] = useState(initialQuery);
     const [status, setStatus] = useState('');
     const [priority, setPriority] = useState('');
+    const [sorting, setSorting] = useState('created_at:desc');
     const [offset, setOffset] = useState(0);
     const [orderId, setOrderId] = useState<number | null>(null);
     const [payout, setPayout] = useState<AdminPayout | null>(null);
@@ -57,6 +91,7 @@ export function AdminRecords({ section }: { section: Section }) {
         useState<AdminEmployeeCodeResponse | null>(null);
     const [notice, setNotice] = useState('');
     const [inboxId, setInboxId] = useState<number | null>(null);
+    const [client, setClient] = useState<AdminClient | null>(null);
     const isInbox = section === 'problems' || section === 'support';
     const params = new URLSearchParams({
         q: query,
@@ -65,6 +100,11 @@ export function AdminRecords({ section }: { section: Section }) {
         limit: '30',
     });
     if (isInbox) params.set('priority', priority);
+    if (section === 'orders' || section === 'payouts') {
+        const [sort, direction] = sorting.split(':');
+        params.set('sort', sort);
+        params.set('direction', direction);
+    }
     const { data, loading, error, reload } = useAdminResource<Page<RecordRow>>(
         `${section}?${params}`,
         30_000,
@@ -139,6 +179,26 @@ export function AdminRecords({ section }: { section: Section }) {
                             {filters[section].map((value) => (
                                 <option key={value} value={value}>
                                     {statusLabels[value]}
+                                </option>
+                            ))}
+                        </select>
+                    </label>
+                )}
+                {(section === 'orders' || section === 'payouts') && (
+                    <label>
+                        Сортировка
+                        <select
+                            value={sorting}
+                            onChange={(event) => {
+                                setSorting(event.target.value);
+                                setOffset(0);
+                                setOrderId(null);
+                                setPayout(null);
+                            }}
+                        >
+                            {sortingOptions[section].map(([value, label]) => (
+                                <option key={value} value={value}>
+                                    {label}
                                 </option>
                             ))}
                         </select>
@@ -241,6 +301,13 @@ export function AdminRecords({ section }: { section: Section }) {
                             setInboxId(row.id);
                             setNotice('');
                         }}
+                        onClient={(row) => {
+                            if (section === 'clients') {
+                                setClient(row as AdminClient);
+                            } else {
+                                onClient(row);
+                            }
+                        }}
                     />
                 </div>
             )}
@@ -274,7 +341,18 @@ export function AdminRecords({ section }: { section: Section }) {
                 <AdminOrderDetails
                     key={orderId}
                     id={orderId}
+                    onClient={onClient}
                     onClose={() => setOrderId(null)}
+                />
+            )}
+            {client && (
+                <AdminClientDetails
+                    client={client}
+                    onClose={() => setClient(null)}
+                    onOrder={(id) => {
+                        setClient(null);
+                        setOrderId(id);
+                    }}
                 />
             )}
             {payout && (

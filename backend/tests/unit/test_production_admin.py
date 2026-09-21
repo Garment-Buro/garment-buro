@@ -204,6 +204,51 @@ def test_statistics_reports_change_since_last_week(tmp_path):
     asyncio.run(scenario())
 
 
+def test_orders_and_payouts_support_allowlisted_sorting(tmp_path):
+    async def scenario():
+        async with admin_app(tmp_path) as (app, db, code, _):
+            async with db.session() as session:
+                session.add(
+                    Order(
+                        email="large-order@example.test",
+                        email_normalized="large-order@example.test",
+                        first_name="Большой",
+                        items_subtotal=Decimal("999999.00"),
+                        delivery_price=Decimal("0.00"),
+                        total_price=Decimal("999999.00"),
+                        request_fingerprint_sha256="f" * 64,
+                    )
+                )
+                session.add(
+                    PartnerPayoutRequest(
+                        partner_id=1,
+                        amount=Decimal("250.00"),
+                    )
+                )
+                await session.commit()
+            async with AsyncClient(transport=ASGITransport(app), base_url="https://test") as client:
+                await client.post("/api/production/auth/login", json={"code": code})
+                orders = (
+                    await client.get("/api/production/admin/orders?sort=total&direction=desc")
+                ).json()
+                assert orders["items"][0]["total"] == "999999.00"
+                payouts = (
+                    await client.get("/api/production/admin/payouts?sort=amount&direction=asc")
+                ).json()
+                assert [row["amount"] for row in payouts["items"]] == [
+                    "250.00",
+                    "1250.50",
+                ]
+                assert (
+                    await client.get("/api/production/admin/orders?sort=created_at;drop")
+                ).status_code == 422
+                assert (
+                    await client.get("/api/production/admin/payouts?direction=sideways")
+                ).status_code == 422
+
+    asyncio.run(scenario())
+
+
 def test_admin_filters_and_updates_support_and_production_problems(tmp_path):
     async def scenario():
         async with admin_app(tmp_path) as (app, db, admin_code, cutter_code):

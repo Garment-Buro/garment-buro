@@ -42,9 +42,12 @@ export interface AdminOrderDetail extends AdminOrder {
     items: {
         id: number;
         title: string;
+        sku: string | null;
+        image: string;
         quantity: number;
         size: string;
         color: string;
+        unit_price: string;
         total: string;
         customization: Record<string, unknown> | null;
     }[];

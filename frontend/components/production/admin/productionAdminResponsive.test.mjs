@@ -14,6 +14,14 @@ const orderDetails = readFileSync(
     new URL('./AdminOrderDetails.tsx', import.meta.url),
     'utf8',
 );
+const orderItem = readFileSync(
+    new URL('./AdminOrderItem.tsx', import.meta.url),
+    'utf8',
+);
+const clientDetails = readFileSync(
+    new URL('./AdminClientDetails.tsx', import.meta.url),
+    'utf8',
+);
 const payoutReview = readFileSync(
     new URL('./AdminPayoutReview.tsx', import.meta.url),
     'utf8',
@@ -52,6 +60,9 @@ test('mobile record lists use grouped cards instead of squeezed tables', () => {
     );
     assert.match(css, /td\[data-primary='true'\]/);
     assert.match(css, /td\[data-action='true'\] button/);
+    assert.match(table, /data-section=\{section\}/);
+    assert.match(css, /grid-template-areas:\s*'order total'/s);
+    assert.match(css, /grid-template-areas:\s*'payout amount'/s);
 });
 
 test('mobile filters, statistics and dialogs use dense touch layouts', () => {
@@ -70,6 +81,10 @@ test('mobile filters, statistics and dialogs use dense touch layouts', () => {
     assert.match(payoutReview, /className=\{styles\.payoutDialog\}/);
     assert.match(orderDetails, /aria-modal="true"/);
     assert.match(payoutReview, /aria-modal="true"/);
+    assert.match(
+        css,
+        /\.orderDialog,[\s\S]*height:\s*calc\(100dvh - max\(16px,/,
+    );
 });
 
 test('overview cards navigate, show weekly changes and use icon refresh actions', () => {
@@ -87,4 +102,19 @@ test('overview cards navigate, show weekly changes and use icon refresh actions'
         css,
         /\.metricCard\[data-width='wide'\]\s*\{[^}]*grid-column:\s*span 4/s,
     );
+});
+
+test('orders and payouts expose sorting, client navigation and readable details', () => {
+    assert.match(records, /const sortingOptions/);
+    assert.match(records, /params\.set\('sort', sort\)/);
+    assert.match(records, /params\.set\('direction', direction\)/);
+    assert.match(table, /onClient\(row\)/);
+    assert.match(terminal, /selectSection\('clients'\)/);
+    assert.match(orderDetails, /<AdminOrderItem/);
+    assert.doesNotMatch(orderDetails, /JSON\.stringify/);
+    assert.match(orderItem, /Настройки конструктора/);
+    assert.match(orderItem, /Комментарий клиента/);
+    assert.match(clientDetails, /Последний заказ/);
+    assert.match(payoutReview, /canReview/);
+    assert.match(payoutReview, /PiX/);
 });

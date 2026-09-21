@@ -24,17 +24,31 @@ function Contact({
     name,
     email,
     phone,
+    onClick,
 }: {
     name: string;
     email: string | null;
     phone: string | null;
+    onClick?: () => void;
 }) {
-    return (
+    const content = (
         <>
             <strong>{name || 'Имя не указано'}</strong>
-            <small>{email || 'Без почты'}</small>
-            <small>{phone || 'Без телефона'}</small>
+            <small className={styles.contactDetails}>
+                {[email, phone].filter(Boolean).join(' · ') || 'Без контактов'}
+            </small>
         </>
+    );
+    return onClick ? (
+        <button
+            type="button"
+            className={styles.contactButton}
+            onClick={onClick}
+        >
+            {content}
+        </button>
+    ) : (
+        <span className={styles.contactBlock}>{content}</span>
     );
 }
 function Status({ value }: { value: string }) {
@@ -48,6 +62,7 @@ export function AdminRecordsTable({
     onPayout,
     onEmployee,
     onInbox,
+    onClient,
 }: {
     section: Exclude<AdminSection, 'stats'>;
     items: RecordRow[];
@@ -55,9 +70,10 @@ export function AdminRecordsTable({
     onPayout: (payout: AdminPayout) => void;
     onEmployee: (employee: AdminEmployee) => void;
     onInbox: (item: AdminInboxItem) => void;
+    onClient: (client: AdminOrder | AdminClient) => void;
 }) {
     return (
-        <table>
+        <table data-section={section}>
             <caption className={styles.srOnly}>
                 {sectionLabels[section]}
             </caption>
@@ -75,24 +91,39 @@ export function AdminRecordsTable({
                     <tbody>
                         {(items as AdminOrder[]).map((row) => (
                             <tr key={row.id}>
-                                <td data-label="Заказ" data-primary="true">
+                                <td
+                                    data-label="Заказ"
+                                    data-primary="true"
+                                    data-field="order"
+                                >
                                     <button onClick={() => onOrder(row.id)}>
                                         №{row.id}
                                     </button>
                                     <small>{date(row.created_at)}</small>
                                 </td>
-                                <td data-label="Покупатель" data-wide="true">
-                                    <Contact {...row} />
+                                <td
+                                    data-label="Покупатель"
+                                    data-wide="true"
+                                    data-field="client"
+                                >
+                                    <Contact
+                                        {...row}
+                                        onClick={() => onClient(row)}
+                                    />
                                 </td>
-                                <td data-label="Этап">
+                                <td data-label="Этап" data-field="status">
                                     <Status
                                         value={row.workflow_state || row.status}
                                     />
                                 </td>
-                                <td data-label="Оплата">
+                                <td data-label="Оплата" data-field="payment">
                                     <Status value={row.payment_status} />
                                 </td>
-                                <td data-label="Сумма" data-tail="true">
+                                <td
+                                    data-label="Сумма"
+                                    data-tail="true"
+                                    data-field="total"
+                                >
                                     {money(row.total)}
                                 </td>
                             </tr>
@@ -194,7 +225,10 @@ export function AdminRecordsTable({
                         {(items as AdminClient[]).map((row) => (
                             <tr key={row.key}>
                                 <td data-label="Клиент" data-primary="true">
-                                    <Contact {...row} />
+                                    <Contact
+                                        {...row}
+                                        onClick={() => onClient(row)}
+                                    />
                                     <small>
                                         {row.user_id
                                             ? `Аккаунт №${row.user_id}`
@@ -237,16 +271,31 @@ export function AdminRecordsTable({
                     <tbody>
                         {(items as AdminPayout[]).map((row) => (
                             <tr key={row.id}>
-                                <td data-label="Заявка" data-primary="true">
-                                    №{row.id}
+                                <td
+                                    data-label="Заявка"
+                                    data-primary="true"
+                                    data-field="payout"
+                                >
+                                    <button
+                                        type="button"
+                                        onClick={() => onPayout(row)}
+                                    >
+                                        №{row.id}
+                                    </button>
                                     <small>{date(row.created_at)}</small>
                                 </td>
-                                <td data-label="Партнёр" data-wide="true">
+                                <td
+                                    data-label="Партнёр"
+                                    data-wide="true"
+                                    data-field="partner"
+                                >
                                     {row.partner}
                                     <small>Партнёр №{row.partner_id}</small>
                                 </td>
-                                <td data-label="Сумма">{money(row.amount)}</td>
-                                <td data-label="Состояние">
+                                <td data-label="Сумма" data-field="amount">
+                                    {money(row.amount)}
+                                </td>
+                                <td data-label="Состояние" data-field="state">
                                     <Status value={row.status} />
                                     <small>
                                         {row.bank_state
@@ -255,21 +304,19 @@ export function AdminRecordsTable({
                                     </small>
                                     {row.note && <small>{row.note}</small>}
                                 </td>
-                                <td data-label="Решение" data-action="true">
-                                    {!row.bank_state &&
-                                    ['requested', 'approved'].includes(
-                                        row.status,
-                                    ) ? (
-                                        <button
-                                            onClick={() => {
-                                                onPayout(row);
-                                            }}
-                                        >
-                                            Рассмотреть
-                                        </button>
-                                    ) : (
-                                        'Решение недоступно'
-                                    )}
+                                <td
+                                    data-label="Решение"
+                                    data-action="true"
+                                    data-field="action"
+                                >
+                                    <button onClick={() => onPayout(row)}>
+                                        {!row.bank_state &&
+                                        ['requested', 'approved'].includes(
+                                            row.status,
+                                        )
+                                            ? 'Рассмотреть'
+                                            : 'Посмотреть'}
+                                    </button>
                                 </td>
                             </tr>
                         ))}

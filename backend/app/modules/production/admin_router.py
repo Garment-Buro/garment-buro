@@ -152,6 +152,16 @@ class ListQuery(BaseModel):
     offset: int = Field(default=0, ge=0, le=1000000)
 
 
+class OrderListQuery(ListQuery):
+    sort: Literal["created_at", "total", "client", "status", "payment_status"] = "created_at"
+    direction: Literal["asc", "desc"] = "desc"
+
+
+class PayoutListQuery(ListQuery):
+    sort: Literal["created_at", "amount", "partner", "status"] = "created_at"
+    direction: Literal["asc", "desc"] = "desc"
+
+
 class InboxListQuery(BaseModel):
     q: str = Field(default="", max_length=100)
     status: InboxStatus | Literal[""] = ""
@@ -166,7 +176,7 @@ async def statistics(_admin: SystemAdmin, session: Session):
 
 
 @router.get("/orders")
-async def orders(_admin: Admin, session: Session, query: Annotated[ListQuery, Query()]):
+async def orders(_admin: Admin, session: Session, query: Annotated[OrderListQuery, Query()]):
     return await ProductionAdminReads().orders(session, **query.model_dump())
 
 
@@ -338,7 +348,9 @@ async def clients(_admin: SystemAdmin, session: Session, query: Annotated[ListQu
 
 
 @router.get("/payouts")
-async def payouts(_admin: SystemAdmin, session: Session, query: Annotated[ListQuery, Query()]):
+async def payouts(
+    _admin: SystemAdmin, session: Session, query: Annotated[PayoutListQuery, Query()]
+):
     return await ProductionAdminReads().payouts(session, **query.model_dump())
 
 
