@@ -83,7 +83,7 @@ export function ProductionAdminTerminal() {
                 <div className={styles.identity}>
                     <video
                         className={styles.adminLogo}
-                        src="/logo_anim.mp4"
+                        src="/logo_anim_cart.mp4"
                         autoPlay
                         loop
                         muted

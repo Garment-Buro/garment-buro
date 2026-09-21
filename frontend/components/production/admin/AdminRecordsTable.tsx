@@ -63,6 +63,8 @@ export function AdminRecordsTable({
     onEmployee,
     onInbox,
     onClient,
+    onCode,
+    codeBusyId,
 }: {
     section: Exclude<AdminSection, 'stats'>;
     items: RecordRow[];
@@ -71,6 +73,8 @@ export function AdminRecordsTable({
     onEmployee: (employee: AdminEmployee) => void;
     onInbox: (item: AdminInboxItem) => void;
     onClient: (client: AdminOrder | AdminClient) => void;
+    onCode: (employee: AdminEmployee) => void;
+    codeBusyId: number | null;
 }) {
     return (
         <table data-section={section}>
@@ -147,11 +151,6 @@ export function AdminRecordsTable({
                             <tr key={row.id}>
                                 <td data-label="Сотрудник" data-primary="true">
                                     <Contact {...row} />
-                                    {row.is_demo && (
-                                        <span className={styles.demoBadge}>
-                                            Тестовый доступ
-                                        </span>
-                                    )}
                                     {row.is_production_admin && (
                                         <span className={styles.demoBadge}>
                                             Производственный администратор
@@ -174,36 +173,37 @@ export function AdminRecordsTable({
                                     </small>
                                 </td>
                                 <td data-label="Доступ">
-                                    <Status value={row.status} />
-                                    <small>
-                                        {
-                                            {
-                                                available: 'На работе',
-                                                sick: 'Болеет',
-                                                vacation: 'В отпуске',
-                                                absent: 'Отсутствует',
-                                            }[row.availability || 'available']
+                                    <Status
+                                        value={
+                                            row.status === 'blocked'
+                                                ? 'blocked'
+                                                : row.availability || 'available'
                                         }
-                                    </small>
-                                    <small>
-                                        {row.code_active
-                                            ? 'Личный код действует'
-                                            : 'Действующего кода нет'}
-                                    </small>
+                                    />
+                                    {row.code_active ? (
+                                        <button
+                                            type="button"
+                                            className={styles.maskedCode}
+                                            aria-label={`Показать новый код сотрудника ${row.name}`}
+                                            title="Показать новый код"
+                                            disabled={codeBusyId !== null}
+                                            onClick={() => onCode(row)}
+                                        >
+                                            {codeBusyId === row.id
+                                                ? '•••'
+                                                : '***'}
+                                        </button>
+                                    ) : (
+                                        <small>Код не выдан</small>
+                                    )}
                                 </td>
                                 <td data-label="Добавлен" data-tail="true">
                                     {date(row.created_at)}
                                 </td>
                                 <td data-label="Управление" data-action="true">
-                                    {row.is_demo ? (
-                                        <small>
-                                            Управляется тестовым сценарием
-                                        </small>
-                                    ) : (
-                                        <button onClick={() => onEmployee(row)}>
-                                            Изменить
-                                        </button>
-                                    )}
+                                    <button onClick={() => onEmployee(row)}>
+                                        Изменить
+                                    </button>
                                 </td>
                             </tr>
                         ))}

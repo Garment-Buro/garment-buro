@@ -14,7 +14,7 @@ from app.modules.partners.service import (
 )
 from app.modules.production.admin_reads import ProductionAdminReads
 from app.modules.production.auth_router import get_production_user
-from app.modules.production.employee_schemas import EmployeeCodeResponse, EmployeeWrite
+from app.modules.production.employee_schemas import EmployeeCodeResponse, EmployeeWrite, Station
 from app.modules.production.employee_service import (
     EmployeeConflictError,
     EmployeeNotFoundError,
@@ -162,6 +162,12 @@ class PayoutListQuery(ListQuery):
     direction: Literal["asc", "desc"] = "desc"
 
 
+class EmployeeListQuery(ListQuery):
+    status: Literal["active", "blocked", ""] = ""
+    availability: Literal["available", "sick", "vacation", "absent", ""] = ""
+    station: Station | Literal["production_admin", ""] = ""
+
+
 class InboxListQuery(BaseModel):
     q: str = Field(default="", max_length=100)
     status: InboxStatus | Literal[""] = ""
@@ -190,7 +196,10 @@ async def order(order_id: int, _admin: Admin, session: Session):
 
 @router.get("/users")
 async def users(
-    request: Request, _admin: SystemAdmin, session: Session, query: Annotated[ListQuery, Query()]
+    request: Request,
+    _admin: SystemAdmin,
+    session: Session,
+    query: Annotated[EmployeeListQuery, Query()],
 ):
     return await ProductionAdminReads().users(
         session, **query.model_dump(), pepper=employee_pepper(request)
@@ -202,7 +211,7 @@ async def employees(
     request: Request,
     _admin: SystemAdmin,
     session: Session,
-    query: Annotated[ListQuery, Query()],
+    query: Annotated[EmployeeListQuery, Query()],
 ):
     return await ProductionAdminReads().employees(
         session, **query.model_dump(), pepper=employee_pepper(request)

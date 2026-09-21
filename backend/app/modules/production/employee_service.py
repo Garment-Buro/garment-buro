@@ -11,6 +11,7 @@ from app.modules.identity.security import normalize_email
 from app.modules.production.auth_models import ProductionCredential, ProductionEmployee
 from app.modules.production.auth_service import issue_code, revoke_code
 from app.modules.production.employee_schemas import EmployeeWrite
+from app.modules.production.models import ProductionDemoEmployee
 
 
 class EmployeeNotFoundError(LookupError):
@@ -84,10 +85,10 @@ class ProductionEmployeeService:
     async def update(
         self, session, *, user_id: int, payload: EmployeeWrite, actor_id: int, pepper: str
     ):
-        employee = await session.scalar(
-            select(ProductionEmployee)
-            .where(ProductionEmployee.user_id == user_id)
-            .with_for_update()
+        employee = await self._editable_employee(
+            session,
+            user_id=user_id,
+            actor_id=actor_id,
         )
         user = await session.scalar(select(User).where(User.id == user_id).with_for_update())
         if employee is None or user is None:
@@ -160,8 +161,10 @@ class ProductionEmployeeService:
         return await self.get(session, user.id), code
 
     async def rotate_code(self, session, *, user_id: int, actor_id: int, pepper: str):
-        employee = await session.scalar(
-            select(ProductionEmployee).where(ProductionEmployee.user_id == user_id)
+        employee = await self._editable_employee(
+            session,
+            user_id=user_id,
+            actor_id=actor_id,
         )
         user = await session.get(User, user_id)
         if employee is None or user is None:
@@ -191,6 +194,43 @@ class ProductionEmployeeService:
         )
         await session.commit()
         return await self.get(session, user.id), code
+
+    async def _editable_employee(self, session, *, user_id: int, actor_id: int):
+        employee = await session.scalar(
+            select(ProductionEmployee)
+            .where(ProductionEmployee.user_id == user_id)
+            .with_for_update()
+        )
+        if employee is not None:
+            return employee
+        marker = await session.scalar(
+            select(ProductionDemoEmployee)
+            .where(ProductionDemoEmployee.user_id == user_id)
+            .with_for_update()
+        )
+        if marker is None:
+            raise EmployeeNotFoundError()
+        employee = ProductionEmployee(
+            user_id=user_id,
+            primary_station=marker.station,
+            availability="available",
+            created_by_user_id=actor_id,
+        )
+        user = await session.get(User, user_id)
+        if user is not None and not user.internal_identity:
+            user.internal_identity = f"employee:{uuid.uuid4().hex}"
+        session.add(employee)
+        await session.delete(marker)
+        session.add(
+            SecurityAuditEvent(
+                event_type="production.demo_employee_adopted",
+                actor_user_id=actor_id,
+                subject_user_id=user_id,
+                details={"primary_station": marker.station},
+            )
+        )
+        await session.flush()
+        return employee
 
     async def get(self, session, user_id: int):
         row = (

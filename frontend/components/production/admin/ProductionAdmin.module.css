@@ -366,6 +366,27 @@
     gap: 16px;
     margin: 24px 0;
 }
+.filterButton {
+    position: relative;
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+.filterButton > svg {
+    width: 20px;
+    height: 20px;
+}
+.filterButton > span {
+    display: grid;
+    min-width: 24px;
+    height: 24px;
+    place-items: center;
+    padding: 0 6px;
+    border-radius: 999px;
+    color: #fff;
+    background: #71528c;
+    font-size: 12px;
+    line-height: 1;
+}
 .screen label {
     display: flex;
     flex-direction: column;
@@ -514,6 +535,7 @@
     background: rgb(24 24 24 / 48%);
 }
 .employeeEditor,
+.filtersDialog,
 .codeDialog,
 .inboxDialog,
 .orderDialog,
@@ -528,6 +550,70 @@
     border-radius: 24px;
     background: #faf9f8;
     box-shadow: 0 24px 80px rgb(24 24 24 / 20%);
+}
+.filtersDialog {
+    width: min(100%, 760px);
+}
+.filterGroups {
+    display: grid;
+    gap: 20px;
+}
+.filterGroups fieldset {
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+.filterGroups legend {
+    margin-bottom: 8px;
+    font-weight: 600;
+}
+.filterOptions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+.filterOptions label {
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr);
+    align-items: center;
+    min-height: 48px;
+    padding: 10px 12px;
+    border: 1px solid #e3e0e2;
+    border-radius: 12px;
+    background: #fff;
+    cursor: pointer;
+}
+.filterOptions label[data-selected='true'] {
+    border-color: #71528c;
+    background: #eee8f2;
+}
+.filterOptions input {
+    width: 20px;
+    min-height: 20px;
+    margin: 0;
+    padding: 0;
+    accent-color: #71528c;
+}
+.filterActions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid #e3e0e2;
+}
+.filterActions button {
+    width: 100%;
+}
+.screen .maskedCode {
+    width: fit-content;
+    min-height: 40px;
+    margin-top: 8px;
+    padding: 6px 12px;
+    border-color: #c8becf;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    letter-spacing: 0.16em;
 }
 .assortmentDialog {
     width: min(100%, 1040px);
@@ -604,10 +690,18 @@
 .assortmentFilters .assortmentSearch {
     width: 100%;
 }
+.assortmentFilters > .filterButton {
+    align-self: end;
+    margin-bottom: 24px;
+}
 @media (max-width: 640px) {
     .assortmentFilters {
         grid-template-columns: 1fr;
-        gap: 0;
+        gap: 12px;
+    }
+    .assortmentFilters > .filterButton {
+        width: 100%;
+        margin: -12px 0 24px;
     }
 }
 .assortmentCards {
@@ -1506,6 +1600,10 @@
         grid-column: 1 / -1;
         width: 100%;
     }
+    .toolbar > .filterButton,
+    .toolbar > button[type='submit'] {
+        grid-column: auto;
+    }
     .card {
         padding: 16px;
     }
@@ -1701,6 +1799,7 @@
         padding: max(16px, env(safe-area-inset-top)) 0 0;
     }
     .employeeEditor,
+    .filtersDialog,
     .codeDialog,
     .inboxDialog,
     .orderDialog,
@@ -1715,6 +1814,30 @@
         border-left: 0;
         border-radius: 24px 24px 0 0;
         box-shadow: 0 -16px 48px rgb(24 24 24 / 20%);
+    }
+    .filtersDialog {
+        width: 100%;
+    }
+    .filtersDialog .dialogHeading {
+        top: -16px;
+        margin: -16px -16px 16px;
+        padding: 16px;
+        border-bottom: 1px solid #e3e0e2;
+        border-radius: 24px 24px 0 0;
+    }
+    .filterGroups {
+        gap: 16px;
+    }
+    .filterOptions {
+        grid-template-columns: 1fr;
+    }
+    .filterActions {
+        position: sticky;
+        bottom: calc(-1 * max(16px, env(safe-area-inset-bottom)));
+        z-index: 2;
+        margin: 20px -16px calc(-1 * max(16px, env(safe-area-inset-bottom)));
+        padding: 12px 16px max(12px, env(safe-area-inset-bottom));
+        background: #faf9f8;
     }
     .orderDialog,
     .payoutDialog,

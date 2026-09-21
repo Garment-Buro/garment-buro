@@ -2,7 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import String, case, cast, func, or_, select
+from sqlalchemy import String, case, cast, func, or_, select, union
 from sqlalchemy.orm import selectinload
 
 from app.modules.bank_payouts.models import PartnerBankPayment
@@ -144,7 +144,18 @@ class ProductionAdminReads:
             ],
         }
 
-    async def employees(self, session, *, q, status, limit, offset, pepper):
+    async def employees(
+        self,
+        session,
+        *,
+        q,
+        status,
+        limit,
+        offset,
+        pepper,
+        availability="",
+        station="",
+    ):
         q = q.strip()
         active_station = (
             select(ProductionCredential.station)
@@ -190,6 +201,23 @@ class ProductionAdminReads:
         )
         if status:
             statement = statement.where(User.status == status)
+        if availability:
+            statement = statement.where(
+                func.coalesce(ProductionEmployee.availability, "available") == availability
+            )
+        if station:
+            role_name = (
+                "production_supervisor"
+                if station == "production_admin"
+                else f"production_{station}"
+            )
+            statement = statement.where(
+                User.id.in_(
+                    select(UserRole.user_id)
+                    .join(Role, Role.id == UserRole.role_id)
+                    .where(Role.name == role_name)
+                )
+            )
         rows = (
             await session.execute(
                 statement.order_by(User.id.desc()).offset(offset).limit(limit + 1)
@@ -234,7 +262,7 @@ class ProductionAdminReads:
             offset,
             lambda row: {
                 "id": row[0].id,
-                "is_demo": row[2] is not None,
+                "is_demo": False,
                 "availability": row[1].availability if row[1] else "available",
                 "is_production_admin": row[0].id in production_admin_ids,
                 "first_name": row[0].first_name or "",
@@ -255,10 +283,28 @@ class ProductionAdminReads:
             },
         )
 
-    async def users(self, session, *, q, status, limit, offset, pepper):
+    async def users(
+        self,
+        session,
+        *,
+        q,
+        status,
+        limit,
+        offset,
+        pepper,
+        availability="",
+        station="",
+    ):
         """Compatibility alias: terminal users are production employees."""
         return await self.employees(
-            session, q=q, status=status, limit=limit, offset=offset, pepper=pepper
+            session,
+            q=q,
+            status=status,
+            availability=availability,
+            station=station,
+            limit=limit,
+            offset=offset,
+            pepper=pepper,
         )
 
     def clients_query(self):
@@ -426,11 +472,21 @@ class ProductionAdminReads:
                 Order.is_demo.is_(False),
             )
         )
-        employees_count = await session.scalar(select(func.count(ProductionEmployee.id)))
+        employee_roster = union(
+            select(
+                ProductionEmployee.user_id.label("user_id"),
+                ProductionEmployee.created_at.label("created_at"),
+            ),
+            select(
+                ProductionDemoEmployee.user_id.label("user_id"),
+                User.created_at.label("created_at"),
+            ).join(User, User.id == ProductionDemoEmployee.user_id),
+        ).subquery()
+        employees_count = await session.scalar(select(func.count()).select_from(employee_roster))
         recent_employees = await session.scalar(
-            select(func.count(ProductionEmployee.id)).where(
-                ProductionEmployee.created_at >= week_ago
-            )
+            select(func.count())
+            .select_from(employee_roster)
+            .where(employee_roster.c.created_at >= week_ago)
         )
         clients = self.clients_query()
         clients_count = await session.scalar(select(func.count()).select_from(clients))

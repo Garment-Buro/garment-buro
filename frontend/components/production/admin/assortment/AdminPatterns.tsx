@@ -12,6 +12,7 @@ import type {
     Pattern,
     ReferencePage,
 } from '@/lib/production/assortmentTypes';
+import { AdminFilters } from '../AdminFilters';
 import { AssortmentDialog, AssortmentFeedback } from './AssortmentDialog';
 import styles from '../ProductionAdmin.module.css';
 
@@ -138,20 +139,26 @@ export function AdminPatterns() {
                         onChange={(event) => setQuery(event.target.value)}
                     />
                 </label>
-                <label className={styles.assortmentSearch}>
-                    Модель
-                    <select
-                        value={modelFilter}
-                        onChange={(event) => setModelFilter(Number(event.target.value))}
-                    >
-                        <option value={0}>Все модели</option>
-                        {models.map((model) => (
-                            <option key={model.id} value={model.id}>
-                                {model.name}
-                            </option>
-                        ))}
-                    </select>
-                </label>
+                <AdminFilters
+                    groups={[
+                        {
+                            key: 'model',
+                            label: 'Модель',
+                            options: [
+                                ['0', 'Все модели'],
+                                ...models.map(
+                                    (model) =>
+                                        [String(model.id), model.name] as const,
+                                ),
+                            ],
+                        },
+                    ]}
+                    values={{ model: String(modelFilter) }}
+                    defaults={{ model: '0' }}
+                    onApply={(values) =>
+                        setModelFilter(Number(values.model))
+                    }
+                />
             </div>
             <AssortmentFeedback
                 loading={patternsResource.loading || modelsResource.loading}

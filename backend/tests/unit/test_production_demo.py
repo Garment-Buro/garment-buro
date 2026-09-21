@@ -60,7 +60,9 @@ def test_demo_seed_is_idempotent_private_and_has_each_workstation(tmp_path):
                 assert await session.scalar(select(func.count(ProductionDemoEmployee.id))) == 11
                 assert await session.scalar(select(func.count(User.id))) == 11
                 assert (await ProductionAdminReads().stats(session))["orders_count"] == 0
-                assert (await ProductionAdminReads().stats(session))["employees_count"] == 0
+                demo_stats = await ProductionAdminReads().stats(session)
+                assert demo_stats["employees_count"] == 11
+                assert demo_stats["week_change"]["employees_count"] == 11
                 assert (await ProductionAdminReads().stats(session))["clients_count"] == 0
                 users = await ProductionAdminReads().users(
                     session,
@@ -72,7 +74,7 @@ def test_demo_seed_is_idempotent_private_and_has_each_workstation(tmp_path):
                 )
                 clients = await ProductionAdminReads().clients(session, q="", limit=30, offset=0)
                 assert len(users["items"]) == 11
-                assert all(user["is_demo"] for user in users["items"])
+                assert all(not user["is_demo"] for user in users["items"])
                 found_by_code = await ProductionAdminReads().users(
                     session,
                     q=codes["tech"]["code"],

@@ -609,7 +609,7 @@ def test_admin_lists_and_finds_isolated_demo_access_by_code(tmp_path):
                 assert response.json()["items"] == [
                     {
                         "id": demo.id,
-                        "is_demo": True,
+                        "is_demo": False,
                         "availability": "available",
                         "is_production_admin": False,
                         "first_name": "Демо · ОТК",
@@ -626,6 +626,37 @@ def test_admin_lists_and_finds_isolated_demo_access_by_code(tmp_path):
                     }
                 ]
                 assert demo_code not in response.text
+                adopted = await client.put(
+                    f"/api/production/admin/employees/{demo.id}",
+                    json={
+                        "first_name": "ОТК",
+                        "last_name": "Сотрудник",
+                        "email": None,
+                        "phone": None,
+                        "status": "active",
+                        "availability": "available",
+                        "is_production_admin": False,
+                        "stations": ["qc"],
+                        "primary_station": "qc",
+                    },
+                )
+                assert adopted.status_code == 200, adopted.text
+                assert adopted.json()["employee"]["is_demo"] is False
+            async with db.session() as session:
+                assert (
+                    await session.scalar(
+                        select(ProductionDemoEmployee.id).where(
+                            ProductionDemoEmployee.user_id == demo.id
+                        )
+                    )
+                    is None
+                )
+                assert (
+                    await session.scalar(
+                        select(ProductionEmployee.id).where(ProductionEmployee.user_id == demo.id)
+                    )
+                    is not None
+                )
 
     asyncio.run(scenario())
 
@@ -655,6 +686,10 @@ def test_system_admin_can_assign_production_administrator_access(tmp_path):
 
                 listed = await system.get(f"/api/production/admin/employees?q={employee_id}")
                 assert listed.json()["items"][0]["is_production_admin"] is True
+                filtered = await system.get(
+                    "/api/production/admin/employees?station=production_admin"
+                )
+                assert [item["id"] for item in filtered.json()["items"]] == [employee_id]
 
             async with AsyncClient(
                 transport=ASGITransport(app), base_url="https://test"
@@ -668,5 +703,31 @@ def test_system_admin_can_assign_production_administrator_access(tmp_path):
                 assert (await production.get("/api/production/admin/orders")).status_code == 200
                 assert (await production.get("/api/production/admin/problems")).status_code == 200
                 assert (await production.get("/api/production/admin/employees")).status_code == 403
+
+    asyncio.run(scenario())
+
+
+def test_admin_filters_employees_by_availability_and_station(tmp_path):
+    async def scenario():
+        async with admin_app(tmp_path) as (app, db, admin_code, _):
+            async with db.session() as session:
+                employee = await session.scalar(
+                    select(ProductionEmployee).where(ProductionEmployee.user_id == 2)
+                )
+                employee.availability = "sick"
+                await session.commit()
+            async with AsyncClient(transport=ASGITransport(app), base_url="https://test") as client:
+                await client.post("/api/production/auth/login", json={"code": admin_code})
+                sick = await client.get(
+                    "/api/production/admin/employees?availability=sick&station=cut"
+                )
+                assert sick.status_code == 200, sick.text
+                assert [item["id"] for item in sick.json()["items"]] == [2]
+                assert (
+                    await client.get("/api/production/admin/employees?availability=unknown")
+                ).status_code == 422
+                assert (
+                    await client.get("/api/production/admin/employees?station=unknown")
+                ).status_code == 422
 
     asyncio.run(scenario())

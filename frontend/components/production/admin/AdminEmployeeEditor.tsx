@@ -256,12 +256,9 @@ export function AdminEmployeeEditor({
                                         })
                                     }
                                 >
-                                    <option value="active">Активен</option>
-                                    <option value="blocked">Заблокирован</option>
+                                    <option value="active">Доступ открыт</option>
+                                    <option value="blocked">Доступ закрыт</option>
                                 </select>
-                                <small>
-                                    Блокировка сразу отзывает код и текущие сессии.
-                                </small>
                             </label>
                             <label>
                                 Доступность
@@ -275,7 +272,7 @@ export function AdminEmployeeEditor({
                                         }))
                                     }
                                 >
-                                    <option value="available">На работе</option>
+                                    <option value="available">Работает</option>
                                     <option value="sick">Болеет</option>
                                     <option value="vacation">В отпуске</option>
                                     <option value="absent">Отсутствует</option>
@@ -386,7 +383,7 @@ export function AdminEmployeeEditor({
                                         }
                                     }}
                                 >
-                                    Выдать новый код
+                                    Показать новый код
                                 </button>
                             )}
                         <button

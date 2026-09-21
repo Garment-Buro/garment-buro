@@ -37,7 +37,7 @@ test('production and system administrators receive different sections', () => {
 });
 
 test('admin inbox lists filterable messages with distinct source context', () => {
-    assert.match(records, /Все приоритеты/);
+    assert.match(records, /Любой приоритет/);
     assert.match(records, /Сообщения пользователей/);
     assert.match(records, /Сбои и препятствия на производстве/);
     assert.match(table, /priorityLabels\[row\.priority\]/);

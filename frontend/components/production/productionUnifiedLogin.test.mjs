@@ -37,7 +37,7 @@ test('production has one login form for employees and administrators', () => {
 test('production uses the animated logo for session loading and admin identity', () => {
     assert.match(terminal, /src="\/logo_anim\.mp4"/);
     assert.doesNotMatch(terminal, /Проверяем рабочую сессию/);
-    assert.match(adminTerminal, /src="\/logo_anim\.mp4"/);
+    assert.match(adminTerminal, /src="\/logo_anim_cart\.mp4"/);
 });
 
 test('expired production credentials clear the local administrator session', () => {
