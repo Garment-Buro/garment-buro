@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { PiArrowClockwise } from 'react-icons/pi';
 import { CreateTicket } from '@/components/support/CreateTicket';
 import { useAdminResource } from '@/hooks/production/useAdminResource';
 import {
@@ -79,6 +80,9 @@ export function AdminRecords({ section }: { section: Section }) {
                         </button>
                     )}
                     <button
+                        className={styles.iconButton}
+                        aria-label={`Обновить раздел «${sectionLabels[section]}»`}
+                        title={`Обновить раздел «${sectionLabels[section]}»`}
                         disabled={loading}
                         onClick={() => {
                             setPayout(null);
@@ -86,7 +90,7 @@ export function AdminRecords({ section }: { section: Section }) {
                             reload();
                         }}
                     >
-                        Обновить
+                        <PiArrowClockwise aria-hidden />
                     </button>
                 </div>
             </div>

@@ -1,5 +1,6 @@
 import asyncio
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
@@ -13,6 +14,7 @@ from app.modules.identity.repository import IdentityRepository
 from app.modules.orders.models import Order
 from app.modules.partners.models import PartnerPayoutRequest, PartnerProfile
 from app.modules.partners.service import PartnerProgramService
+from app.modules.payments.models import Payment
 from app.modules.production.auth_models import ProductionCredential, ProductionEmployee
 from app.modules.production.auth_service import issue_code
 from app.modules.production.inbox_models import AdminInboxItem
@@ -134,6 +136,17 @@ def test_administrator_reads_all_sections_without_exposing_secrets(tmp_path):
                 assert stats["employees_count"] == 1 and stats["orders_count"] == 1
                 assert stats["support_open_count"] == 1
                 assert stats["problems_open_count"] == 1
+                assert set(stats["week_change"]) == {
+                    "orders_count",
+                    "orders_total",
+                    "paid_orders_total",
+                    "employees_count",
+                    "clients_count",
+                    "support_open_count",
+                    "problems_open_count",
+                }
+                assert stats["week_change"]["support_open_count"] == 1
+                assert stats["week_change"]["problems_open_count"] == 1
                 assert stats["payout_states"] == [
                     {"status": "requested", "count": 1, "amount": "1250.50"}
                 ]
@@ -156,6 +169,37 @@ def test_administrator_reads_all_sections_without_exposing_secrets(tmp_path):
                 assert (await client.get("/api/production/admin/stats")).json()[
                     "paid_orders_total"
                 ] == "0.00"
+
+    asyncio.run(scenario())
+
+
+def test_statistics_reports_change_since_last_week(tmp_path):
+    async def scenario():
+        async with admin_app(tmp_path) as (app, db, code, _):
+            now = datetime.now(timezone.utc)
+            async with db.session() as session:
+                order = await session.get(Order, 1)
+                employee = await session.get(ProductionEmployee, 1)
+                support = await session.get(AdminInboxItem, 1)
+                order.created_at = now - timedelta(days=8)
+                employee.created_at = now - timedelta(days=8)
+                support.created_at = now - timedelta(days=8)
+                support.status = "resolved"
+                support.resolved_at = now - timedelta(days=1)
+                payment = await session.scalar(select(Payment).where(Payment.order_id == order.id))
+                payment.status = "succeeded"
+                payment.amount = Decimal("321.45")
+                payment.succeeded_at = now - timedelta(days=1)
+                await session.commit()
+            async with AsyncClient(transport=ASGITransport(app), base_url="https://test") as client:
+                await client.post("/api/production/auth/login", json={"code": code})
+                stats = (await client.get("/api/production/admin/stats")).json()
+                assert stats["week_change"]["orders_count"] == 0
+                assert stats["week_change"]["employees_count"] == 0
+                assert stats["week_change"]["clients_count"] == 0
+                assert stats["week_change"]["paid_orders_total"] == "321.45"
+                assert stats["week_change"]["support_open_count"] == -1
+                assert stats["week_change"]["problems_open_count"] == 1
 
     asyncio.run(scenario())
 

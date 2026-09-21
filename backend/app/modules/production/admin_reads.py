@@ -1,6 +1,6 @@
 """Bounded administrative projections over existing source-of-truth tables."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import String, case, cast, func, or_, select
 from sqlalchemy.orm import selectinload
@@ -11,6 +11,7 @@ from app.modules.identity.models import Role, User, UserRole
 from app.modules.orders.models import Order
 from app.modules.orders.workflow_models import OrderWorkflow
 from app.modules.partners.models import PartnerPayoutRequest, PartnerProfile
+from app.modules.payments.models import Payment
 from app.modules.production.auth_models import ProductionCredential, ProductionEmployee
 from app.modules.production.auth_service import code_digest
 from app.modules.production.inbox_models import AdminInboxItem
@@ -257,6 +258,7 @@ class ProductionAdminReads:
                 func.max(Order.user_id).label("user_id"),
                 func.max(Order.id).label("last_order_id"),
                 func.max(Order.created_at).label("last_order_at"),
+                func.min(Order.created_at).label("first_order_at"),
                 func.count(Order.id).label("orders_count"),
                 func.sum(Order.total_price).label("orders_total"),
                 func.sum(case((Order.payment_status == "paid", Order.total_price), else_=0)).label(
@@ -348,6 +350,8 @@ class ProductionAdminReads:
         )
 
     async def stats(self, session):
+        now = datetime.now(timezone.utc)
+        week_ago = now - timedelta(days=7)
         count, total, paid = (
             await session.execute(
                 select(
@@ -375,27 +379,74 @@ class ProductionAdminReads:
                 .group_by(state)
             )
         ]
+        recent_orders, recent_total = (
+            await session.execute(
+                select(func.count(Order.id), func.sum(Order.total_price)).where(
+                    Order.is_demo.is_(False),
+                    Order.created_at >= week_ago,
+                )
+            )
+        ).one()
+        recent_paid = await session.scalar(
+            select(func.sum(Payment.amount))
+            .join(Order, Order.id == Payment.order_id)
+            .where(
+                Payment.status == "succeeded",
+                Payment.succeeded_at >= week_ago,
+                Order.is_demo.is_(False),
+            )
+        )
+        employees_count = await session.scalar(select(func.count(ProductionEmployee.id)))
+        recent_employees = await session.scalar(
+            select(func.count(ProductionEmployee.id)).where(
+                ProductionEmployee.created_at >= week_ago
+            )
+        )
+        clients = self.clients_query()
+        clients_count = await session.scalar(select(func.count()).select_from(clients))
+        recent_clients = await session.scalar(
+            select(func.count()).select_from(clients).where(clients.c.first_order_at >= week_ago)
+        )
+
+        async def open_inbox(kind: str):
+            current = await session.scalar(
+                select(func.count(AdminInboxItem.id)).where(
+                    AdminInboxItem.kind == kind,
+                    AdminInboxItem.status.in_(("new", "in_progress")),
+                )
+            )
+            at_week_start = await session.scalar(
+                select(func.count(AdminInboxItem.id)).where(
+                    AdminInboxItem.kind == kind,
+                    AdminInboxItem.created_at <= week_ago,
+                    or_(
+                        AdminInboxItem.resolved_at.is_(None),
+                        AdminInboxItem.resolved_at > week_ago,
+                    ),
+                )
+            )
+            return current or 0, (current or 0) - (at_week_start or 0)
+
+        support_open, support_change = await open_inbox("support")
+        problems_open, problems_change = await open_inbox("production_problem")
         return {
-            "as_of": datetime.now(timezone.utc),
+            "as_of": now,
             "orders_count": count,
             "orders_total": money(total),
             "paid_orders_total": money(paid),
-            "employees_count": await session.scalar(select(func.count(ProductionEmployee.id))),
-            "clients_count": await session.scalar(
-                select(func.count()).select_from(self.clients_query())
-            ),
-            "support_open_count": await session.scalar(
-                select(func.count(AdminInboxItem.id)).where(
-                    AdminInboxItem.kind == "support",
-                    AdminInboxItem.status.in_(("new", "in_progress")),
-                )
-            ),
-            "problems_open_count": await session.scalar(
-                select(func.count(AdminInboxItem.id)).where(
-                    AdminInboxItem.kind == "production_problem",
-                    AdminInboxItem.status.in_(("new", "in_progress")),
-                )
-            ),
+            "employees_count": employees_count,
+            "clients_count": clients_count,
+            "support_open_count": support_open,
+            "problems_open_count": problems_open,
+            "week_change": {
+                "orders_count": recent_orders or 0,
+                "orders_total": money(recent_total),
+                "paid_orders_total": money(recent_paid),
+                "employees_count": recent_employees or 0,
+                "clients_count": recent_clients or 0,
+                "support_open_count": support_change,
+                "problems_open_count": problems_change,
+            },
             "order_states": order_states,
             "payout_states": payout_states,
         }

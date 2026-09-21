@@ -152,6 +152,15 @@ export interface AdminStats {
     clients_count: number;
     support_open_count: number;
     problems_open_count: number;
+    week_change: {
+        orders_count: number;
+        orders_total: string;
+        paid_orders_total: string;
+        employees_count: number;
+        clients_count: number;
+        support_open_count: number;
+        problems_open_count: number;
+    };
     order_states: { status: string; count: number }[];
     payout_states: { status: string; count: number; amount: string }[];
 }

@@ -11,6 +11,7 @@ import {
     PiWarningCircle,
     PiLifebuoy,
     PiStorefront,
+    PiFactory,
 } from 'react-icons/pi';
 import { useProductionAuthStore } from '@/store/productionAuthStore';
 import {
@@ -48,6 +49,14 @@ export function ProductionAdminTerminal() {
     useEffect(() => {
         if (!sections.includes(section)) setSection(sections[0]);
     }, [section, sections]);
+    const selectSection = (next: AdminSection) => {
+        setSection(next);
+        if (window.matchMedia('(max-width: 720px)').matches) {
+            requestAnimationFrame(() =>
+                contentRef.current?.scrollIntoView({ block: 'start' }),
+            );
+        }
+    };
     return (
         <main className={styles.screen}>
             <a className={styles.skip} href="#production-admin-content">
@@ -82,9 +91,22 @@ export function ProductionAdminTerminal() {
                 </div>
                 <div className={styles.actions}>
                     {Boolean(user?.stations.length) && (
-                        <Link href="/production/floor">Производство</Link>
+                        <Link
+                            className={styles.headerAction}
+                            href="/production/floor"
+                            aria-label="Открыть производство"
+                            title="Открыть производство"
+                        >
+                            <PiFactory aria-hidden />
+                            <span className={styles.actionLabel}>
+                                Производство
+                            </span>
+                        </Link>
                     )}
                     <button
+                        className={styles.headerAction}
+                        aria-label={leaving ? 'Выходим' : 'Выйти'}
+                        title={leaving ? 'Выходим' : 'Выйти'}
                         disabled={leaving}
                         onClick={async () => {
                             setLeaving(true);
@@ -96,7 +118,9 @@ export function ProductionAdminTerminal() {
                         }}
                     >
                         <PiSignOut aria-hidden />
-                        {leaving ? 'Выходим…' : 'Выйти'}
+                        <span className={styles.actionLabel}>
+                            {leaving ? 'Выходим…' : 'Выйти'}
+                        </span>
                     </button>
                 </div>
             </header>
@@ -108,19 +132,7 @@ export function ProductionAdminTerminal() {
                             key={key}
                             aria-current={section === key ? 'page' : undefined}
                             aria-controls="production-admin-content"
-                            onClick={() => {
-                                setSection(key);
-                                if (
-                                    window.matchMedia('(max-width: 720px)')
-                                        .matches
-                                ) {
-                                    requestAnimationFrame(() =>
-                                        contentRef.current?.scrollIntoView({
-                                            block: 'start',
-                                        }),
-                                    );
-                                }
-                            }}
+                            onClick={() => selectSection(key)}
                         >
                             <Icon aria-hidden />
                             {sectionLabels[key]}
@@ -139,7 +151,7 @@ export function ProductionAdminTerminal() {
                     </p>
                 )}
                 {section === 'stats' ? (
-                    <AdminStatistics />
+                    <AdminStatistics onNavigate={selectSection} />
                 ) : section === 'assortment' ? (
                     <AdminAssortment />
                 ) : (
