@@ -1,7 +1,13 @@
 'use client';
 
 import { useMemo, useState, type FormEvent } from 'react';
-import { PiPencilSimple, PiPlus, PiTrash } from 'react-icons/pi';
+import {
+    PiImage,
+    PiPackage,
+    PiPencilSimple,
+    PiPlus,
+    PiTrash,
+} from 'react-icons/pi';
 import { useAssortmentResource } from '@/hooks/production/useAssortmentResource';
 import {
     assortmentRequest,
@@ -17,6 +23,7 @@ import type {
     ProductVariantReference,
     ReferencePage,
 } from '@/lib/production/assortmentTypes';
+import { safeImage } from '@/lib/production/workflow';
 import { AssortmentDialog, AssortmentFeedback } from './AssortmentDialog';
 import styles from '../ProductionAdmin.module.css';
 
@@ -71,6 +78,13 @@ const emptyProduct = (): ProductEditor => ({
     variants: [],
     variantReferences: [],
 });
+
+const productPrice = (value: string | number) =>
+    new Intl.NumberFormat('ru-RU', {
+        style: 'currency',
+        currency: 'RUB',
+        maximumFractionDigits: 2,
+    }).format(Number(value));
 
 export function AdminProducts() {
     const products = useAssortmentResource<ProductReference[]>('products');
@@ -320,43 +334,78 @@ export function AdminProducts() {
                 error={products.error}
                 empty={!products.loading && visibleProducts.length === 0}
             />
-            <div className={styles.assortmentCards}>
-                {visibleProducts.map((product) => (
-                    <article className={styles.assortmentCard} key={product.id}>
-                        <div className={styles.assortmentCardTop}>
-                            <div>
-                                <span className={styles.badge}>
-                                    {categoryName(product.category_id)}
+            <div className={styles.productGrid}>
+                {visibleProducts.map((product) => {
+                    const image = safeImage(product.image_url);
+                    const sku = product.variants.find((variant) => variant.sku)?.sku;
+                    return (
+                        <article className={styles.productCard} key={product.id}>
+                            <div className={styles.productMedia}>
+                                {image ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img
+                                        src={image}
+                                        alt={product.title}
+                                        loading="lazy"
+                                    />
+                                ) : (
+                                    <span className={styles.productMediaFallback}>
+                                        <PiImage aria-hidden />
+                                        <small>Нет фото</small>
+                                    </span>
+                                )}
+                                <span
+                                    className={styles.productStatus}
+                                    data-active={product.is_active}
+                                >
+                                    {product.is_active ? 'В продаже' : 'Скрыт'}
                                 </span>
-                                <h4>{product.title}</h4>
-                                <small>/{product.slug ?? `product-${product.id}`}</small>
                             </div>
-                            <button
-                                className={styles.iconButton}
-                                disabled={loadingEditor}
-                                onClick={() => void editProduct(product)}
-                                aria-label={`Изменить товар ${product.title}`}
-                            >
-                                <PiPencilSimple aria-hidden />
-                            </button>
-                        </div>
-                        <p>{modelName(product.garment_model_id)}</p>
-                        <dl className={styles.compactFacts}>
-                            <div>
-                                <dt>Цена</dt>
-                                <dd>{product.price} ₽</dd>
+                            <div className={styles.productCardBody}>
+                                <div className={styles.productCardHeader}>
+                                    <div className={styles.productIdentity}>
+                                        <span className={styles.productCategory}>
+                                            {categoryName(product.category_id)}
+                                        </span>
+                                        <h4>{product.title}</h4>
+                                        <small>
+                                            {sku
+                                                ? `Артикул ${sku}`
+                                                : `/${product.slug ?? `product-${product.id}`}`}
+                                        </small>
+                                    </div>
+                                    <button
+                                        className={styles.iconButton}
+                                        disabled={loadingEditor}
+                                        onClick={() => void editProduct(product)}
+                                        aria-label={`Изменить товар ${product.title}`}
+                                        title="Изменить"
+                                    >
+                                        <PiPencilSimple aria-hidden />
+                                    </button>
+                                </div>
+                                <p className={styles.productModel}>
+                                    <PiPackage aria-hidden />
+                                    <span>{modelName(product.garment_model_id)}</span>
+                                </p>
+                                <dl className={styles.productFacts}>
+                                    <div>
+                                        <dt>Цена</dt>
+                                        <dd>{productPrice(product.price)}</dd>
+                                    </div>
+                                    <div>
+                                        <dt>Остаток</dt>
+                                        <dd>{product.stock_quantity} шт.</dd>
+                                    </div>
+                                    <div>
+                                        <dt>Варианты</dt>
+                                        <dd>{product.variants.length}</dd>
+                                    </div>
+                                </dl>
                             </div>
-                            <div>
-                                <dt>Остаток</dt>
-                                <dd>{product.stock_quantity}</dd>
-                            </div>
-                            <div>
-                                <dt>Вариантов</dt>
-                                <dd>{product.variants.length}</dd>
-                            </div>
-                        </dl>
-                    </article>
-                ))}
+                        </article>
+                    );
+                })}
             </div>
             {categoryEditor && (
                 <AssortmentDialog
@@ -605,46 +654,57 @@ export function AdminProducts() {
                                         }
                                     />
                                 </label>
-                                <label className={styles.fullField}>
-                                    Основное изображение
-                                    <input
-                                        type="file"
-                                        accept="image/jpeg,image/png,image/webp"
-                                        disabled={uploading}
-                                        onChange={async (event) => {
-                                            const file = event.target.files?.[0];
-                                            if (!file) return;
-                                            setUploading(true);
-                                            try {
-                                                const media =
-                                                    await uploadAssortmentMedia(
-                                                        file,
-                                                        'public',
+                                <div className={`${styles.fullField} ${styles.productImageField}`}>
+                                    <div className={styles.productImagePreview}>
+                                        {safeImage(editor.image_left) ? (
+                                            // eslint-disable-next-line @next/next/no-img-element
+                                            <img
+                                                src={safeImage(editor.image_left) ?? ''}
+                                                alt="Превью товара"
+                                            />
+                                        ) : (
+                                            <PiImage aria-hidden />
+                                        )}
+                                    </div>
+                                    <label>
+                                        Основное изображение
+                                        <input
+                                            type="file"
+                                            accept="image/jpeg,image/png,image/webp"
+                                            disabled={uploading}
+                                            onChange={async (event) => {
+                                                const file = event.target.files?.[0];
+                                                if (!file) return;
+                                                setUploading(true);
+                                                try {
+                                                    const media =
+                                                        await uploadAssortmentMedia(
+                                                            file,
+                                                            'public',
+                                                        );
+                                                    setEditor((current) =>
+                                                        current
+                                                            ? {
+                                                                  ...current,
+                                                                  image_left:
+                                                                      media.url ?? null,
+                                                              }
+                                                            : current,
                                                     );
-                                                setEditor((current) =>
-                                                    current
-                                                        ? {
-                                                              ...current,
-                                                              image_left:
-                                                                  media.url ?? null,
-                                                          }
-                                                        : current,
-                                                );
-                                            } catch (reason) {
-                                                setFormError(
-                                                    reason instanceof Error
-                                                        ? reason.message
-                                                        : 'Не удалось загрузить изображение',
-                                                );
-                                            } finally {
-                                                setUploading(false);
-                                            }
-                                        }}
-                                    />
-                                    <small>
-                                        {editor.image_left ?? 'Изображение не загружено'}
-                                    </small>
-                                </label>
+                                                } catch (reason) {
+                                                    setFormError(
+                                                        reason instanceof Error
+                                                            ? reason.message
+                                                            : 'Не удалось загрузить изображение',
+                                                    );
+                                                } finally {
+                                                    setUploading(false);
+                                                }
+                                            }}
+                                        />
+                                        <small>JPEG, PNG или WebP</small>
+                                    </label>
+                                </div>
                                 <label className={styles.checkField}>
                                     <input
                                         type="checkbox"

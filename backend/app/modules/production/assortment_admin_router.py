@@ -612,12 +612,13 @@ async def update_packaging_rule(
 
 
 @router.get("/products", response_model=list[CrmCatalogProductReferenceRead])
-async def products(_admin: Admin, session: Session):
+async def products(request: Request, _admin: Admin, session: Session):
     return await CrmAssortmentService().list_products(
         session,
         model_id=None,
         category_id=None,
         active=None,
+        mapper=CatalogResponseMapper(request.app.state.settings),
     )
 
 

@@ -44,6 +44,7 @@ class CrmCatalogProductReferenceRead(BaseModel):
     garment_model_id: int | None
     price: Decimal
     old_price: Decimal | None
+    image_url: str | None = None
     is_active: bool
     stock_quantity: int
     variants: list[CrmCatalogProductVariantReferenceRead]

@@ -735,6 +735,223 @@
 .assortmentCard h4 {
     margin-top: 8px;
 }
+.productGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+    gap: 16px;
+}
+.productCard {
+    display: grid;
+    grid-template-columns: 152px minmax(0, 1fr);
+    min-width: 0;
+    min-height: 208px;
+    overflow: hidden;
+    border: 1px solid #e3e0e2;
+    border-radius: 16px;
+    background: #fff;
+}
+.productMedia {
+    position: relative;
+    min-width: 0;
+    overflow: hidden;
+    background: #eeebea;
+}
+.productMedia > img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.productMediaFallback {
+    display: flex;
+    width: 100%;
+    height: 100%;
+    min-height: 208px;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 8px;
+    color: #777174;
+}
+.productMediaFallback svg {
+    width: 32px;
+    height: 32px;
+}
+.productMediaFallback small {
+    font-size: 12px;
+    line-height: 16px;
+}
+.productStatus {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    max-width: calc(100% - 20px);
+    padding: 4px 8px;
+    overflow: hidden;
+    border: 1px solid rgb(255 255 255 / 72%);
+    border-radius: 8px;
+    background: rgb(255 255 255 / 90%);
+    color: #27633d;
+    font-size: 12px;
+    line-height: 16px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.productStatus[data-active='false'] {
+    color: #746d70;
+}
+.productCardBody {
+    display: flex;
+    min-width: 0;
+    padding: 16px;
+    flex-direction: column;
+}
+.productCardHeader {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 12px;
+}
+.productIdentity {
+    min-width: 0;
+}
+.productCategory {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    color: #655f62;
+    font-size: 12px;
+    line-height: 16px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.productIdentity h4 {
+    margin: 4px 0 0;
+    overflow-wrap: anywhere;
+    font-size: 18px;
+    line-height: 24px;
+}
+.productIdentity small {
+    display: block;
+    max-width: 100%;
+    margin-top: 2px;
+    overflow: hidden;
+    color: #777174;
+    font-size: 12px;
+    line-height: 16px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.productCardHeader .iconButton {
+    flex: none;
+    width: 40px;
+    min-width: 40px;
+    min-height: 40px;
+}
+.productModel {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 6px;
+    margin: 12px 0;
+    color: #514c4f;
+    font-size: 13px;
+    line-height: 18px;
+}
+.productModel svg {
+    flex: 0 0 16px;
+    width: 16px;
+    height: 16px;
+}
+.productModel span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.productFacts {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    margin: auto 0 0;
+}
+.productFacts div {
+    min-width: 0;
+    padding: 8px;
+    border-radius: 8px;
+    background: #f2f0ef;
+}
+.productFacts dt {
+    color: #716b6e;
+    font-size: 11px;
+    line-height: 14px;
+}
+.productFacts dd {
+    margin: 3px 0 0;
+    overflow: hidden;
+    font-size: 13px;
+    line-height: 18px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.productImageField {
+    display: grid;
+    grid-template-columns: 120px minmax(0, 1fr);
+    align-items: center;
+    gap: 16px;
+    padding: 12px;
+    border: 1px solid #e3e0e2;
+    border-radius: 12px;
+    background: #fff;
+}
+.productImagePreview {
+    display: flex;
+    width: 120px;
+    aspect-ratio: 1;
+    overflow: hidden;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    background: #eeebea;
+    color: #777174;
+}
+.productImagePreview img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.productImagePreview svg {
+    width: 32px;
+    height: 32px;
+}
+.packagingRuleGuide {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 20px;
+    padding: 12px;
+    border: 1px solid #e3e0e2;
+    border-radius: 12px;
+    background: #fff;
+}
+.packagingRuleGuide span {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 8px;
+    border-radius: 8px;
+    background: #f2f0ef;
+    font-size: 13px;
+    line-height: 18px;
+    font-weight: 600;
+    text-align: center;
+}
+.packagingRuleGuide strong {
+    flex: 0 0 auto;
+    color: #777174;
+}
 .compactFacts {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1946,12 +2163,71 @@
         width: 100%;
     }
     .assortmentCards,
+    .productGrid,
     .relationshipList,
     .assortmentSkeleton {
         grid-template-columns: 1fr;
     }
     .assortmentCard {
         padding: 16px;
+    }
+    .productGrid {
+        gap: 12px;
+    }
+    .productCard {
+        grid-template-columns: 104px minmax(0, 1fr);
+        min-height: 168px;
+    }
+    .productMediaFallback {
+        min-height: 168px;
+    }
+    .productCardBody {
+        padding: 12px;
+    }
+    .productCardHeader {
+        gap: 8px;
+    }
+    .productIdentity h4 {
+        font-size: 16px;
+        line-height: 20px;
+    }
+    .productCardHeader .iconButton {
+        width: 36px;
+        min-width: 36px;
+        min-height: 36px;
+    }
+    .productModel {
+        margin: 8px 0;
+    }
+    .productFacts {
+        gap: 4px;
+    }
+    .productFacts div {
+        padding: 6px;
+    }
+    .productFacts dt {
+        font-size: 10px;
+        line-height: 12px;
+    }
+    .productFacts dd {
+        font-size: 12px;
+        line-height: 16px;
+    }
+    .productImageField {
+        grid-template-columns: 80px minmax(0, 1fr);
+        gap: 12px;
+    }
+    .productImagePreview {
+        width: 80px;
+    }
+    .packagingRuleGuide {
+        gap: 4px;
+        padding: 8px;
+    }
+    .packagingRuleGuide span {
+        padding: 6px 4px;
+        font-size: 11px;
+        line-height: 14px;
     }
     .compactFacts {
         grid-template-columns: repeat(3, minmax(0, 1fr));

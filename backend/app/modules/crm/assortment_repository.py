@@ -17,7 +17,7 @@ from app.modules.crm.assortment_models import (
     CrmPackagingBox,
 )
 from app.modules.crm.reference_models import CrmFabric, CrmGarmentModel, CrmGarmentSize
-from app.modules.media.models import MediaObject, MediaStatus
+from app.modules.media.models import MediaObject, MediaStatus, ProductMedia
 
 
 class CrmAssortmentRepository:
@@ -29,7 +29,10 @@ class CrmAssortmentRepository:
         category_id: int | None,
         active: bool | None,
     ) -> Sequence[Product]:
-        statement = select(Product).options(selectinload(Product.variants))
+        statement = select(Product).options(
+            selectinload(Product.variants),
+            selectinload(Product.media_links).selectinload(ProductMedia.media),
+        )
         if model_id is not None:
             statement = statement.where(Product.garment_model_id == model_id)
         if category_id is not None:
