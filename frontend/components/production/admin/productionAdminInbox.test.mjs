@@ -28,6 +28,14 @@ test('admin navigation has separate problems and support tabs', () => {
     assert.match(terminal, /support: PiLifebuoy/);
 });
 
+test('production and system administrators receive different sections', () => {
+    assert.match(types, /productionAdminSections[\s\S]*'orders', 'problems'/);
+    assert.match(types, /systemAdminSections[\s\S]*'support'/);
+    assert.match(terminal, /user\?\.admin_scope === 'production'/);
+    assert.match(terminal, /Производственный администратор/);
+    assert.match(terminal, /Системный администратор/);
+});
+
 test('admin inbox lists filterable messages with distinct source context', () => {
     assert.match(records, /Все приоритеты/);
     assert.match(records, /Сообщения пользователей/);

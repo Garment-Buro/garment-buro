@@ -33,6 +33,8 @@ from app.modules.production.router import router
 from app.modules.production.schemas import ProductionCommand, SpecificationWrite
 from app.modules.production.security import ProductionDenied
 from app.modules.production.service import ProductionService
+from app.modules.production.ticket_routing import route_ticket
+from app.modules.production.ticket_schemas import TicketRoute
 from tests.unit.test_crm_production_workflow import NOW, _seed_unit_and_reference_data, _settings
 
 
@@ -386,18 +388,24 @@ def test_versions_permissions_tamper_and_legacy_bypass_are_blocked(tmp_path):
                     unit_id=1,
                     note="Duplicate report",
                 )
-            await execute(
-                db,
-                service,
-                "resolve_issue",
-                unit_id=1,
-                note="File restored",
-            )
             async with db.session() as session:
                 work = await session.scalar(
                     select(ProductionWorkItem).where(ProductionWorkItem.unit_id == 1)
                 )
                 inbox = await session.get(AdminInboxItem, work.problem_inbox_item_id)
+                await route_ticket(
+                    session,
+                    inbox.id,
+                    await session.get(User, 1),
+                    TicketRoute(
+                        expected_version=inbox.version,
+                        target="resume",
+                        comment="File restored",
+                    ),
+                )
+                await session.commit()
+                await session.refresh(work)
+                await session.refresh(inbox)
                 assert work.issue is None
                 assert inbox.status == AdminInboxStatus.RESOLVED.value
                 assert inbox.resolved_at is not None

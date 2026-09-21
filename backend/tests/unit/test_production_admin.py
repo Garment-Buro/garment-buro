@@ -51,7 +51,7 @@ async def admin_app(tmp_path):
             )
             session.add(person)
             await session.flush()
-            role = await repo.get_role(session, RoleName.PRODUCTION_ADMIN)
+            role = await repo.get_role(session, RoleName.ADMIN)
             session.add(UserRole(user_id=person.id, role_id=role.id))
             profile = PartnerProfile(
                 user_id=3,
@@ -263,6 +263,42 @@ def test_floor_code_cannot_be_used_as_admin_even_after_role_grant(tmp_path):
                         },
                     )
                 ).status_code == 403
+
+    asyncio.run(scenario())
+
+
+def test_production_administrator_only_sees_orders_and_problems(tmp_path):
+    async def scenario():
+        async with admin_app(tmp_path) as (app, db, code, _):
+            async with db.session() as session:
+                admin = await session.scalar(select(User).where(User.email == "admin@example.test"))
+                await session.execute(
+                    UserRole.__table__.delete().where(UserRole.user_id == admin.id)
+                )
+                role = await IdentityRepository().get_role(session, RoleName.PRODUCTION_SUPERVISOR)
+                session.add(UserRole(user_id=admin.id, role_id=role.id))
+                await session.commit()
+
+            async with AsyncClient(transport=ASGITransport(app), base_url="https://test") as client:
+                assert (
+                    await client.post("/api/production/auth/login", json={"code": code})
+                ).status_code == 200
+                me = (await client.get("/api/production/me")).json()
+                assert me["can_administer"] is True
+                assert me["admin_scope"] == "production"
+                for path in ("orders", "orders/1", "problems", "problems/2", "tickets/2"):
+                    assert (await client.get(f"/api/production/admin/{path}")).status_code == 200
+                for path in (
+                    "stats",
+                    "employees",
+                    "clients",
+                    "payouts",
+                    "support",
+                    "support/1",
+                    "tickets/1",
+                    "assortment/models",
+                ):
+                    assert (await client.get(f"/api/production/admin/{path}")).status_code == 403
 
     asyncio.run(scenario())
 
@@ -486,6 +522,7 @@ def test_admin_lists_and_finds_isolated_demo_access_by_code(tmp_path):
                         "id": demo.id,
                         "is_demo": True,
                         "availability": "available",
+                        "is_production_admin": False,
                         "first_name": "Демо · ОТК",
                         "last_name": "",
                         "name": "Демо · ОТК",
@@ -500,5 +537,47 @@ def test_admin_lists_and_finds_isolated_demo_access_by_code(tmp_path):
                     }
                 ]
                 assert demo_code not in response.text
+
+    asyncio.run(scenario())
+
+
+def test_system_admin_can_assign_production_administrator_access(tmp_path):
+    async def scenario():
+        async with admin_app(tmp_path) as (app, _, admin_code, _):
+            payload = {
+                "first_name": "Начальник производства",
+                "last_name": "",
+                "email": None,
+                "phone": None,
+                "status": "active",
+                "availability": "available",
+                "is_production_admin": True,
+                "stations": ["tech"],
+                "primary_station": "tech",
+            }
+            async with AsyncClient(transport=ASGITransport(app), base_url="https://test") as system:
+                await system.post("/api/production/auth/login", json={"code": admin_code})
+                created = await system.post("/api/production/admin/employees", json=payload)
+                assert created.status_code == 200, created.text
+                employee_id = created.json()["employee"]["id"]
+                code = created.json()["code"]
+                assert len(code) == 8 and code.startswith("99")
+                assert created.json()["employee"]["is_production_admin"] is True
+
+                listed = await system.get(f"/api/production/admin/employees?q={employee_id}")
+                assert listed.json()["items"][0]["is_production_admin"] is True
+
+            async with AsyncClient(
+                transport=ASGITransport(app), base_url="https://test"
+            ) as production:
+                assert (
+                    await production.post("/api/production/auth/login", json={"code": code})
+                ).status_code == 200
+                me = (await production.get("/api/production/me")).json()
+                assert me["admin_scope"] == "production"
+                assert me["stations"] == ["tech"]
+                assert (await production.get("/api/production/admin/orders")).status_code == 200
+                assert (await production.get("/api/production/admin/problems")).status_code == 200
+                assert (await production.get("/api/production/admin/employees")).status_code == 403
 
     asyncio.run(scenario())

@@ -32,9 +32,13 @@ from app.modules.production.label_router import router as label_router
 from app.modules.production.models import ProductionSpecificationFile
 from app.modules.production.read_service import ProductionReadService
 from app.modules.production.schemas import CommandReceipt, ProductionCommand
-from app.modules.production.security import ProductionDenied, can_administer, stations_for_user
+from app.modules.production.security import (
+    ProductionDenied,
+    can_administer,
+    can_system_administer,
+    stations_for_user,
+)
 from app.modules.production.service import ProductionService
-from app.modules.production.ticket_schemas import TicketReply
 
 router = APIRouter(prefix="/api/production", tags=["production-terminal"])
 router.include_router(auth_router, prefix="")
@@ -59,51 +63,6 @@ async def access(request: Request, response: Response, user: CurrentUser, sessio
 Auth = Annotated[tuple[User, list[str]], Depends(access)]
 
 
-@router.get("/projects/{project_id}/tickets/{ticket_id}")
-async def floor_ticket(
-    project_id: int, ticket_id: int, _auth: Auth, session: Session, after: int = Query(0, ge=0)
-):
-    from app.modules.production.inbox_service import AdminInboxNotFoundError
-    from app.modules.production.ticket_service import TicketService
-
-    try:
-        service = TicketService()
-        item = await service.item(session, ticket_id)
-        if item.kind != "production_problem" or item.project_id != project_id:
-            raise AdminInboxNotFoundError()
-        return await service.detail(session, item, after=after)
-    except AdminInboxNotFoundError as error:
-        raise HTTPException(404, "Тикет не найден") from error
-
-
-@router.post("/projects/{project_id}/tickets/{ticket_id}/messages")
-async def floor_ticket_reply(
-    project_id: int, ticket_id: int, payload: TicketReply, auth: Auth, session: Session
-):
-    from app.modules.production.inbox_service import (
-        AdminInboxConflictError,
-        AdminInboxNotFoundError,
-    )
-    from app.modules.production.ticket_service import TicketService
-
-    try:
-        service = TicketService()
-        item = await service.item(session, ticket_id)
-        if item.kind != "production_problem" or item.project_id != project_id:
-            raise AdminInboxNotFoundError()
-        result = await service.reply(
-            session, ticket_id=ticket_id, actor=auth[0], payload=payload, employee=True
-        )
-        await session.commit()
-        return result
-    except AdminInboxNotFoundError as error:
-        await session.rollback()
-        raise HTTPException(404, "Тикет не найден") from error
-    except AdminInboxConflictError as error:
-        await session.rollback()
-        raise HTTPException(409, str(error)) from error
-
-
 def active_roles(auth, station):
     selected = station or (auth[1][0] if auth[1] else None)
     if selected not in auth[1]:
@@ -114,13 +73,22 @@ def active_roles(auth, station):
 @router.get("/me")
 async def me(auth: Auth, request: Request, session: Session):
     user, stations = auth
+    administers = getattr(request.state, "production_station", None) == "admin" and (
+        await can_administer(session, user.id)
+    )
     return {
         "id": user.id,
         "name": user.first_name or user.email or "Сотрудник",
         "stations": stations,
         "is_demo": await is_demo_employee(session, user.id),
-        "can_administer": getattr(request.state, "production_station", None) == "admin"
-        and await can_administer(session, user.id),
+        "can_administer": administers,
+        "admin_scope": (
+            "system"
+            if administers and await can_system_administer(session, user.id)
+            else "production"
+            if administers
+            else None
+        ),
     }
 
 

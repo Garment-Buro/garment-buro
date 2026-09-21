@@ -5,9 +5,10 @@ import { requestJson } from "@/lib/api/http";
 import { useAuthStore } from "@/store/authStore";
 import { useProductionAuthStore } from "@/store/productionAuthStore";
 
-export type TicketMode = "customer" | "admin" | "employee";
+export type TicketMode = "customer" | "admin";
 export type TicketSummary = {
   id: number;
+  kind: "support" | "production_problem";
   subject: string;
   status: string;
   order_id: number | null;

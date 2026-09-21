@@ -132,7 +132,7 @@ def test_identity_migration_applies_once_with_customer_role(tmp_path: Path) -> N
             stored = await session.scalar(select(User))
         assert counts == {
             "users": 1,
-            "roles": 16,
+            "roles": 17,
             "permissions": 27,
             "user_roles": 1,
             "otp": 0,

@@ -34,6 +34,7 @@ class TicketService:
             key: getattr(item, key)
             for key in (
                 "id",
+                "kind",
                 "subject",
                 "status",
                 "order_id",

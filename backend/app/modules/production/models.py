@@ -65,9 +65,6 @@ class ProductionBag(Base, IntegerIdMixin, TimestampMixin):
         ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
     )
     dtf_approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    moderation_inbox_item_id: Mapped[int | None] = mapped_column(
-        ForeignKey("admin_inbox_items.id", ondelete="SET NULL"), nullable=True, index=True
-    )
 
 
 class ProductionSpecification(Base, IntegerIdMixin):

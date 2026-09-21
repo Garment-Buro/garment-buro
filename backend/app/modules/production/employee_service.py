@@ -50,14 +50,18 @@ class ProductionEmployeeService:
         )
         session.add(employee)
         await self._replace_roles(
-            session, user_id=user.id, stations=payload.stations, actor_id=actor_id
+            session,
+            user_id=user.id,
+            stations=payload.stations,
+            is_production_admin=payload.is_production_admin,
+            actor_id=actor_id,
         )
         code = None
         if payload.status == "active" and payload.availability == "available":
             code = await issue_code(
                 session,
                 user_id=user.id,
-                station=payload.primary_station,
+                station="admin" if payload.is_production_admin else payload.primary_station,
                 pepper=pepper,
                 actor_user_id=actor_id,
                 audit_source="admin_ui",
@@ -70,6 +74,7 @@ class ProductionEmployeeService:
                 details={
                     "stations": payload.stations,
                     "primary_station": payload.primary_station,
+                    "is_production_admin": payload.is_production_admin,
                 },
             )
         )
@@ -98,7 +103,11 @@ class ProductionEmployeeService:
         employee.primary_station = payload.primary_station
         employee.availability = payload.availability
         await self._replace_roles(
-            session, user_id=user.id, stations=payload.stations, actor_id=actor_id
+            session,
+            user_id=user.id,
+            stations=payload.stations,
+            is_production_admin=payload.is_production_admin,
+            actor_id=actor_id,
         )
         active_credential = await session.scalar(
             select(ProductionCredential).where(
@@ -107,6 +116,7 @@ class ProductionEmployeeService:
             )
         )
         code = None
+        code_station = "admin" if payload.is_production_admin else payload.primary_station
         if payload.status == "blocked" or payload.availability != "available":
             await revoke_code(
                 session,
@@ -114,11 +124,15 @@ class ProductionEmployeeService:
                 actor_user_id=actor_id,
                 audit_source="admin_ui",
             )
-        elif primary_changed or active_credential is None:
+        elif (
+            primary_changed
+            or active_credential is None
+            or active_credential.station != code_station
+        ):
             code = await issue_code(
                 session,
                 user_id=user.id,
-                station=payload.primary_station,
+                station=code_station,
                 pepper=pepper,
                 actor_user_id=actor_id,
                 audit_source="admin_ui",
@@ -137,6 +151,7 @@ class ProductionEmployeeService:
                     "primary_station": payload.primary_station,
                     "status": payload.status,
                     "availability": payload.availability,
+                    "is_production_admin": payload.is_production_admin,
                     "code_rotated": code is not None,
                 },
             )
@@ -153,10 +168,15 @@ class ProductionEmployeeService:
             raise EmployeeNotFoundError()
         if user.status != "active" or employee.availability != "available":
             raise EmployeeConflictError("Сначала активируйте сотрудника")
+        is_production_admin = await session.scalar(
+            select(UserRole.user_id)
+            .join(Role, Role.id == UserRole.role_id)
+            .where(UserRole.user_id == user.id, Role.name == "production_supervisor")
+        )
         code = await issue_code(
             session,
             user_id=user.id,
-            station=employee.primary_station,
+            station="admin" if is_production_admin else employee.primary_station,
             pepper=pepper,
             actor_user_id=actor_id,
             audit_source="admin_ui",
@@ -189,7 +209,7 @@ class ProductionEmployeeService:
                 .where(
                     UserRole.user_id == user_id,
                     Role.name.like("production_%"),
-                    Role.name != "production_admin",
+                    Role.name.not_in(("production_admin", "production_supervisor")),
                 )
                 .order_by(Role.name)
             )
@@ -203,6 +223,11 @@ class ProductionEmployeeService:
             .order_by(ProductionCredential.id.desc())
         )
         employee, user = row
+        is_production_admin = await session.scalar(
+            select(UserRole.user_id)
+            .join(Role, Role.id == UserRole.role_id)
+            .where(UserRole.user_id == user_id, Role.name == "production_supervisor")
+        )
         return {
             "id": user.id,
             "is_demo": False,
@@ -213,6 +238,7 @@ class ProductionEmployeeService:
             "phone": user.phone,
             "status": user.status,
             "availability": employee.availability,
+            "is_production_admin": is_production_admin is not None,
             "created_at": employee.created_at,
             "stations": [role.removeprefix("production_") for role in roles],
             "primary_station": employee.primary_station,
@@ -220,8 +246,18 @@ class ProductionEmployeeService:
             "code_updated_at": credential.updated_at if credential else None,
         }
 
-    async def _replace_roles(self, session, *, user_id: int, stations: list[str], actor_id: int):
+    async def _replace_roles(
+        self,
+        session,
+        *,
+        user_id: int,
+        stations: list[str],
+        is_production_admin: bool,
+        actor_id: int,
+    ):
         names = [self.role_name(station) for station in stations]
+        if is_production_admin:
+            names.append("production_supervisor")
         roles = list(await session.scalars(select(Role).where(Role.name.in_(names))))
         if len(roles) != len(names):
             raise EmployeeConflictError("Производственные роли не инициализированы")

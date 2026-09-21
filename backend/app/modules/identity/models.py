@@ -43,6 +43,7 @@ class RoleName(str, Enum):
     ADMIN = "admin"
     PRODUCTION_TECH = "production_tech"
     PRODUCTION_ADMIN = "production_admin"
+    PRODUCTION_SUPERVISOR = "production_supervisor"
     PRODUCTION_KIT = "production_kit"
     PRODUCTION_CUT = "production_cut"
     PRODUCTION_DTF = "production_dtf"
@@ -453,6 +454,10 @@ SYSTEM_ROLE_PERMISSIONS: dict[RoleName, Sequence[PermissionCode]] = {
         PermissionCode.PRODUCTION_ACCESS,
         PermissionCode.PRODUCTION_ADMIN,
         PermissionCode.PAYMENTS_MANAGE,
+    ),
+    RoleName.PRODUCTION_SUPERVISOR: (
+        PermissionCode.PRODUCTION_ACCESS,
+        PermissionCode.PRODUCTION_ADMIN,
     ),
 }
 

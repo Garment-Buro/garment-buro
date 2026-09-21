@@ -74,7 +74,8 @@ from app.modules.crm.reference_service import (
     CrmReferenceVersionConflictError,
 )
 from app.modules.media.service import MediaService, UnsupportedMediaError
-from app.modules.production.admin_router import Admin, Session
+from app.modules.production.admin_router import Session
+from app.modules.production.admin_router import SystemAdmin as Admin
 from app.modules.production.assortment_media_service import (
     AssortmentMediaService,
     UnsupportedCrmFileError,

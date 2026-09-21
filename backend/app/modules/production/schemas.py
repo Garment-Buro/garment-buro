@@ -93,8 +93,6 @@ class ProductionCommand(StrictModel):
         "complete_stage",
         "return_to_dtf",
         "report_issue",
-        "resolve_issue",
-        "rework",
         "pack_bag",
         "dispatch",
         "issue_unit_label",
@@ -102,7 +100,6 @@ class ProductionCommand(StrictModel):
         "complete_workshop",
         "set_dtf_deadline",
         "approve_order",
-        "request_moderation",
     ]
     unit_id: int | None = Field(default=None, gt=0)
     specification: SpecificationWrite | None = None
@@ -128,10 +125,7 @@ class ProductionCommand(StrictModel):
             "insert_dtf": {"unit_id"},
             "complete_stage": {"unit_id", "stage", "quality_confirmed"},
             "report_issue": {"unit_id"},
-            "resolve_issue": {"unit_id"},
-            "rework": {"unit_id", "stage"},
             "dispatch": {"tracking_number"},
-            "request_moderation": set(),
         }
         allowed = fields.get(self.action, set()) | {"action", "expected_version", "note"}
         if self.model_fields_set - allowed:

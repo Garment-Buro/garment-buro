@@ -16,17 +16,13 @@ export function BagActions({
     busy: boolean;
 }) {
     const [tracking, setTracking] = useState(''),
-        [note, setNote] = useState(''),
-        [moderationNote, setModerationNote] = useState('');
+        [note, setNote] = useState('');
     const reviewReady = project.units.every(
         (unit) =>
             unit.specification &&
             unit.documents_confirmed &&
             !unit.issue &&
             !unit.blockers.length,
-    );
-    const moderationOpen = ['new', 'in_progress'].includes(
-        project.moderation_status ?? '',
     );
     return (
         <section className={styles.section}>
@@ -64,13 +60,7 @@ export function BagActions({
                                 </strong>
                             </span>
                         </div>
-                        {moderationOpen ? (
-                            <p className={styles.warning}>
-                                Заказ отправлен администратору в «Проблемы».
-                                Подтверждение недоступно до решения.
-                            </p>
-                        ) : (
-                            <div className={styles.actions}>
+                        <div className={styles.actions}>
                                 {canAct(stations, 'tech') &&
                                     !project.tech_approved && (
                                         <button
@@ -99,38 +89,7 @@ export function BagActions({
                                             Макеты DTF проверены — подтвердить
                                         </button>
                                     )}
-                            </div>
-                        )}
-                        {!moderationOpen && (
-                            <details>
-                                <summary>Отправить заказ администратору</summary>
-                                <label>
-                                    Что нужно проверить
-                                    <textarea
-                                        rows={3}
-                                        maxLength={1000}
-                                        value={moderationNote}
-                                        onChange={(event) =>
-                                            setModerationNote(event.target.value)
-                                        }
-                                        placeholder="Опишите несоответствие в макете, лекалах или техкарте"
-                                    />
-                                </label>
-                                <button
-                                    disabled={
-                                        busy || !moderationNote.trim()
-                                    }
-                                    onClick={() =>
-                                        void send({
-                                            action: 'request_moderation',
-                                            note: moderationNote.trim(),
-                                        })
-                                    }
-                                >
-                                    Отправить в «Проблемы»
-                                </button>
-                            </details>
-                        )}
+                        </div>
                     </div>
                 )}
             <h3>Перемещение всего мешка</h3>

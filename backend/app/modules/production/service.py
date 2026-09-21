@@ -22,7 +22,6 @@ from app.modules.production.evidence import (
     validate_files,
     verify_specification,
 )
-from app.modules.production.inbox_models import AdminInboxItem, AdminInboxStatus
 from app.modules.production.inbox_service import AdminInboxService
 from app.modules.production.models import (
     ProductionBag,
@@ -139,8 +138,6 @@ class ProductionService:
             "insert_dtf",
             "complete_stage",
             "report_issue",
-            "resolve_issue",
-            "rework",
             "issue_unit_label",
             "send_unit",
             "complete_workshop",
@@ -156,7 +153,7 @@ class ProductionService:
         else:
             # Preparing one item must not require every other item to be planned.
             evidence_rows = [item] if command.action in unit_actions else work
-            if command.action in {"report_issue", "resolve_issue", "request_moderation"}:
+            if command.action == "report_issue":
                 evidence_rows = []  # A data-integrity problem must itself be reportable.
             for row in evidence_rows:
                 spec = specs.get(row.specification_id)
@@ -293,7 +290,6 @@ class ProductionService:
                 raise ProductionConflict("Сначала заполните спецификации всех вещей")
             if any(not row.documents_confirmed or row.issue for row in work):
                 raise ProductionConflict("Технолог должен подтвердить техкарты и лекала всех вещей")
-            await self._ensure_no_open_moderation(session, bag)
             now = datetime.now(timezone.utc)
             if "tech" in stations:
                 if bag.tech_approved_at is not None:
@@ -307,25 +303,6 @@ class ProductionService:
                 bag.dtf_approved_at = now
             if bag.tech_approved_at is not None and bag.dtf_approved_at is not None:
                 bag.public_token = bag.public_token or secrets.token_urlsafe(32)
-            return
-        if action == "request_moderation":
-            self._state(bag, "inbox")
-            if not set(stations) & {"tech", "dtf"}:
-                require_station(stations, "tech")
-            if not command.note:
-                raise ProductionConflict("Опишите, что должен проверить администратор")
-            await self._ensure_no_open_moderation(session, bag)
-            inbox_item = await AdminInboxService().create_production_problem(
-                session,
-                message=command.note,
-                reporter_user_id=actor,
-                order_id=order.id,
-                project_id=project.id,
-                production_unit_id=None,
-                station=stations[0],
-            )
-            bag.moderation_inbox_item_id = inbox_item.id
-            self._invalidate_order_approvals(bag)
             return
         if bag.flow_version == 2 and await apply_unit_flow(
             self, session, bag, work, specs, units, unit, item, project, command, stations, actor
@@ -482,37 +459,6 @@ class ProductionService:
             item.problem_inbox_item_id = inbox_item.id
             if bag.state == "inbox":
                 self._invalidate_order_approvals(bag)
-        elif action in {"resolve_issue", "rework"}:
-            require_station(stations, "tech")
-            self._state(bag, "inbox", "kitting", "workshop", "waiting_dtf")
-            if not command.note or not item.issue:
-                raise ProductionConflict("Нужны открытая проблема и описание решения")
-            if action == "rework":
-                if (
-                    command.stage not in spec["route"]
-                    or spec["route"].index(command.stage) > item.stage_index
-                    or unit.status == "completed"
-                ):
-                    raise ProductionConflict(
-                        "Некорректный этап переделки; закрытую вещь нельзя менять"
-                    )
-                item.stage_index = spec["route"].index(command.stage)
-                if bag.flow_version == 2:
-                    item.lane = "cut" if command.stage == "cut" else "kit"
-                if command.stage in {"cut", "application"} and spec["print_file_ids"]:
-                    item.dtf_ready = False
-                    item.dtf_inserted = False
-                if unit.status == "quality_control":
-                    await self._unit_status(
-                        session, unit, CrmProductionUnitStatus.IN_PROGRESS, actor
-                    )
-            await AdminInboxService().resolve_production_problem(
-                session,
-                item_id=item.problem_inbox_item_id,
-                actor_user_id=actor,
-                note=command.note,
-            )
-            item.issue = None
         elif action == "pack_bag":
             require_station(stations, "packing")
             self._state(bag, "workshop")
@@ -605,21 +551,6 @@ class ProductionService:
         bag.dtf_approved_at = None
         bag.public_token = None
 
-    @staticmethod
-    async def _moderation(session, bag):
-        if bag.moderation_inbox_item_id is None:
-            return None
-        return await session.get(AdminInboxItem, bag.moderation_inbox_item_id)
-
-    async def _ensure_no_open_moderation(self, session, bag):
-        moderation = await self._moderation(session, bag)
-        if moderation and moderation.status not in {
-            AdminInboxStatus.RESOLVED.value,
-            AdminInboxStatus.CLOSED.value,
-        }:
-            raise ProductionConflict("Заказ ожидает решения администратора в разделе «Проблемы»")
-
     async def _require_order_approvals(self, session, bag):
-        await self._ensure_no_open_moderation(session, bag)
         if bag.tech_approved_at is None or bag.dtf_approved_at is None or not bag.public_token:
             raise ProductionConflict("Нужны подтверждения технолога и DTF до выпуска заказа")

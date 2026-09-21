@@ -121,6 +121,11 @@ export function AdminRecordsTable({
                                             Тестовый доступ
                                         </span>
                                     )}
+                                    {row.is_production_admin && (
+                                        <span className={styles.demoBadge}>
+                                            Производственный администратор
+                                        </span>
+                                    )}
                                     <small>Сотрудник №{row.id}</small>
                                 </td>
                                 <td data-label="Участки">

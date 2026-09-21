@@ -1,11 +1,9 @@
 'use client';
 import { useState } from 'react';
-import { TicketConversation } from '@/components/support/TicketConversation';
 import {
     labels,
     type Project,
     type SendCommand,
-    type Stage,
     type Station,
     type Unit,
 } from '@/lib/production/types';
@@ -36,12 +34,8 @@ export function ProductionUnit({
     const [quality, setQuality] = useState<number[]>([]);
     const [note, setNote] = useState('');
     const [wrapped, setWrapped] = useState(false);
-    const [rework, setRework] = useState<Stage>(
-        unit.specification?.route[0] ?? 'cut',
-    );
     const [error, setError] = useState('');
     const [downloading, setDownloading] = useState(false);
-    const [ticketOpen, setTicketOpen] = useState(false);
     const stage =
             project.flow_version === 2 && unit.lane === 'cut'
                 ? 'cut'
@@ -417,10 +411,6 @@ export function ProductionUnit({
                         )}
                 </>
             )}
-            {unit.ticket_id && <details className={styles.section} onToggle={(event) => setTicketOpen(event.currentTarget.open)}>
-                <summary>Тикет №{unit.ticket_id} · Переписка и решение</summary>
-                {ticketOpen && <TicketConversation key={unit.ticket_id} id={unit.ticket_id} mode="employee" projectId={project.project_id} />}
-            </details>}
             {project.state !== 'dispatched' && (
                     <details className={styles.section}>
                         <summary>
@@ -454,73 +444,11 @@ export function ProductionUnit({
                                     Отправить тикет администратору
                                 </button>
                             )}
-                            {unit.issue && tech && (
-                                <>
-                                    <button
-                                        disabled={busy || !note.trim()}
-                                        onClick={() =>
-                                            void send({
-                                                action: 'resolve_issue',
-                                                unit_id: unit.id,
-                                                note,
-                                            })
-                                        }
-                                    >
-                                        Проблема устранена
-                                    </button>
-                                    {spec && (
-                                        <>
-                                            <label>
-                                                Переделка с этапа
-                                                <select
-                                                    value={rework}
-                                                    onChange={(event) =>
-                                                        setRework(
-                                                            event.target
-                                                                .value as Stage,
-                                                        )
-                                                    }
-                                                >
-                                                    {spec.route
-                                                        .slice(
-                                                            0,
-                                                            unit.stage_index +
-                                                                1,
-                                                        )
-                                                        .map((step) => (
-                                                            <option
-                                                                key={step}
-                                                                value={step}
-                                                            >
-                                                                {labels[step]}
-                                                            </option>
-                                                        ))}
-                                                </select>
-                                            </label>
-                                            <button
-                                                disabled={
-                                                    busy ||
-                                                    !note.trim() ||
-                                                    !spec.route.includes(
-                                                        rework,
-                                                    ) ||
-                                                    unit.crm_status ===
-                                                        'completed'
-                                                }
-                                                onClick={() =>
-                                                    void send({
-                                                        action: 'rework',
-                                                        unit_id: unit.id,
-                                                        note,
-                                                        stage: rework,
-                                                    })
-                                                }
-                                            >
-                                                Назначить переделку
-                                            </button>
-                                        </>
-                                    )}
-                                </>
+                            {unit.issue && (
+                                <p className={styles.muted}>
+                                    Проблема передана администратору. Работа по
+                                    изделию возобновится после его решения.
+                                </p>
                             )}
                         </div>
                     </details>

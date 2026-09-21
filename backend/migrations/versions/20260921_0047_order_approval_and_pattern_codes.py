@@ -43,9 +43,6 @@ def upgrade():
     op.add_column(
         "production_bags", sa.Column("dtf_approved_at", sa.DateTime(timezone=True), nullable=True)
     )
-    op.add_column(
-        "production_bags", sa.Column("moderation_inbox_item_id", sa.Integer(), nullable=True)
-    )
     op.create_foreign_key(
         "fk_production_bags_tech_approved_by",
         "production_bags",
@@ -62,19 +59,6 @@ def upgrade():
         ["id"],
         ondelete="RESTRICT",
     )
-    op.create_foreign_key(
-        "fk_production_bags_moderation_inbox",
-        "production_bags",
-        "admin_inbox_items",
-        ["moderation_inbox_item_id"],
-        ["id"],
-        ondelete="SET NULL",
-    )
-    op.create_index(
-        op.f("ix_production_bags_moderation_inbox_item_id"),
-        "production_bags",
-        ["moderation_inbox_item_id"],
-    )
     op.create_check_constraint(
         "production_bag_tech_approval_consistent",
         "production_bags",
@@ -90,26 +74,10 @@ def upgrade():
 
 
 def downgrade():
-    op.drop_constraint(
-        "production_bag_dtf_approval_consistent", "production_bags", type_="check"
-    )
-    op.drop_constraint(
-        "production_bag_tech_approval_consistent", "production_bags", type_="check"
-    )
-    op.drop_index(
-        op.f("ix_production_bags_moderation_inbox_item_id"),
-        table_name="production_bags",
-    )
-    op.drop_constraint(
-        "fk_production_bags_moderation_inbox", "production_bags", type_="foreignkey"
-    )
-    op.drop_constraint(
-        "fk_production_bags_dtf_approved_by", "production_bags", type_="foreignkey"
-    )
-    op.drop_constraint(
-        "fk_production_bags_tech_approved_by", "production_bags", type_="foreignkey"
-    )
-    op.drop_column("production_bags", "moderation_inbox_item_id")
+    op.drop_constraint("production_bag_dtf_approval_consistent", "production_bags", type_="check")
+    op.drop_constraint("production_bag_tech_approval_consistent", "production_bags", type_="check")
+    op.drop_constraint("fk_production_bags_dtf_approved_by", "production_bags", type_="foreignkey")
+    op.drop_constraint("fk_production_bags_tech_approved_by", "production_bags", type_="foreignkey")
     op.drop_column("production_bags", "dtf_approved_at")
     op.drop_column("production_bags", "dtf_approved_by_user_id")
     op.drop_column("production_bags", "tech_approved_at")

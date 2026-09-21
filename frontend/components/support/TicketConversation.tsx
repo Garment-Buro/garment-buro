@@ -20,21 +20,17 @@ const date = (value: string) => new Date(value).toLocaleString("ru-RU");
 export function TicketConversation({
   id,
   mode,
-  projectId,
   onChanged,
 }: {
   id: number;
   mode: TicketMode;
-  projectId?: number;
   onChanged?: () => void;
 }) {
   const request = useTicketRequest(mode);
   const path =
     mode === "admin"
       ? `/production/admin/tickets/${id}`
-      : mode === "employee"
-        ? `/production/projects/${projectId}/tickets/${id}`
-        : `/support/${id}`;
+      : `/support/${id}`;
   const [data, setData] = useState<TicketDetail | null>(null);
   const [message, setMessage] = useState("");
   const [visibility, setVisibility] = useState("public");
@@ -65,6 +61,9 @@ export function TicketConversation({
     return () => controller.abort();
   }, [request, path, revision]);
   useEffect(() => {
+    if (data?.kind === "production_problem") setVisibility("internal");
+  }, [data?.kind]);
+  useEffect(() => {
     const timer = window.setInterval(() => {
       if (
         document.visibilityState === "visible" &&
@@ -91,7 +90,8 @@ export function TicketConversation({
             ? {
                 expected_version: data.version,
                 message: message.trim(),
-                visibility,
+                visibility:
+                  data.kind === "production_problem" ? "internal" : visibility,
               }
             : {
                 expected_version: data.version,
@@ -209,7 +209,7 @@ export function TicketConversation({
               void submit("messages");
             }}
           >
-            {mode === "admin" && (
+            {mode === "admin" && data.kind === "support" && (
               <label>
                 Видимость сообщения
                 <select
@@ -221,6 +221,9 @@ export function TicketConversation({
                   <option value="internal">Только администраторам</option>
                 </select>
               </label>
+            )}
+            {mode === "admin" && data.kind === "production_problem" && (
+              <p>Внутреннее обсуждение между администраторами.</p>
             )}
             <label>
               {visibility === "internal" ? "Внутренняя заметка" : "Сообщение"}
@@ -270,7 +273,7 @@ export function TicketConversation({
                 </select>
               </label>
               <label>
-                Комментарий для сотрудников
+                Комментарий к производственному решению
                 <textarea
                   required
                   minLength={3}
@@ -283,7 +286,8 @@ export function TicketConversation({
               </label>
               <small>
                 Решение закроет проблему и возобновит работу этого изделия.
-                Сотрудники увидят комментарий в тикете и журнале.
+                Комментарий сохранится в журнале производства. Работники не
+                получают доступ к тикету.
               </small>
               <button
                 className={styles.primary}

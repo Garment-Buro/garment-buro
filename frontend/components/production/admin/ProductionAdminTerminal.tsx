@@ -1,5 +1,5 @@
 'use client';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
     PiChartBar,
@@ -13,7 +13,12 @@ import {
     PiStorefront,
 } from 'react-icons/pi';
 import { useProductionAuthStore } from '@/store/productionAuthStore';
-import { type AdminSection, sectionLabels } from '@/lib/production/adminTypes';
+import {
+    type AdminSection,
+    productionAdminSections,
+    sectionLabels,
+    systemAdminSections,
+} from '@/lib/production/adminTypes';
 import { AdminRecords } from './AdminRecords';
 import { AdminStatistics } from './AdminStatistics';
 import { AdminAssortment } from './AdminAssortment';
@@ -30,12 +35,19 @@ const icons = {
     support: PiLifebuoy,
 };
 export function ProductionAdminTerminal() {
-    const [section, setSection] = useState<AdminSection>('stats');
+    const user = useProductionAuthStore((state) => state.user);
+    const sections =
+        user?.admin_scope === 'production'
+            ? productionAdminSections
+            : systemAdminSections;
+    const [section, setSection] = useState<AdminSection>(sections[0]);
     const [leaving, setLeaving] = useState(false);
     const contentRef = useRef<HTMLDivElement>(null);
-    const user = useProductionAuthStore((state) => state.user);
     const logout = useProductionAuthStore((state) => state.logout);
     const error = useProductionAuthStore((state) => state.error);
+    useEffect(() => {
+        if (!sections.includes(section)) setSection(sections[0]);
+    }, [section, sections]);
     return (
         <main className={styles.screen}>
             <a className={styles.skip} href="#production-admin-content">
@@ -43,8 +55,17 @@ export function ProductionAdminTerminal() {
             </a>
             <header className={styles.header}>
                 <div>
-                    <p className={styles.eyebrow}>GARMENT BURO · УПРАВЛЕНИЕ</p>
-                    <h1>Терминал администратора</h1>
+                    <p className={styles.eyebrow}>
+                        GARMENT BURO ·{' '}
+                        {user?.admin_scope === 'production'
+                            ? 'ПРОИЗВОДСТВО'
+                            : 'УПРАВЛЕНИЕ'}
+                    </p>
+                    <h1>
+                        {user?.admin_scope === 'production'
+                            ? 'Производственный администратор'
+                            : 'Системный администратор'}
+                    </h1>
                     <p>{user?.name}</p>
                 </div>
                 <div className={styles.actions}>
@@ -68,7 +89,7 @@ export function ProductionAdminTerminal() {
                 </div>
             </header>
             <nav className={styles.nav} aria-label="Разделы администратора">
-                {(Object.keys(sectionLabels) as AdminSection[]).map((key) => {
+                {sections.map((key) => {
                     const Icon = icons[key];
                     return (
                         <button

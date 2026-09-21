@@ -9,8 +9,9 @@ import {
     money,
     statusLabels,
 } from '@/lib/production/adminTypes';
+import { labels, stateLabels } from '@/lib/production/types';
+import { useProductionAuthStore } from '@/store/productionAuthStore';
 import styles from './ProductionAdmin.module.css';
-import { AdminOrderModeration } from './AdminOrderModeration';
 
 export function AdminOrderDetails({
     id,
@@ -20,6 +21,9 @@ export function AdminOrderDetails({
     onClose: () => void;
 }) {
     const [ticketId, setTicketId] = useState<number | null>(null);
+    const systemAdmin = useProductionAuthStore(
+        (state) => state.user?.admin_scope === 'system',
+    );
     const { data, loading, error, reload } = useAdminResource<AdminOrderDetail>(
         `orders/${id}`,
     );
@@ -64,8 +68,13 @@ export function AdminOrderDetails({
                 )}
                 {data && (
                     <>
-                        <AdminOrderModeration order={data} reload={reload} />
-                        <CreateTicket admin orderId={id} onCreated={setTicketId} />
+                        {systemAdmin && (
+                            <CreateTicket
+                                admin
+                                orderId={id}
+                                onCreated={setTicketId}
+                            />
+                        )}
                         {ticketId !== null && <TicketConversation key={ticketId} id={ticketId} mode="admin" />}
                         <p>
                             {data.name || 'Имя не указано'} ·{' '}
@@ -93,6 +102,86 @@ export function AdminOrderDetails({
                             {data.delivery_method || 'Способ не указан'} ·{' '}
                             {money(data.delivery_price)}
                         </p>
+                        <h3>Производство</h3>
+                        {data.production ? (
+                            <>
+                                <p>
+                                    Проект №{data.production.project_id} ·{' '}
+                                    {stateLabels[
+                                        data.production.display_state ||
+                                            data.production.state
+                                    ] || data.production.state}
+                                </p>
+                                <div className={styles.approvalGrid}>
+                                    <span
+                                        data-ready={
+                                            data.production.tech_approved
+                                        }
+                                    >
+                                        Технолог
+                                        <strong>
+                                            {data.production.tech_approved
+                                                ? 'Подтвердил'
+                                                : 'Ожидается'}
+                                        </strong>
+                                    </span>
+                                    <span
+                                        data-ready={
+                                            data.production.dtf_approved
+                                        }
+                                    >
+                                        DTF
+                                        <strong>
+                                            {data.production.dtf_approved
+                                                ? 'Подтвердил'
+                                                : 'Ожидается'}
+                                        </strong>
+                                    </span>
+                                    <span data-ready={data.production.qr_ready}>
+                                        QR заказа
+                                        <strong>
+                                            {data.production.qr_ready
+                                                ? 'Доступен'
+                                                : 'Заблокирован'}
+                                        </strong>
+                                    </span>
+                                </div>
+                                {data.production.units.map((unit) => (
+                                    <article
+                                        key={unit.id}
+                                        className={styles.item}
+                                    >
+                                        <h4>
+                                            Вещь №{unit.number} ·{' '}
+                                            {unit.source.title}
+                                        </h4>
+                                        <p>
+                                            Этап:{' '}
+                                            {unit.lane && unit.lane in labels
+                                                ? labels[
+                                                      unit.lane as keyof typeof labels
+                                                  ]
+                                                : stateLabels[
+                                                      unit.lane ||
+                                                          data.production
+                                                              ?.state ||
+                                                          'inbox'
+                                                  ] ||
+                                                  unit.lane ||
+                                                  data.production?.state ||
+                                                  'inbox'}
+                                        </p>
+                                        {unit.issue && (
+                                            <p className={styles.error}>
+                                                Проблема: {unit.issue}
+                                            </p>
+                                        )}
+                                    </article>
+                                ))}
+                            </>
+                        ) : (
+                            <p>Заказ ещё не передан в производство.</p>
+                        )}
                         <h3>Состав заказа</h3>
                         {data.items.map((item) => (
                             <article key={item.id} className={styles.item}>

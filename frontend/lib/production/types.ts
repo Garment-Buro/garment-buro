@@ -65,8 +65,6 @@ export const actionLabels: Record<string, string> = {
     return_to_dtf: 'Возвращён на ожидание DTF',
     report_issue: 'Зафиксирована проблема',
     ticket_routed: 'Решение администратора по тикету',
-    resolve_issue: 'Проблема устранена',
-    rework: 'Назначена переделка',
     pack_bag: 'Мешок упакован',
     dispatch: 'Передан перевозчику',
     issue_unit_label: 'Выпущен QR мешка изделия',
@@ -74,7 +72,6 @@ export const actionLabels: Record<string, string> = {
     complete_workshop: 'Цех завершил работу и ВТО',
     set_dtf_deadline: 'Назначен срок DTF',
     approve_order: 'Заказ подтверждён',
-    request_moderation: 'Заказ отправлен администратору',
 };
 export interface Component {
     key: string;
@@ -126,7 +123,6 @@ export interface Unit {
     dtf_ready: boolean;
     dtf_inserted: boolean;
     issue: string | null;
-    ticket_id?: number | null;
     blockers: string[];
     sizes: { id: number; code: string }[];
     cards: { id: number; name: string; revision: number }[];
@@ -142,7 +138,6 @@ export interface QueueItem {
     tech_approved?: boolean;
     dtf_approved?: boolean;
     qr_ready?: boolean;
-    moderation_status?: string | null;
     project_id: number;
     order_id: number;
     customer: string;
@@ -185,6 +180,7 @@ export interface Project extends Omit<QueueItem, 'blocked'> {
 export interface Employee {
     is_demo?: boolean;
     can_administer?: boolean;
+    admin_scope?: 'production' | 'system' | null;
     id: number;
     name: string;
     stations: Station[];
@@ -205,12 +201,9 @@ export interface Command {
         | 'complete_stage'
         | 'return_to_dtf'
         | 'report_issue'
-        | 'resolve_issue'
-        | 'rework'
         | 'pack_bag'
         | 'dispatch'
-        | 'approve_order'
-        | 'request_moderation';
+        | 'approve_order';
     unit_id?: number;
     specification?: Specification;
     component_key?: string;

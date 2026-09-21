@@ -6,6 +6,7 @@ from sqlalchemy import String, case, cast, func, or_, select
 from sqlalchemy.orm import selectinload
 
 from app.modules.bank_payouts.models import PartnerBankPayment
+from app.modules.crm.models import CrmOrderProject
 from app.modules.identity.models import Role, User, UserRole
 from app.modules.orders.models import Order
 from app.modules.orders.workflow_models import OrderWorkflow
@@ -14,6 +15,7 @@ from app.modules.production.auth_models import ProductionCredential, ProductionE
 from app.modules.production.auth_service import code_digest
 from app.modules.production.inbox_models import AdminInboxItem
 from app.modules.production.models import ProductionDemoEmployee
+from app.modules.production.read_service import ProductionReadService
 
 
 def money(value):
@@ -82,6 +84,14 @@ class ProductionAdminReads:
             return None
         order = row[0]
         flow = await session.scalar(select(OrderWorkflow).where(OrderWorkflow.order_id == order.id))
+        project_id = await session.scalar(
+            select(CrmOrderProject.id).where(CrmOrderProject.order_id == order.id)
+        )
+        production = (
+            await ProductionReadService().detail(session, project_id=project_id, stations=["tech"])
+            if project_id is not None
+            else None
+        )
         return {
             **order_row(row),
             "moderation": {
@@ -93,6 +103,7 @@ class ProductionAdminReads:
             }
             if flow
             else None,
+            "production": production,
             "delivery_city": order.delivery_city,
             "delivery_address": order.delivery_address,
             "delivery_method": order.delivery_method,
@@ -164,6 +175,7 @@ class ProductionAdminReads:
             )
         ).all()
         roles = {}
+        production_admin_ids = set()
         user_ids = [user.id for user, _, _, _ in rows]
         if user_ids:
             for user_id, role in await session.execute(
@@ -172,10 +184,20 @@ class ProductionAdminReads:
                 .where(
                     UserRole.user_id.in_(user_ids),
                     Role.name.like("production_%"),
-                    Role.name != "production_admin",
+                    Role.name.not_in(("production_admin", "production_supervisor")),
                 )
             ):
                 roles.setdefault(user_id, []).append(role)
+            production_admin_ids = set(
+                await session.scalars(
+                    select(UserRole.user_id)
+                    .join(Role, Role.id == UserRole.role_id)
+                    .where(
+                        UserRole.user_id.in_(user_ids),
+                        Role.name == "production_supervisor",
+                    )
+                )
+            )
         active_codes = {
             user_id: updated_at
             for user_id, updated_at in await session.execute(
@@ -193,6 +215,7 @@ class ProductionAdminReads:
                 "id": row[0].id,
                 "is_demo": row[2] is not None,
                 "availability": row[1].availability if row[1] else "available",
+                "is_production_admin": row[0].id in production_admin_ids,
                 "first_name": row[0].first_name or "",
                 "last_name": row[0].last_name or "",
                 "name": " ".join(x for x in (row[0].first_name, row[0].last_name) if x),

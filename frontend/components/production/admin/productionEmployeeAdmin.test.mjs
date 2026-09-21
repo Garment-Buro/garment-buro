@@ -29,6 +29,9 @@ test('employee roles and one-time access code have dedicated controls', () => {
     assert.match(records, /AdminEmployeeAccessCode/);
     assert.match(table, /onEmployee\(row\)/);
     assert.match(table, /Действующего кода нет/);
+    assert.match(editor, /Производственный администратор/);
+    assert.match(editor, /префиксом 99/);
+    assert.match(table, /row\.is_production_admin/);
 });
 
 test('employee creation makes optional fields clear and groups work settings', () => {

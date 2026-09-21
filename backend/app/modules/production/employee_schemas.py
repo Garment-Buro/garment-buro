@@ -27,6 +27,7 @@ class EmployeeWrite(BaseModel):
     phone: str | None = Field(default=None, max_length=64)
     status: Literal["active", "blocked"] = "active"
     availability: Literal["available", "sick", "vacation", "absent"] = "available"
+    is_production_admin: bool = False
     stations: list[Station] = Field(min_length=1, max_length=11)
     primary_station: Station
 
@@ -49,6 +50,7 @@ class EmployeeRead(BaseModel):
     phone: str | None
     status: Literal["active", "blocked"]
     availability: Literal["available", "sick", "vacation", "absent"] = "available"
+    is_production_admin: bool = False
     created_at: datetime
     stations: list[Station]
     primary_station: Station

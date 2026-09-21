@@ -1,6 +1,6 @@
 from sqlalchemy import select
 
-from app.modules.identity.models import PermissionCode
+from app.modules.identity.models import PermissionCode, Role, RoleName, UserRole
 from app.modules.identity.repository import IdentityRepository
 from app.modules.production.auth_models import ProductionEmployee
 from app.modules.production.schemas import STATIONS
@@ -13,6 +13,21 @@ class ProductionDenied(PermissionError):
 async def can_administer(session, user_id: int) -> bool:
     return await IdentityRepository().user_has_permission(
         session, user_id=user_id, permission=PermissionCode.PRODUCTION_ADMIN
+    )
+
+
+async def can_system_administer(session, user_id: int) -> bool:
+    return (
+        await session.scalar(
+            select(UserRole.user_id)
+            .join(Role, Role.id == UserRole.role_id)
+            .where(
+                UserRole.user_id == user_id,
+                Role.name.in_((RoleName.ADMIN.value, RoleName.PRODUCTION_ADMIN.value)),
+            )
+            .limit(1)
+        )
+        is not None
     )
 
 

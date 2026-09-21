@@ -1,3 +1,5 @@
+import type { Project } from './types';
+
 export type AdminSection =
     | 'stats'
     | 'orders'
@@ -31,6 +33,7 @@ export interface AdminOrderDetail extends AdminOrder {
         decision: string | null;
         attention: string | null;
     } | null;
+    production: Project | null;
     delivery_city: string | null;
     delivery_address: string | null;
     delivery_method: string | null;
@@ -62,6 +65,7 @@ export const productionStations = [
 export type ProductionStation = (typeof productionStations)[number];
 export interface AdminEmployee {
     availability: 'available' | 'sick' | 'vacation' | 'absent';
+    is_production_admin: boolean;
     id: number;
     is_demo: boolean;
     first_name: string;
@@ -78,6 +82,7 @@ export interface AdminEmployee {
 }
 export interface AdminEmployeeWrite {
     availability: 'available' | 'sick' | 'vacation' | 'absent';
+    is_production_admin: boolean;
     first_name: string;
     last_name: string;
     email: string | null;
@@ -160,6 +165,17 @@ export const sectionLabels: Record<AdminSection, string> = {
     problems: 'Проблемы',
     support: 'Поддержка',
 };
+export const systemAdminSections: AdminSection[] = [
+    'stats',
+    'orders',
+    'payouts',
+    'employees',
+    'clients',
+    'assortment',
+    'problems',
+    'support',
+];
+export const productionAdminSections: AdminSection[] = ['orders', 'problems'];
 export const stationLabels: Record<ProductionStation, string> = {
     tech: 'Технолог',
     kit: 'Комплектовка',

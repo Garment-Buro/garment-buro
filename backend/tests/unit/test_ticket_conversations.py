@@ -128,7 +128,7 @@ def test_customer_conversation_ownership_internal_notes_reopening_and_admin_init
                 await client.post("/api/production/auth/login", json={"code": cutter_code})
                 assert (await client.get(admin_url)).status_code == 403
                 floor_url = "/api/production/projects/1/tickets/2"
-                assert (await client.get(floor_url)).status_code == 200
+                assert (await client.get(floor_url)).status_code == 404
                 assert (await client.get("/api/production/projects/1/tickets/1")).status_code == 404
                 assert (
                     await client.get("/api/production/projects/999/tickets/2")
@@ -141,17 +141,7 @@ def test_customer_conversation_ownership_internal_notes_reopening_and_admin_init
                             "message": "Материал найден на складе",
                         },
                     )
-                ).status_code == 200
-                assert (
-                    await client.post(
-                        floor_url + "/messages",
-                        json={
-                            "expected_version": 2,
-                            "message": "Скрытая заметка",
-                            "visibility": "internal",
-                        },
-                    )
-                ).status_code == 409
+                ).status_code == 404
                 assert (
                     await client.post(
                         admin_url + "/route",
@@ -180,6 +170,8 @@ def test_production_ticket_before_planning_and_atomic_routing(tmp_path):
                 await session.commit()
             await execute(db, service, "plan", unit_id=1, specification=spec)
             await execute(db, service, "confirm_documents", unit_id=1)
+            await execute(db, service, "approve_order")
+            await execute(db, service, "approve_order", actor=people["dtf"])
             await execute(db, service, "release")
             await execute(db, service, "issue_unit_label", actor=2, unit_id=1)
             await execute(
@@ -232,7 +224,7 @@ def test_production_ticket_before_planning_and_atomic_routing(tmp_path):
                 detail = await ProductionReadService().detail(
                     session, project_id=1, stations=["cut"]
                 )
-                assert detail["units"][0]["ticket_id"] == ticket_id
+                assert "ticket_id" not in detail["units"][0]
                 assert detail["events"][0]["note"] == "Перекроить деталь спинки"
                 with pytest.raises(AdminInboxConflictError):
                     await route_ticket(
@@ -300,6 +292,8 @@ def test_packing_rework_resets_quality_status_and_preserves_sibling(tmp_path):
             for unit_id in (1, 2):
                 await execute(db, service, "plan", unit_id=unit_id, specification=spec)
                 await execute(db, service, "confirm_documents", unit_id=unit_id)
+            await execute(db, service, "approve_order")
+            await execute(db, service, "approve_order", actor=people["dtf"])
             await execute(db, service, "release")
             for unit_id in (1, 2):
                 await execute(db, service, "issue_unit_label", actor=2, unit_id=unit_id)

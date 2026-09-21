@@ -153,7 +153,7 @@ async def route_ticket(session, ticket_id, actor, payload):
             ticket_id=ticket.id,
             author_user_id=actor.id,
             author_role="system",
-            visibility="public",
+            visibility="internal",
             body=f"Решение: {label}. {payload.comment}",
         )
     )

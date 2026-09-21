@@ -11,7 +11,6 @@ from app.modules.identity.models import RoleName, User, UserRole
 from app.modules.identity.repository import IdentityRepository
 from app.modules.production.auth_models import ProductionEmployee
 from app.modules.production.evidence import ProductionConflict
-from app.modules.production.inbox_models import AdminInboxItem, AdminInboxStatus
 from app.modules.production.models import ProductionBag, ProductionEvent, ProductionWorkItem
 from app.modules.production.read_service import ProductionReadService
 from app.modules.production.router import router
@@ -35,7 +34,7 @@ async def workers(db):
     return result
 
 
-def test_dual_approval_is_invalidated_and_admin_problem_blocks_qr(tmp_path):
+def test_dual_approval_is_invalidated_and_requires_tech_and_dtf(tmp_path):
     async def scenario():
         async with setup(tmp_path) as (db, service, spec):
             people = await workers(db)
@@ -47,23 +46,6 @@ def test_dual_approval_is_invalidated_and_admin_problem_blocks_qr(tmp_path):
                 bag = await session.scalar(select(ProductionBag))
                 assert bag.tech_approved_at is None and bag.public_token is None
             await execute(db, service, "confirm_documents", unit_id=1)
-            await execute(
-                db,
-                service,
-                "request_moderation",
-                actor=people["dtf"],
-                note="Проверьте расположение нанесения",
-            )
-            with pytest.raises(ProductionConflict, match="ожидает решения администратора"):
-                await execute(db, service, "approve_order")
-            async with db.session() as session:
-                bag = await session.scalar(select(ProductionBag))
-                problem = await session.get(AdminInboxItem, bag.moderation_inbox_item_id)
-                assert problem.production_unit_id is None
-                assert problem.subject == "Заказ №1 отправлен на модерацию"
-                problem.status = AdminInboxStatus.RESOLVED.value
-                problem.resolved_at = problem.created_at
-                await session.commit()
             await execute(db, service, "approve_order")
             await execute(db, service, "approve_order", actor=people["dtf"])
             async with db.session() as session:

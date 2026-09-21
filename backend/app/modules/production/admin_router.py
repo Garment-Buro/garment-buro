@@ -1,6 +1,6 @@
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,7 +33,7 @@ from app.modules.production.inbox_service import (
     AdminInboxNotFoundError,
     AdminInboxService,
 )
-from app.modules.production.security import can_administer
+from app.modules.production.security import can_administer, can_system_administer
 from app.modules.production.ticket_routing import route_ticket
 from app.modules.production.ticket_schemas import AdminTicketCreate, TicketReply, TicketRoute
 from app.modules.production.ticket_service import TicketService
@@ -61,6 +61,25 @@ async def require_admin(
 Admin = Annotated[User, Depends(require_admin)]
 
 
+async def require_system_admin(
+    request: Request,
+    response: Response,
+    session: Session,
+    user: Annotated[User, Depends(get_production_user)],
+):
+    await require_admin(request, response, session, user)
+    if not await can_system_administer(session, user.id):
+        raise HTTPException(
+            403,
+            "Раздел доступен только системному администратору",
+            headers={"Cache-Control": "no-store"},
+        )
+    return user
+
+
+SystemAdmin = Annotated[User, Depends(require_system_admin)]
+
+
 async def ticket_command(session, operation):
     try:
         result = await operation
@@ -75,7 +94,7 @@ async def ticket_command(session, operation):
 
 
 @router.post("/tickets", status_code=201)
-async def create_ticket(payload: AdminTicketCreate, admin: Admin, session: Session):
+async def create_ticket(payload: AdminTicketCreate, admin: SystemAdmin, session: Session):
     from app.modules.production.inbox_service import SupportRateLimitError
 
     try:
@@ -89,19 +108,30 @@ async def create_ticket(payload: AdminTicketCreate, admin: Admin, session: Sessi
 
 @router.get("/tickets/{ticket_id}")
 async def ticket_thread(
-    ticket_id: int, _admin: Admin, session: Session, after: int = Query(0, ge=0)
+    ticket_id: int, admin: Admin, session: Session, after: int = Query(0, ge=0)
 ):
     try:
         service = TicketService()
-        return await service.detail(
-            session, await service.item(session, ticket_id), admin=True, after=after
-        )
+        item = await service.item(session, ticket_id)
+        if item.kind == AdminInboxKind.SUPPORT.value and not await can_system_administer(
+            session, admin.id
+        ):
+            raise HTTPException(403, "Поддержка доступна только системному администратору")
+        return await service.detail(session, item, admin=True, after=after)
     except AdminInboxNotFoundError as error:
         raise HTTPException(404, "Тикет не найден") from error
 
 
 @router.post("/tickets/{ticket_id}/messages")
 async def ticket_reply(ticket_id: int, payload: TicketReply, admin: Admin, session: Session):
+    try:
+        item = await TicketService().item(session, ticket_id)
+    except AdminInboxNotFoundError as error:
+        raise HTTPException(404, "Тикет не найден") from error
+    if item.kind == AdminInboxKind.SUPPORT.value and not await can_system_administer(
+        session, admin.id
+    ):
+        raise HTTPException(403, "Поддержка доступна только системному администратору")
     return await ticket_command(
         session,
         TicketService().reply(
@@ -113,43 +143,6 @@ async def ticket_reply(ticket_id: int, payload: TicketReply, admin: Admin, sessi
 @router.post("/tickets/{ticket_id}/route")
 async def ticket_route(ticket_id: int, payload: TicketRoute, admin: Admin, session: Session):
     return await ticket_command(session, route_ticket(session, ticket_id, admin, payload))
-
-
-class ModerationDecision(BaseModel):
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
-    expected_version: int = Field(ge=1)
-    decision: Literal["approve", "reject"]
-    note: str = Field(min_length=1, max_length=2000)
-
-
-@router.post("/orders/{order_id}/moderation")
-async def moderate_order(
-    order_id: int,
-    payload: ModerationDecision,
-    request: Request,
-    admin: Admin,
-    session: Session,
-    idempotency_key: Annotated[str, Header(alias="Idempotency-Key")],
-):
-    from app.modules.orders.workflow import OrderModerationService, OrderWorkflowConflict
-
-    try:
-        flow = await OrderModerationService(request.app.state.settings).decide(
-            session,
-            order_id=order_id,
-            expected_version=payload.expected_version,
-            actor_user_id=admin.id,
-            decision=payload.decision,
-            key=idempotency_key,
-            note=payload.note,
-        )
-        await session.commit()
-        return {"state": flow.state, "version": flow.version}
-    except OrderWorkflowConflict as error:
-        await session.rollback()
-        raise HTTPException(409, str(error)) from error
-    except PermissionError as error:
-        raise HTTPException(403, str(error)) from error
 
 
 class ListQuery(BaseModel):
@@ -168,7 +161,7 @@ class InboxListQuery(BaseModel):
 
 
 @router.get("/stats")
-async def statistics(_admin: Admin, session: Session):
+async def statistics(_admin: SystemAdmin, session: Session):
     return await ProductionAdminReads().stats(session)
 
 
@@ -187,7 +180,7 @@ async def order(order_id: int, _admin: Admin, session: Session):
 
 @router.get("/users")
 async def users(
-    request: Request, _admin: Admin, session: Session, query: Annotated[ListQuery, Query()]
+    request: Request, _admin: SystemAdmin, session: Session, query: Annotated[ListQuery, Query()]
 ):
     return await ProductionAdminReads().users(
         session, **query.model_dump(), pepper=employee_pepper(request)
@@ -196,7 +189,10 @@ async def users(
 
 @router.get("/employees")
 async def employees(
-    request: Request, _admin: Admin, session: Session, query: Annotated[ListQuery, Query()]
+    request: Request,
+    _admin: SystemAdmin,
+    session: Session,
+    query: Annotated[ListQuery, Query()],
 ):
     return await ProductionAdminReads().employees(
         session, **query.model_dump(), pepper=employee_pepper(request)
@@ -244,17 +240,19 @@ async def update_inbox_item(
 
 
 @router.get("/support", response_model=AdminInboxPage)
-async def support(_admin: Admin, session: Session, query: Annotated[InboxListQuery, Query()]):
+async def support(_admin: SystemAdmin, session: Session, query: Annotated[InboxListQuery, Query()]):
     return await inbox_list(AdminInboxKind.SUPPORT.value, session, query)
 
 
 @router.get("/support/{item_id}", response_model=AdminInboxRead)
-async def support_item(item_id: int, _admin: Admin, session: Session):
+async def support_item(item_id: int, _admin: SystemAdmin, session: Session):
     return await inbox_item(AdminInboxKind.SUPPORT.value, item_id, session)
 
 
 @router.patch("/support/{item_id}", response_model=AdminInboxRead)
-async def update_support(item_id: int, payload: AdminInboxUpdate, admin: Admin, session: Session):
+async def update_support(
+    item_id: int, payload: AdminInboxUpdate, admin: SystemAdmin, session: Session
+):
     return await update_inbox_item(AdminInboxKind.SUPPORT.value, item_id, payload, admin, session)
 
 
@@ -276,7 +274,9 @@ async def update_problem(item_id: int, payload: AdminInboxUpdate, admin: Admin, 
 
 
 @router.post("/employees", response_model=EmployeeCodeResponse)
-async def create_employee(payload: EmployeeWrite, request: Request, admin: Admin, session: Session):
+async def create_employee(
+    payload: EmployeeWrite, request: Request, admin: SystemAdmin, session: Session
+):
     try:
         employee, code = await ProductionEmployeeService().create(
             session,
@@ -295,7 +295,7 @@ async def update_employee(
     user_id: int,
     payload: EmployeeWrite,
     request: Request,
-    admin: Admin,
+    admin: SystemAdmin,
     session: Session,
 ):
     try:
@@ -315,7 +315,9 @@ async def update_employee(
 
 
 @router.post("/employees/{user_id}/code", response_model=EmployeeCodeResponse)
-async def rotate_employee_code(user_id: int, request: Request, admin: Admin, session: Session):
+async def rotate_employee_code(
+    user_id: int, request: Request, admin: SystemAdmin, session: Session
+):
     try:
         employee, code = await ProductionEmployeeService().rotate_code(
             session,
@@ -331,12 +333,12 @@ async def rotate_employee_code(user_id: int, request: Request, admin: Admin, ses
 
 
 @router.get("/clients")
-async def clients(_admin: Admin, session: Session, query: Annotated[ListQuery, Query()]):
+async def clients(_admin: SystemAdmin, session: Session, query: Annotated[ListQuery, Query()]):
     return await ProductionAdminReads().clients(session, **query.model_dump(exclude={"status"}))
 
 
 @router.get("/payouts")
-async def payouts(_admin: Admin, session: Session, query: Annotated[ListQuery, Query()]):
+async def payouts(_admin: SystemAdmin, session: Session, query: Annotated[ListQuery, Query()]):
     return await ProductionAdminReads().payouts(session, **query.model_dump())
 
 
@@ -349,7 +351,11 @@ class PayoutReview(BaseModel):
 
 @router.post("/payouts/{payout_id}/review")
 async def review(
-    payout_id: int, payload: PayoutReview, request: Request, admin: Admin, session: Session
+    payout_id: int,
+    payload: PayoutReview,
+    request: Request,
+    admin: SystemAdmin,
+    session: Session,
 ):
     partners = get_partner_service(request)
     try:

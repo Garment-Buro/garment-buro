@@ -20,6 +20,7 @@ const emptyEmployee: AdminEmployeeWrite = {
     phone: null,
     status: 'active',
     availability: 'available',
+    is_production_admin: false,
     stations: ['tech'],
     primary_station: 'tech',
 };
@@ -33,6 +34,7 @@ function values(employee: AdminEmployee | null): AdminEmployeeWrite {
         phone: employee.phone,
         status: employee.status,
         availability: employee.availability ?? 'available',
+        is_production_admin: employee.is_production_admin,
         stations: employee.stations,
         primary_station: employee.primary_station,
     };
@@ -283,6 +285,24 @@ export function AdminEmployeeEditor({
                                 </small>
                             </label>
                         </div>
+                        <label className={styles.roleOption}>
+                            <input
+                                type="checkbox"
+                                checked={form.is_production_admin}
+                                onChange={(event) =>
+                                    setForm({
+                                        ...form,
+                                        is_production_admin:
+                                            event.target.checked,
+                                    })
+                                }
+                            />
+                            <span>Производственный администратор</span>
+                        </label>
+                        <small>
+                            Получит отдельный восьмизначный код и доступ только
+                            к заказам, этапам производства и проблемам.
+                        </small>
                     </fieldset>
 
                     <fieldset className={styles.roleFieldset}>
@@ -327,7 +347,9 @@ export function AdminEmployeeEditor({
                                 ))}
                             </select>
                             <small>
-                                По нему формируется первая цифра личного кода.
+                                Для обычного сотрудника по нему формируется
+                                первая цифра кода. Администратору выдаётся код с
+                                префиксом 99.
                             </small>
                         </label>
                     </fieldset>
