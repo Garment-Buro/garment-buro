@@ -1,6 +1,9 @@
+import asyncio
+import json
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, UploadFile
+from fastapi.responses import Response as FastApiResponse
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +24,8 @@ from app.modules.crm.production_service import (
     CrmProductionVersionConflictError,
 )
 from app.modules.crm.service import CrmProjectStateError, CrmProjectVersionConflictError
+from app.modules.delivery.models import CdekShipment
+from app.modules.delivery.provider import AiohttpCdekTransport, CdekProviderError
 from app.modules.identity.models import User
 from app.modules.production.admin_router import router as admin_router
 from app.modules.production.assortment_admin_router import router as assortment_admin_router
@@ -124,6 +129,59 @@ async def project_for_order(order_id: int, _auth: Auth, session: Session):
     if project_id is None:
         raise HTTPException(404, "Заказ ещё не передан в производство или не найден")
     return {"project_id": project_id}
+
+
+@router.post("/projects/{project_id}/cdek-waybill")
+async def cdek_waybill(
+    project_id: int,
+    request: Request,
+    auth: Auth,
+    session: Session,
+    station: str | None = None,
+):
+    """Create the CDEK waybill and return its PDF only to the packing terminal."""
+    if active_roles(auth, station)[0] != "packing":
+        raise HTTPException(403, "Накладную СДЭК печатает упаковщик")
+    project = await session.get(CrmOrderProject, project_id)
+    if project is None:
+        raise HTTPException(404, "Производственный заказ не найден")
+    shipment = await session.scalar(
+        select(CdekShipment).where(CdekShipment.order_id == project.order_id)
+    )
+    if shipment is None or shipment.status != "created" or not shipment.provider_uuid:
+        raise HTTPException(409, "Накладная СДЭК ещё не создана")
+    transport = AiohttpCdekTransport(request.app.state.settings)
+    try:
+        created = await transport.create_waybill(shipment.provider_uuid)
+        if not 200 <= created.status <= 299:
+            raise HTTPException(503, "СДЭК не принял запрос печати")
+        try:
+            payload = json.loads(created.body)
+            print_uuid = payload["entity"]["uuid"]
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+            raise HTTPException(503, "СДЭК вернул некорректный ответ печати") from error
+        for attempt in range(12):
+            document = await transport.download_waybill(print_uuid)
+            if document.status == 200 and document.body.startswith(b"%PDF-"):
+                return FastApiResponse(
+                    document.body,
+                    media_type="application/pdf",
+                    headers={
+                        "Cache-Control": "no-store",
+                        "Content-Disposition": (
+                            f'inline; filename="cdek-order-{project.order_id}.pdf"'
+                        ),
+                    },
+                )
+            if document.status not in {202, 404}:
+                break
+            if attempt < 11:
+                await asyncio.sleep(0.5)
+        raise HTTPException(503, "СДЭК ещё готовит накладную. Повторите печать")
+    except CdekProviderError as error:
+        raise HTTPException(503, "Сервис печати СДЭК временно недоступен") from error
+    finally:
+        await transport.shutdown()
 
 
 @router.post("/projects/{project_id}/commands", response_model=CommandReceipt)

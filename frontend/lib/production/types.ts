@@ -71,6 +71,7 @@ export const actionLabels: Record<string, string> = {
     send_unit: 'Изделие передано в цех',
     complete_workshop: 'Цех завершил работу и ВТО',
     set_dtf_deadline: 'Назначен срок DTF',
+    start_dtf: 'DTF взят в работу',
     approve_order: 'Заказ подтверждён',
 };
 export interface Component {
@@ -148,6 +149,8 @@ export interface QueueItem {
     flow_version?: number;
     public_token?: string | null;
     dtf_pending?: number;
+    dtf_overdue?: number;
+    purchase_pending?: number;
     tech_approved?: boolean;
     dtf_approved?: boolean;
     qr_ready?: boolean;
@@ -204,6 +207,7 @@ export interface Command {
         | 'send_unit'
         | 'complete_workshop'
         | 'set_dtf_deadline'
+        | 'start_dtf'
         | 'plan'
         | 'confirm_documents'
         | 'release'

@@ -45,7 +45,7 @@ export function ProductionBag({
 }) {
     const [opened, setOpened] = useState<number | null>(requestedUnit ?? null);
     const blocked = orderBlocked(project);
-    const wide = station === 'tech' || station === 'dtf';
+    const wide = station === 'tech' || station === 'dtf' || station === 'packing';
     const localStations = canAct(employee.stations, station) ? [station] : [];
     const qr = `/api/qr-code?surface=production&size=256&path=${encodeURIComponent(project.public_token ? `/production/label?token=${project.public_token}` : `/production?project=${project.project_id}`)}`;
     return (
@@ -111,7 +111,13 @@ export function ProductionBag({
                                             ? !project.units.some(
                                                   (u) => u.public_token,
                                               )
-                                            : !project.public_token))
+                                            : station === 'dtf'
+                                              ? !project.units.some(
+                                                    (unit) =>
+                                                        unit.dtf_ready &&
+                                                        unit.public_token,
+                                                )
+                                              : !project.public_token))
                                 }
                                 onClick={print}
                             >
@@ -120,7 +126,7 @@ export function ProductionBag({
                                     ? 'Готовим…'
                                     : station === 'tech'
                                       ? 'Печать QR мешка заказа'
-                                      : station === 'cut'
+                                      : station === 'cut' || station === 'dtf'
                                         ? 'Печать QR мешков изделий'
                                         : 'Печать QR мешка'}
                             </button>

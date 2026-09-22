@@ -142,6 +142,7 @@ class ProductionService:
             "send_unit",
             "complete_workshop",
             "set_dtf_deadline",
+            "start_dtf",
         }
         if command.action in unit_actions and (unit is None or item is None):
             raise ProductionConflict("Выберите вещь из этого мешка")

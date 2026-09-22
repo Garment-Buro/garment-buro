@@ -3,6 +3,9 @@ import { useState } from 'react';
 import type { Project, SendCommand, Station } from '@/lib/production/types';
 import { canAct } from '@/lib/production/workflow';
 import { bagCanMove } from '@/lib/production/workspaces';
+import { productionApi } from '@/lib/api/production';
+import { useProductionAuthStore } from '@/store/productionAuthStore';
+import { PiPrinter } from 'react-icons/pi';
 import styles from './ProductionTerminal.module.css';
 export function BagActions({
     project,
@@ -16,7 +19,39 @@ export function BagActions({
     busy: boolean;
 }) {
     const [tracking, setTracking] = useState(''),
-        [note, setNote] = useState('');
+        [note, setNote] = useState(''),
+        [waybillBusy, setWaybillBusy] = useState(false),
+        [waybillError, setWaybillError] = useState('');
+    const run = useProductionAuthStore((state) => state.runAuthenticated);
+    const printWaybill = async () => {
+        setWaybillBusy(true);
+        setWaybillError('');
+        try {
+            const blob = await run((token) =>
+                productionApi.cdekWaybill(token, project.project_id),
+            );
+            const url = URL.createObjectURL(blob);
+            const frame = document.createElement('iframe');
+            frame.hidden = true;
+            frame.src = url;
+            frame.onload = () => {
+                frame.contentWindow?.print();
+                window.setTimeout(() => {
+                    URL.revokeObjectURL(url);
+                    frame.remove();
+                }, 60_000);
+            };
+            document.body.append(frame);
+        } catch (error) {
+            setWaybillError(
+                error instanceof Error
+                    ? error.message
+                    : 'Не удалось подготовить накладную СДЭК',
+            );
+        } finally {
+            setWaybillBusy(false);
+        }
+    };
     const reviewReady = project.units.every(
         (unit) =>
             unit.specification &&
@@ -163,7 +198,7 @@ export function BagActions({
                 </p>
             )}
             {project.delivery && (
-                <details>
+                <details open={canAct(stations, 'packing')}>
                     <summary>Получатель и доставка</summary>
                     <p>
                         {project.delivery.recipient} · {project.delivery.phone}
@@ -174,6 +209,25 @@ export function BagActions({
                             `ПВЗ ${project.delivery.point_code || 'не указан'}`}
                     </p>
                 </details>
+            )}
+            {canAct(stations, 'packing') && project.delivery && (
+                <div className={styles.actions}>
+                    <button
+                        type="button"
+                        disabled={busy || waybillBusy || project.is_demo}
+                        onClick={() => void printWaybill()}
+                    >
+                        <PiPrinter aria-hidden="true" />
+                        {waybillBusy
+                            ? 'Готовим накладную…'
+                            : 'Печать накладной СДЭК'}
+                    </button>
+                    {waybillError && (
+                        <p className={styles.error} role="alert">
+                            {waybillError}
+                        </p>
+                    )}
+                </div>
             )}
             {project.state === 'packed' && canAct(stations, 'shipping') && (
                 <form

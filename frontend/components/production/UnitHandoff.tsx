@@ -15,7 +15,6 @@ export function UnitHandoff({
     busy: boolean;
 }) {
     const [checks, setChecks] = useState<number[]>([]);
-    const [due, setDue] = useState('');
     const [now] = useState(() => Date.now());
     const quality = unit.specification?.quality_checks ?? [];
     return (
@@ -100,29 +99,23 @@ export function UnitHandoff({
                 !unit.dtf_ready &&
                 ['kit', 'waiting_dtf'].includes(unit.lane ?? '') && (
                     <>
-                        <label>
-                            Срок доставки наклейки
-                            <input
-                                type="datetime-local"
-                                value={due}
-                                onChange={(e) => setDue(e.target.value)}
-                            />
-                        </label>
-                        <button
-                            disabled={busy || !due}
-                            onClick={() =>
-                                void send({
-                                    action: 'set_dtf_deadline',
-                                    unit_id: unit.id,
-                                    due_at: new Date(due).toISOString(),
-                                })
-                            }
-                        >
-                            Сохранить срок
-                        </button>
+                        {!unit.dtf_due_at && (
+                            <button
+                                className={styles.primary}
+                                disabled={busy || !!unit.issue}
+                                onClick={() =>
+                                    void send({
+                                        action: 'start_dtf',
+                                        unit_id: unit.id,
+                                    })
+                                }
+                            >
+                                Взять в работу · срок 7 часов
+                            </button>
+                        )}
                         <button
                             className={styles.primary}
-                            disabled={busy || !!unit.issue}
+                            disabled={busy || !!unit.issue || !unit.dtf_due_at}
                             onClick={() =>
                                 void send({
                                     action: 'dtf_ready',
@@ -130,7 +123,7 @@ export function UnitHandoff({
                                 })
                             }
                         >
-                            Наклейка изготовлена и доставлена
+                            Готово · выпустить QR наклейки
                         </button>
                     </>
                 )}

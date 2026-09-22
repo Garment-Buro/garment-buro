@@ -338,6 +338,10 @@
     font-size: 13px;
     margin-top: 6px;
 }
+.bagToggle .overdue {
+    color: #a32525;
+    font-weight: 800;
+}
 .bagIcon {
     width: 48px;
     height: 48px;
@@ -988,7 +992,7 @@
         padding: 12px;
     }
     .flow .scan form {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr) auto;
     }
     .scan {
         padding: 16px;
@@ -997,23 +1001,15 @@
         grid-template-columns: 1fr;
     }
     .flow .scanCamera {
-        position: fixed;
-        bottom: calc(16px + env(safe-area-inset-bottom));
-        left: 50%;
-        transform: translateX(-50%);
-        z-index: 30;
+        position: static;
         min-height: 48px;
-        width: min(320px, calc(100vw - 32px));
+        width: 100%;
         border-radius: 16px;
         background: var(--ink);
         color: white;
-        box-shadow: 0 4px 24px #0002;
     }
     .flow .scanCamera:active:not(:disabled) {
-        transform: translateX(-50%) scale(0.98);
-    }
-    .flow {
-        padding-bottom: calc(88px + env(safe-area-inset-bottom));
+        transform: scale(0.98);
     }
     .roleGuide {
         grid-template-columns: 1fr;

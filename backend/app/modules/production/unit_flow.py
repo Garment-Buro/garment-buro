@@ -42,8 +42,6 @@ async def apply_unit_flow(
         for row in work:
             garment = next(u for u in units if u.id == row.unit_id)
             row.lane = "cut"
-            if specs[row.specification_id].specification["print_file_ids"]:
-                row.dtf_due_at = now + timedelta(hours=24)
             await service._unit_status(session, garment, CrmProductionUnitStatus.IN_PROGRESS, actor)
         return True
     if action in {"send_bag", "return_to_dtf"}:
@@ -51,6 +49,7 @@ async def apply_unit_flow(
     if action in {
         "issue_unit_label",
         "set_dtf_deadline",
+        "start_dtf",
         "dtf_ready",
         "check_component",
         "insert_dtf",
@@ -78,12 +77,24 @@ async def apply_unit_flow(
             raise ProductionConflict("Срок DTF должен быть в будущем, не далее 30 дней")
         item.dtf_due_at = due
         return True
+    if action == "start_dtf":
+        require_station(stations, "dtf")
+        require_lane(item, "kit", "waiting_dtf")
+        if not spec["print_file_ids"] or item.dtf_ready:
+            raise ProductionConflict("Нет ожидающего задания DTF")
+        if item.dtf_due_at is not None:
+            raise ProductionConflict("Задание DTF уже взято в работу")
+        item.dtf_due_at = now + timedelta(hours=7)
+        return True
     if action == "dtf_ready":
         require_station(stations, "dtf")
         require_lane(item, "kit", "waiting_dtf")
         if not spec["print_file_ids"] or item.dtf_ready:
             raise ProductionConflict("Нет ожидающей доставки DTF")
+        if item.dtf_due_at is None:
+            raise ProductionConflict("Сначала возьмите задание DTF в работу")
         item.dtf_ready = True
+        item.public_token = item.public_token or secrets.token_urlsafe(32)
         item.lane = "kit"
         return True
     if action in {"check_component", "insert_dtf", "send_unit"}:
