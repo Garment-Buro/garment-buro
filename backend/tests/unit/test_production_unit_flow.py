@@ -142,6 +142,12 @@ def test_independent_units_qr_dtf_workshop_and_packing(tmp_path):
                 data = await ProductionReadService().detail(session, project_id=1, stations=["kit"])
                 assert data["units"][0]["lane"] == "waiting_dtf"
                 assert data["units"][1]["lane"] == "done"
+            await execute(db, service, "start_dtf", actor=people["dtf"], unit_id=1)
+            async with db.session() as session:
+                item = await session.scalar(
+                    select(ProductionWorkItem).where(ProductionWorkItem.unit_id == 1)
+                )
+                assert item.dtf_due_at is not None
             await execute(db, service, "dtf_ready", actor=people["dtf"], unit_id=1)
             with pytest.raises(ProductionConflict, match="вложение"):
                 await execute(db, service, "send_unit", actor=people["kit"], unit_id=1)

@@ -14,6 +14,7 @@ import aiohttp
 from app.core.config import Settings
 
 MAX_CDEK_RESPONSE_BYTES = 256 * 1024
+MAX_CDEK_PRINT_BYTES = 8 * 1024 * 1024
 MAX_CDEK_REQUEST_BYTES = 512 * 1024
 SAFE_PROVIDER_REFERENCE = re.compile(r"^[A-Za-z0-9-]{1,64}$")
 
@@ -207,6 +208,58 @@ class AiohttpCdekTransport:
         except aiohttp.ClientError as error:
             raise CdekProviderError("network", retryable=True) from error
 
+    async def create_waybill(self, provider_uuid: str) -> CdekHttpResponse:
+        normalized = _safe_reference(provider_uuid, "invalid_provider_uuid")
+        body = json.dumps(
+            {"orders": [{"order_uuid": normalized}], "copy_count": 1},
+            separators=(",", ":"),
+        ).encode()
+        token = await self._access_token()
+        session = await self._require_session()
+        try:
+            async with session.post(
+                f"{self.base_url}/print/orders",
+                data=body,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                },
+                allow_redirects=False,
+            ) as response:
+                return CdekHttpResponse(
+                    status=response.status,
+                    body=await self._read_limited(response, outcome_unknown=True),
+                )
+        except CdekProviderError:
+            raise
+        except (TimeoutError, aiohttp.ClientError) as error:
+            raise CdekProviderError(
+                "waybill_unavailable", retryable=True, outcome_unknown=True
+            ) from error
+
+    async def download_waybill(self, print_uuid: str) -> CdekHttpResponse:
+        normalized = _safe_reference(print_uuid, "invalid_print_uuid")
+        token = await self._access_token()
+        session = await self._require_session()
+        try:
+            async with session.get(
+                f"{self.base_url}/print/orders/{normalized}.pdf",
+                headers={"Authorization": f"Bearer {token}", "Accept": "application/pdf"},
+                allow_redirects=False,
+            ) as response:
+                return CdekHttpResponse(
+                    status=response.status,
+                    body=await self._read_limited(
+                        response,
+                        outcome_unknown=False,
+                        max_bytes=MAX_CDEK_PRINT_BYTES,
+                    ),
+                )
+        except CdekProviderError:
+            raise
+        except (TimeoutError, aiohttp.ClientError) as error:
+            raise CdekProviderError("waybill_unavailable", retryable=True) from error
+
     async def _access_token(self) -> str:
         now = time.monotonic()
         if self._token and now < self._token_expires_at:
@@ -261,11 +314,12 @@ class AiohttpCdekTransport:
         response: aiohttp.ClientResponse,
         *,
         outcome_unknown: bool,
+        max_bytes: int = MAX_CDEK_RESPONSE_BYTES,
     ) -> bytes:
         body = bytearray()
         async for chunk in response.content.iter_chunked(64 * 1024):
             body.extend(chunk)
-            if len(body) > MAX_CDEK_RESPONSE_BYTES:
+            if len(body) > max_bytes:
                 raise CdekProviderError(
                     "response_too_large",
                     retryable=True,

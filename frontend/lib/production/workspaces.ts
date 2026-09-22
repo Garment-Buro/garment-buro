@@ -1,6 +1,12 @@
 import type { Project, QueueItem, Station } from './types';
 
-export type QueuePocket = 'work' | 'holds' | 'done' | 'all';
+export type QueuePocket =
+    | 'work'
+    | 'purchase'
+    | 'waiting_dtf'
+    | 'holds'
+    | 'done'
+    | 'all';
 
 export function resolveEmployeeStation(
     requested: Station | undefined,
@@ -15,6 +21,9 @@ export function queueItemMatchesPocket(
 ): boolean {
     const state = item.display_state || item.state;
     if (pocket === 'all') return true;
+    if (pocket === 'purchase') return Boolean(item.purchase_pending);
+    if (pocket === 'waiting_dtf')
+        return Boolean(item.stage_counts?.waiting_dtf || item.dtf_pending);
     if (pocket === 'holds')
         return (
             state === 'waiting_dtf' || Boolean(item.stage_counts?.waiting_dtf)

@@ -4,9 +4,11 @@ import styles from './ProductionTerminal.module.css';
 export function PrintSheet({
     project,
     unitSheets,
+    onlyReadyDtf = false,
 }: {
     project: Project;
     unitSheets: boolean;
+    onlyReadyDtf?: boolean;
 }) {
     const qr = (unit?: number) => {
         const token = unit
@@ -51,7 +53,9 @@ export function PrintSheet({
                 project.units
                     .filter(
                         (unit) =>
-                            project.flow_version !== 2 || unit.public_token,
+                            (project.flow_version !== 2 || unit.public_token) &&
+                            (!onlyReadyDtf ||
+                                (unit.requires_dtf && unit.dtf_ready)),
                     )
                     .map((unit) => (
                         <section key={unit.id}>

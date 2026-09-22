@@ -99,6 +99,7 @@ class ProductionCommand(StrictModel):
         "send_unit",
         "complete_workshop",
         "set_dtf_deadline",
+        "start_dtf",
         "approve_order",
     ]
     unit_id: int | None = Field(default=None, gt=0)
@@ -118,6 +119,7 @@ class ProductionCommand(StrictModel):
             "send_unit": {"unit_id"},
             "complete_workshop": {"unit_id", "quality_confirmed"},
             "set_dtf_deadline": {"unit_id", "due_at"},
+            "start_dtf": {"unit_id"},
             "plan": {"unit_id", "specification"},
             "confirm_documents": {"unit_id"},
             "check_component": {"unit_id", "component_key", "checked"},

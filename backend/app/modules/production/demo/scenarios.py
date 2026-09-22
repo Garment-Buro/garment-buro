@@ -105,6 +105,7 @@ async def prepare_scenario(database, files, project_id, unit_id, station, actor,
                 ]
             if station not in {"tech", "cut", "kit", "dtf"}:
                 commands += [
+                    dict(action="start_dtf", unit_id=unit_id),
                     dict(action="dtf_ready", unit_id=unit_id),
                     dict(action="insert_dtf", unit_id=unit_id),
                 ]
@@ -133,6 +134,7 @@ async def prepare_scenario(database, files, project_id, unit_id, station, actor,
                 "return_to_dtf": "kit",
                 "insert_dtf": "kit",
                 "dtf_ready": "dtf",
+                "start_dtf": "dtf",
                 "issue_unit_label": "cut",
                 "complete_workshop": "workshop",
                 "pack_bag": "packing",

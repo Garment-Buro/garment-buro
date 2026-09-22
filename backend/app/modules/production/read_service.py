@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from sqlalchemy import or_, select
 
 from app.modules.catalog.models import ProductVariant
@@ -11,6 +13,7 @@ from app.modules.crm.models import CrmOrderProject
 from app.modules.crm.production_models import CrmProductionPlanRevision
 from app.modules.crm.production_repository import CrmProductionRepository
 from app.modules.crm.reference_models import CrmFabric, CrmTechCard, CrmTechCardRevision
+from app.modules.identity.security import ensure_utc
 from app.modules.media.models import MediaObject
 from app.modules.orders.models import Order, OrderItem
 from app.modules.production.evidence import (
@@ -167,6 +170,9 @@ class ProductionReadService:
         # One bounded batch for the page, not one request per bag or station.
         stage_counts = {}
         dtf_counts = {}
+        purchase_counts = {}
+        overdue_dtf_counts = {}
+        now = datetime.now(timezone.utc)
         bag_ids = [bag.id for _, _, bag in rows[:limit] if bag]
         if bag_ids:
             work_rows = await session.execute(
@@ -189,6 +195,13 @@ class ProductionReadService:
                     and (work.lane in {"kit", "waiting_dtf"} or work.lane is None)
                 ):
                     dtf_counts[work.bag_id] = dtf_counts.get(work.bag_id, 0) + 1
+                    if work.dtf_due_at and ensure_utc(work.dtf_due_at) < now:
+                        overdue_dtf_counts[work.bag_id] = overdue_dtf_counts.get(work.bag_id, 0) + 1
+                if work.lane in {"kit", "waiting_dtf"} and any(
+                    not work.component_checks.get(component["key"])
+                    for component in spec.specification["components"]
+                ):
+                    purchase_counts[work.bag_id] = purchase_counts.get(work.bag_id, 0) + 1
         return {
             "items": [
                 {
@@ -205,6 +218,8 @@ class ProductionReadService:
                     "version": bag.version if bag else 0,
                     "stage_counts": stage_counts.get(bag.id, {}) if bag else {},
                     "dtf_pending": dtf_counts.get(bag.id, 0) if bag else 0,
+                    "dtf_overdue": overdue_dtf_counts.get(bag.id, 0) if bag else 0,
+                    "purchase_pending": purchase_counts.get(bag.id, 0) if bag else 0,
                     "tech_approved": bool(bag and bag.tech_approved_at),
                     "dtf_approved": bool(bag and bag.dtf_approved_at),
                     "qr_ready": bool(bag and bag.public_token),
@@ -331,7 +346,7 @@ class ProductionReadService:
                             spec=spec,
                             files=files,
                         )
-                        if set(stations) & {"tech", "cut"}
+                        if set(stations) & {"tech", "cut", "packing"}
                         else None
                     ),
                 }

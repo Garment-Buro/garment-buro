@@ -1,4 +1,4 @@
-import { requestJson } from './http';
+import { request, requestJson } from './http';
 import type { Command, Employee, Project, Queue } from '@/lib/production/types';
 
 const headers = (token: string): Record<string, string> =>
@@ -68,4 +68,11 @@ export const productionApi = {
             `/production/files/${id}/download${station ? `?station=${station}` : ''}`,
             { headers: headers(token), cache: 'no-store' },
         ),
+    cdekWaybill: async (token: string, id: number) => {
+        const response = await request(
+            `/production/projects/${id}/cdek-waybill?station=packing`,
+            { method: 'POST', headers: headers(token) },
+        );
+        return response.blob();
+    },
 };

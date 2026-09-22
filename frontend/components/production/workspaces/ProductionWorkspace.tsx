@@ -89,7 +89,11 @@ export function ProductionWorkspace() {
         );
     }
     const relevant = (item: QueueItem) => {
-        if (pocket !== 'work') return queueItemMatchesPocket(item, pocket);
+        if (pocket !== 'work')
+            return (
+                queueItemMatchesStation(item, station) &&
+                queueItemMatchesPocket(item, pocket)
+            );
         return queueItemMatchesStation(item, station);
     };
     const items = queue.items
@@ -131,6 +135,11 @@ export function ProductionWorkspace() {
                             ? 'Работа остановлена'
                             : stateLabels[item.display_state || item.state]}
                     </em>
+                    {station === 'dtf' && Boolean(item.dtf_overdue) && (
+                        <em className={styles.overdue}>
+                            Просрочено: {item.dtf_overdue}
+                        </em>
+                    )}
                 </span>
                 <PiCaretDown aria-hidden />
             </button>
@@ -296,13 +305,18 @@ export function ProductionWorkspace() {
                                         role="group"
                                         aria-label="Состояние мешков"
                                     >
-                                        {(
-                                            [
-                                                ['work', 'В работе'],
-                                                ['holds', 'Ждут вложения'],
-                                                ['done', 'Завершённые'],
-                                                ['all', 'Все мешки'],
-                                            ] as [QueuePocket, string][]
+                                        {(station === 'kit'
+                                            ? ([
+                                                  ['purchase', 'Закупка'],
+                                                  ['work', 'В работе'],
+                                                  ['waiting_dtf', 'Ожидание DTF'],
+                                              ] as [QueuePocket, string][])
+                                            : ([
+                                                  ['work', 'В работе'],
+                                                  ['holds', 'Ждут вложения'],
+                                                  ['done', 'Завершённые'],
+                                                  ['all', 'Все мешки'],
+                                              ] as [QueuePocket, string][])
                                         ).map(([key, label]) => (
                                             <button
                                                 key={key}
@@ -313,7 +327,8 @@ export function ProductionWorkspace() {
                                             </button>
                                         ))}
                                     </div>
-                                    {pocket === 'holds' && (
+                                    {(pocket === 'holds' ||
+                                        pocket === 'waiting_dtf') && (
                                         <p className={styles.callout}>
                                             Ожидание DTF — статус мешка, не этап
                                             работы.
@@ -391,9 +406,10 @@ export function ProductionWorkspace() {
                     employee.stations.includes('cut')) && (
                     <PrintSheet
                         project={project}
+                        onlyReadyDtf={station === 'dtf'}
                         unitSheets={
                             project.flow_version === 2
-                                ? station === 'cut'
+                                ? station === 'cut' || station === 'dtf'
                                 : station === 'tech'
                         }
                     />
