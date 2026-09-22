@@ -33,8 +33,8 @@ async def require_demo_project(session, user_id, project_id):
     project_is_demo = bool(flags[0] and flags[1])
     if employee_is_demo and not project_is_demo:
         raise ProductionDenied("Демонстрационный код доступен только для тестовых заказов")
-    if not employee_is_demo and project_is_demo:
-        raise ProductionDenied("Учебные заказы доступны только учебным аккаунтам")
+    # Regular employees may work through explicitly marked training orders.
+    # Demo-only credentials remain isolated from real customer orders above.
 
 
 async def require_demo_resource(session, user_id, params):

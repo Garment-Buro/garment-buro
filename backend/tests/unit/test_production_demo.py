@@ -103,13 +103,13 @@ def test_demo_seed_is_idempotent_private_and_has_each_workstation(tmp_path):
                     ]
                 )
                 await session.flush()
-                assert (await ProductionReadService().queue(session))["items"] == []
-                with pytest.raises(ProductionDenied, match="Учебные заказы"):
-                    await require_demo_resource(
-                        session,
-                        real_employee.id,
-                        {"project_id": rows[0]["project_id"]},
-                    )
+                regular_queue = await ProductionReadService().queue(session)
+                assert len(regular_queue["items"]) == 11
+                await require_demo_resource(
+                    session,
+                    real_employee.id,
+                    {"project_id": rows[0]["project_id"]},
+                )
                 legacy_rows, _ = await CrmReadRepository().list_projects(
                     session, status=None, assigned_to_user_id=None, cursor=None, limit=30
                 )

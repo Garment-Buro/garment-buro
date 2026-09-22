@@ -159,7 +159,9 @@ class ProductionReadService:
         if demo_only:
             query = query.where(Order.is_demo.is_(True), CrmOrderProject.is_demo.is_(True))
         else:
-            query = query.where(Order.is_demo.is_(False), CrmOrderProject.is_demo.is_(False))
+            # Managed employees use the same terminals for real work and training.
+            # Keep mismatched flags out, but do not hide explicitly marked test orders.
+            query = query.where(Order.is_demo == CrmOrderProject.is_demo)
         if cursor:
             query = query.where(CrmOrderProject.id < cursor)
         rows = list(
