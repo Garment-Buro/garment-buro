@@ -256,10 +256,7 @@ export function ProductionWorkspace() {
                         />
                     )}
                     {cycle ? (
-                        <ProductionCycle
-                            station={station}
-                            onOpen={choose}
-                        />
+                        <ProductionCycle station={station} />
                     ) : (
                         <>
                             <div

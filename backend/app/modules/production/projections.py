@@ -32,12 +32,8 @@ def project_unit(data, stations):
     spec = data["specification"]
     roles = set(stations)
     result["source"] = dict(data["source"])
-    if "tech" not in roles and result["source"].get("customization"):
-        result["source"]["customization"] = {
-            key: value
-            for key, value in result["source"]["customization"].items()
-            if key != "comment"
-        }
+    if not roles & {"tech", "cut"}:
+        result["cutting"] = None
     if "tech" not in roles:
         result["sizes"], result["cards"] = [], []
     if spec:

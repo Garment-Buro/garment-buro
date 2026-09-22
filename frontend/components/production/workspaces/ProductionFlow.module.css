@@ -744,18 +744,49 @@
     background: var(--soft);
     color: var(--muted);
 }
-.cycle > p {
+.cycleHeading {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 16px;
     margin-bottom: 16px;
 }
+.cycleHeading h1 {
+    margin-top: 8px;
+}
+.cycleHeading p {
+    margin: 6px 0 0;
+}
 .roleGuide {
-    max-width: 760px;
-    padding: clamp(20px, 4vw, 40px);
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 32px minmax(0, 1fr);
+    align-items: center;
+    gap: 16px;
+    padding: 20px;
     border: 1px solid var(--line);
     border-radius: 22px;
     background: var(--paper);
 }
-.roleGuide h2 {
-    margin-top: 24px;
+.roleGuide > svg {
+    color: var(--purple);
+    font-size: 24px;
+    justify-self: center;
+}
+.roleGuide small,
+.roleGuide strong {
+    display: block;
+}
+.roleGuide small {
+    margin-bottom: 6px;
+    color: var(--purple);
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+.roleGuide strong {
+    font-size: 15px;
+    line-height: 1.55;
 }
 .roleGuideLabel {
     display: inline-flex;
@@ -766,35 +797,94 @@
     font-size: 13px;
     font-weight: 800;
 }
-.cycleStep {
-    background: var(--paper);
+.cycleSectionHeading {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    margin: 28px 0 12px;
+}
+.cycleSectionHeading p {
+    margin: 4px 0 0;
+    font-size: 14px;
+}
+.cycleGrid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.cycleGrid li {
+    position: relative;
+    min-width: 0;
+    padding: 14px;
     border: 1px solid var(--line);
     border-radius: 18px;
-    margin-top: 12px;
-    overflow: hidden;
+    background: var(--paper);
 }
-.cycleStep summary {
+.cycleGrid li[data-current='true'] {
+    border-color: rgba(73, 55, 238, 0.45);
+    background: var(--violet-wash);
+    box-shadow: inset 0 0 0 1px rgba(73, 55, 238, 0.1);
+}
+.cycleCardTop {
     display: flex;
-    gap: 12px;
-    align-items: center;
-    cursor: pointer;
-    padding: 16px;
+    align-items: start;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 12px;
 }
-.cycleStep summary b {
+.cycleCardTop b {
+    color: var(--muted);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+}
+.cycleIllustration {
     display: grid;
     place-items: center;
-    width: 40px;
-    height: 40px;
+    width: 42px;
+    height: 42px;
     background: var(--violet-wash);
     color: var(--purple);
     border-radius: 14px;
 }
-.cycleStep strong,
-.cycleStep small {
+.cycleGrid li[data-current='true'] .cycleIllustration {
+    background: var(--purple);
+    color: white;
+}
+.cycleIllustration svg {
+    width: 24px;
+    height: 24px;
+}
+.cycleGrid strong,
+.cycleGrid small {
     display: block;
 }
-.cycleStep > div {
-    padding: 0 16px 16px;
+.cycleGrid strong {
+    font-size: 15px;
+}
+.cycleGrid small {
+    margin-top: 2px;
+    color: var(--purple);
+    font-size: 12px;
+    font-weight: 700;
+}
+.cycleGrid p {
+    margin: 9px 0 0;
+    font-size: 13px;
+    line-height: 1.42;
+}
+.cycleGrid em {
+    display: inline-flex;
+    margin-top: 10px;
+    padding: 3px 7px;
+    border-radius: 999px;
+    background: var(--purple);
+    color: white;
+    font-size: 11px;
+    font-style: normal;
+    font-weight: 800;
 }
 @media (max-width: 1180px) {
     .layout {
@@ -836,6 +926,9 @@
     .mobileDetailBack {
         display: inline-flex !important;
         margin: 12px 12px 0;
+    }
+    .cycleGrid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }
 @media (max-width: 720px) {
@@ -922,6 +1015,15 @@
     .flow {
         padding-bottom: calc(88px + env(safe-area-inset-bottom));
     }
+    .roleGuide {
+        grid-template-columns: 1fr;
+        gap: 12px;
+        padding: 16px;
+    }
+    .roleGuide > svg {
+        justify-self: start;
+        transform: rotate(90deg);
+    }
 }
 @media (max-width: 480px) {
     .page {
@@ -971,6 +1073,31 @@
         width: 56px;
         height: 56px;
         border-radius: 12px;
+    }
+    .cycleHeading {
+        margin-bottom: 12px;
+    }
+    .cycleSectionHeading {
+        margin-top: 22px;
+    }
+    .cycleGrid {
+        gap: 8px;
+    }
+    .cycleGrid li {
+        padding: 12px;
+        border-radius: 16px;
+    }
+    .cycleIllustration {
+        width: 36px;
+        height: 36px;
+        border-radius: 12px;
+    }
+    .cycleIllustration svg {
+        width: 21px;
+        height: 21px;
+    }
+    .cycleGrid p {
+        font-size: 12px;
     }
 }
 @media (prefers-reduced-motion: reduce) {

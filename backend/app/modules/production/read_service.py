@@ -1,9 +1,16 @@
 from sqlalchemy import or_, select
 
+from app.modules.catalog.models import ProductVariant
+from app.modules.crm.assortment_models import (
+    CrmGarmentFabricRequirement,
+    CrmGarmentPattern,
+)
 from app.modules.crm.file_models import CrmFileAttachment
+from app.modules.crm.material_models import CrmMaterialReservation
 from app.modules.crm.models import CrmOrderProject
+from app.modules.crm.production_models import CrmProductionPlanRevision
 from app.modules.crm.production_repository import CrmProductionRepository
-from app.modules.crm.reference_models import CrmTechCard, CrmTechCardRevision
+from app.modules.crm.reference_models import CrmFabric, CrmTechCard, CrmTechCardRevision
 from app.modules.media.models import MediaObject
 from app.modules.orders.models import Order, OrderItem
 from app.modules.production.evidence import (
@@ -26,6 +33,114 @@ def floor_evidence(item):
     data = order_evidence(item)
     data["customization"] = floor_customization(data["customization"])
     return data
+
+
+def _custom_measurement(source, key):
+    customization = source.customization_snapshot or {}
+    fit = customization.get("fit") or {}
+    garment = customization.get("garment") or {}
+    fallback = "heightCm" if key == "lengthCm" else key
+    value = fit.get(key, garment.get(fallback))
+    try:
+        return float(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+async def cutting_details(session, *, source, spec, files):
+    if spec is None:
+        return None
+    plan = await session.get(CrmProductionPlanRevision, spec.plan_id)
+    if plan is None:
+        return None
+
+    pattern_ids = set(spec.specification["pattern_file_ids"])
+    pattern_media_ids = {
+        attachment.media_object_id for attachment, _ in files if attachment.id in pattern_ids
+    }
+    patterns = list(
+        await session.scalars(
+            select(CrmGarmentPattern)
+            .where(
+                CrmGarmentPattern.garment_model_id == plan.garment_model_id,
+                CrmGarmentPattern.garment_size_id == plan.garment_size_id,
+                CrmGarmentPattern.is_active.is_(True),
+            )
+            .order_by(CrmGarmentPattern.code, CrmGarmentPattern.id)
+        )
+    )
+    pattern = next((row for row in patterns if row.media_object_id in pattern_media_ids), None)
+    if pattern is None and len(patterns) == 1:
+        pattern = patterns[0]
+    if pattern is None:
+        width = _custom_measurement(source, "widthCm")
+        length = _custom_measurement(source, "lengthCm")
+        if width is not None or length is not None:
+            pattern = next(
+                (
+                    row
+                    for row in patterns
+                    if (width is None or float(row.width_cm) == width)
+                    and (length is None or float(row.length_cm) == length)
+                ),
+                None,
+            )
+
+    fabric = await session.scalar(
+        select(CrmFabric)
+        .join(
+            CrmMaterialReservation,
+            CrmMaterialReservation.fabric_id == CrmFabric.id,
+        )
+        .where(CrmMaterialReservation.production_plan_revision_id == plan.id)
+        .order_by(CrmMaterialReservation.id)
+        .limit(1)
+    )
+    if fabric is None and source.variant_id_snapshot is not None:
+        variant = await session.get(ProductVariant, source.variant_id_snapshot)
+        if variant and variant.fabric_id:
+            fabric = await session.get(CrmFabric, variant.fabric_id)
+    if fabric is None:
+        fabric = await session.scalar(
+            select(CrmFabric)
+            .join(
+                CrmGarmentFabricRequirement,
+                CrmGarmentFabricRequirement.fabric_id == CrmFabric.id,
+            )
+            .where(
+                CrmGarmentFabricRequirement.garment_model_id == plan.garment_model_id,
+                CrmFabric.is_active.is_(True),
+            )
+            .order_by(
+                CrmGarmentFabricRequirement.is_primary.desc(),
+                CrmGarmentFabricRequirement.id,
+            )
+            .limit(1)
+        )
+
+    return {
+        "pattern_code": pattern.code if pattern else None,
+        "fabric": (
+            {
+                "code": fabric.code,
+                "name": fabric.name,
+                "color": fabric.color_name,
+            }
+            if fabric
+            else None
+        ),
+        # Storage locations are not modelled yet. Keep this explicit in the API
+        # and UI so the warehouse address cannot be silently forgotten.
+        "fabric_location": "",
+        "back_width_cm": float(pattern.width_cm) if pattern else None,
+        "garment_length_cm": float(pattern.length_cm) if pattern else None,
+        "sleeve_length_cm": (
+            float(pattern.sleeve_length_cm)
+            if pattern and pattern.sleeve_length_cm is not None
+            else None
+        ),
+        "has_dtf": bool(spec.specification["print_file_ids"]),
+    }
 
 
 class ProductionReadService:
@@ -209,8 +324,19 @@ class ProductionReadService:
                         }
                         for a, m in files
                     ],
+                    "cutting": (
+                        await cutting_details(
+                            session,
+                            source=source,
+                            spec=spec,
+                            files=files,
+                        )
+                        if set(stations) & {"tech", "cut"}
+                        else None
+                    ),
                 }
             )
+        history_visible = bool(set(stations) & {"tech", "kit", "packing"})
         events = (
             list(
                 await session.scalars(
@@ -220,7 +346,7 @@ class ProductionReadService:
                     .limit(100)
                 )
             )
-            if bag
+            if bag and history_visible
             else []
         )
         delivery = None
@@ -266,10 +392,10 @@ class ProductionReadService:
                     "unit_id": x.unit_id,
                     "actor_id": x.actor_user_id,
                     "at": x.occurred_at,
-                    "note": x.evidence.get("command", {}).get("note")
-                    if "tech" in stations or x.action == "ticket_routed"
-                    else None,
+                    "note": x.evidence.get("command", {}).get("note"),
                 }
                 for x in events
-            ],
+            ]
+            if history_visible
+            else [],
         }

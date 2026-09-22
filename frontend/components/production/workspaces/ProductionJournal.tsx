@@ -3,7 +3,7 @@ import styles from './ProductionFlow.module.css';
 export function ProductionJournal({ project }: { project: Project }) {
     return (
         <details className={styles.journal}>
-            <summary>Журнал мешка · {project.events.length}</summary>
+            <summary>История мешка · {project.events.length}</summary>
             {!project.events.length && <p>Действий пока нет.</p>}
             <ol>
                 {project.events.map((event) => (

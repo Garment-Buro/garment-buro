@@ -127,6 +127,19 @@ export interface Unit {
     sizes: { id: number; code: string }[];
     cards: { id: number; name: string; revision: number }[];
     files: ProductionFile[];
+    cutting: {
+        pattern_code: string | null;
+        fabric: {
+            code: string;
+            name: string;
+            color: string;
+        } | null;
+        fabric_location: string;
+        back_width_cm: number | null;
+        garment_length_cm: number | null;
+        sleeve_length_cm: number | null;
+        has_dtf: boolean;
+    } | null;
 }
 export interface QueueItem {
     display_state?: string;

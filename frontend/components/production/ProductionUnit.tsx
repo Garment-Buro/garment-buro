@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { PiChatCircleDots } from 'react-icons/pi';
 import {
     labels,
     type Project,
@@ -13,6 +14,7 @@ import { useProductionAuthStore } from '@/store/productionAuthStore';
 import { SpecificationForm } from './SpecificationForm';
 import { OrderEvidence } from './OrderEvidence';
 import { UnitHandoff } from './UnitHandoff';
+import { ProductionCuttingBrief } from './ProductionCuttingBrief';
 import styles from './ProductionTerminal.module.css';
 
 export function ProductionUnit({
@@ -41,7 +43,10 @@ export function ProductionUnit({
                 ? 'cut'
                 : currentStage(unit),
         spec = unit.specification,
-        tech = stations.includes('tech');
+        tech = stations.includes('tech'),
+        rawComment = unit.source.customization?.comment,
+        orderComment =
+            typeof rawComment === 'string' ? rawComment.trim() : '';
     const download = async (id: number) => {
         setDownloading(true);
         setError('');
@@ -81,7 +86,15 @@ export function ProductionUnit({
                     {stage ? labels[stage] : spec ? 'Готово' : 'Нет задания'}
                 </span>
             </div>
+            <div className={styles.orderComment} data-empty={!orderComment}>
+                <PiChatCircleDots aria-hidden />
+                <div>
+                    <strong>Комментарий к заказу</strong>
+                    <p>{orderComment || 'Комментарий не оставлен'}</p>
+                </div>
+            </div>
             <OrderEvidence unit={unit} />
+            {station === 'cut' && <ProductionCuttingBrief unit={unit} />}
             {project.flow_version === 2 && (
                 <UnitHandoff
                     unit={unit}

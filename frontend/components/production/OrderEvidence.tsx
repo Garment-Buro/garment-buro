@@ -92,6 +92,13 @@ function Value({
 }
 export function OrderEvidence({ unit }: { unit: Unit }) {
     const image = safeImage(unit.source.image);
+    const customization = unit.source.customization
+        ? Object.fromEntries(
+              Object.entries(unit.source.customization).filter(
+                  ([key]) => key !== 'comment',
+              ),
+          )
+        : null;
     return (
         <details className={styles.section}>
             <summary>
@@ -110,10 +117,10 @@ export function OrderEvidence({ unit }: { unit: Unit }) {
                 </p>
             )}
             {unit.source.sku && <p>Артикул: {unit.source.sku}</p>}
-            {unit.source.customization ? (
-                <Value value={unit.source.customization} />
+            {customization && Object.keys(customization).length ? (
+                <Value value={customization} />
             ) : (
-                <p>Заказ без сохранённой кастомизации.</p>
+                <p>Других параметров конструктора нет.</p>
             )}
         </details>
     );
