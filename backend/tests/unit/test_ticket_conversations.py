@@ -225,7 +225,11 @@ def test_production_ticket_before_planning_and_atomic_routing(tmp_path):
                     session, project_id=1, stations=["cut"]
                 )
                 assert "ticket_id" not in detail["units"][0]
-                assert detail["events"][0]["note"] == "Перекроить деталь спинки"
+                assert detail["events"] == []
+                history = await ProductionReadService().detail(
+                    session, project_id=1, stations=["tech"]
+                )
+                assert history["events"][0]["note"] == "Перекроить деталь спинки"
                 with pytest.raises(AdminInboxConflictError):
                     await route_ticket(
                         session,

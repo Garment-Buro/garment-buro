@@ -12,9 +12,15 @@ from sqlalchemy.schema import CreateSchema, DropSchema
 
 from app.db.base import Base
 from app.db.session import DatabaseManager
+from app.modules.catalog.models import Product
+from app.modules.crm.assortment_models import (
+    CrmGarmentFabricRequirement,
+    CrmGarmentPattern,
+)
 from app.modules.crm.file_models import CrmFileAttachment
 from app.modules.crm.models import CrmProductionUnit, CrmProductionUnitStatus
 from app.modules.crm.production_service import CrmProductionConflictError, CrmProductionService
+from app.modules.crm.reference_models import CrmFabric
 from app.modules.identity.models import PermissionCode, RoleName, User, UserRole
 from app.modules.identity.repository import IdentityRepository
 from app.modules.media.models import MediaObject
@@ -74,6 +80,12 @@ async def setup(tmp_path, postgres_url=None, quantity=1):
             order.phone = "+79990000000"
             order.delivery_city = "Test city"
             order.delivery_address = "Test address"
+            source = await session.scalar(select(OrderItem).where(OrderItem.order_id == order.id))
+            source.customization_snapshot = {
+                "comment": "Не перепутать детали спинки",
+                "fit": {"widthCm": 58, "lengthCm": 72},
+            }
+            pattern_media_id = None
             for number in [1, 2]:
                 media = MediaObject(
                     bucket_name=settings.minio_crm_bucket,
@@ -87,6 +99,8 @@ async def setup(tmp_path, postgres_url=None, quantity=1):
                 )
                 session.add(media)
                 await session.flush()
+                if number == 1:
+                    pattern_media_id = media.id
                 session.add(
                     CrmFileAttachment(
                         media_object_id=media.id,
@@ -96,6 +110,39 @@ async def setup(tmp_path, postgres_url=None, quantity=1):
                         created_at=NOW,
                     )
                 )
+            product = await session.get(Product, 101)
+            fabric = CrmFabric(
+                code="FAB-BLACK-01",
+                name="Футер трёхнитка",
+                color_name="Чёрный",
+                width_cm=180,
+                minimum_stock_meters=0,
+                currency="RUB",
+            )
+            session.add(fabric)
+            await session.flush()
+            session.add_all(
+                [
+                    CrmGarmentPattern(
+                        garment_model_id=product.garment_model_id,
+                        garment_size_id=size,
+                        media_object_id=pattern_media_id,
+                        grid_key="M-58-72",
+                        code="PAT-DRESS-M-001",
+                        name="PAT-DRESS-M-001",
+                        width_cm=58,
+                        length_cm=72,
+                        sleeve_length_cm=61,
+                    ),
+                    CrmGarmentFabricRequirement(
+                        garment_model_id=product.garment_model_id,
+                        fabric_id=fabric.id,
+                        meters_per_unit=2,
+                        waste_percent=5,
+                        is_primary=True,
+                    ),
+                ]
+            )
             await session.commit()
         spec = dict(
             tech_card_revision_id=card,
@@ -190,6 +237,23 @@ def test_full_flow_persists_dtf_pocket_quality_and_order_shipment(tmp_path):
                 assert detail["state"] == "waiting_dtf"
                 assert detail["units"][0]["dtf_ready"] and not detail["units"][0]["dtf_inserted"]
                 assert detail["delivery"] is None
+                assert detail["events"] == []
+                assert detail["units"][0]["source"]["customization"]["comment"] == (
+                    "Не перепутать детали спинки"
+                )
+                assert detail["units"][0]["cutting"] == {
+                    "pattern_code": "PAT-DRESS-M-001",
+                    "fabric": {
+                        "code": "FAB-BLACK-01",
+                        "name": "Футер трёхнитка",
+                        "color": "Чёрный",
+                    },
+                    "fabric_location": "",
+                    "back_width_cm": 58.0,
+                    "garment_length_cm": 72.0,
+                    "sleeve_length_cm": 61.0,
+                    "has_dtf": True,
+                }
             await execute(db, service, "insert_dtf", unit_id=1)
             await execute(db, service, "send_bag")
             for stage in ["application", "sewing", "press"]:
@@ -230,8 +294,22 @@ def test_full_flow_persists_dtf_pocket_quality_and_order_shipment(tmp_path):
                     session, project_id=1, stations=["shipping"]
                 )
                 assert detail["state"] == "dispatched" and detail["tracking_number"] == "TEST-001"
-                assert len(detail["events"]) == receipt.version
+                assert detail["events"] == []
                 assert detail["units"][0]["stage_index"] == 6
+                for station in ["tech", "kit", "packing"]:
+                    visible = await ProductionReadService().detail(
+                        session, project_id=1, stations=[station]
+                    )
+                    assert len(visible["events"]) == receipt.version
+                    assert visible["events"][0]["note"] == "Carrier received"
+                for station in ["dtf", "workshop"]:
+                    visible = await ProductionReadService().detail(
+                        session, project_id=1, stations=[station]
+                    )
+                    assert visible["events"] == []
+                    assert visible["units"][0]["source"]["customization"]["comment"] == (
+                        "Не перепутать детали спинки"
+                    )
 
     asyncio.run(scenario())
 

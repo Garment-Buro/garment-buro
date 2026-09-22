@@ -244,7 +244,9 @@ export function ProductionBag({
                     busy={busy || blocked}
                 />
             )}
-            <ProductionJournal project={project} />
+            {['tech', 'kit', 'packing'].includes(station) && (
+                <ProductionJournal project={project} />
+            )}
         </div>
     );
 }
