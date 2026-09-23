@@ -131,6 +131,20 @@ test('model editor explains the flow and keeps one compact size editor open', ()
     assert.match(models, /className=\{styles\.sizeChartPreview\}/);
     assert.doesNotMatch(models, /Базовый рост, см/);
     assert.doesNotMatch(models, /Сначала задайте общие параметры/);
+    assert.match(models, /model-categories/);
+    assert.match(models, /Категории моделей/);
+    for (const category of ['Майка', 'Худи', 'Штаны']) {
+        assert.match(
+            readFileSync(
+                new URL(
+                    '../../../../backend/migrations/versions/20260923_0050_garment_model_categories.py',
+                    import.meta.url,
+                ),
+                'utf8',
+            ),
+            new RegExp(category),
+        );
+    }
 });
 
 test('product variants use compact multi-select matrices', () => {
@@ -178,6 +192,17 @@ test('packaging rule explains capacity and selection order', () => {
     assert.match(boxes, /Максимум изделий этой модели/);
     assert.match(boxes, /0 — основная коробка, 1 и далее — запасные/);
     assert.match(boxes, /меньшее число означает более высокий приоритет/);
+    assert.doesNotMatch(boxes, /Фото коробки/);
+    assert.doesNotMatch(boxes, /type="file"/);
+});
+
+test('products open as blanks and community landing card workspaces', () => {
+    assert.match(products, /Garment-Buro бланки/);
+    assert.match(products, />Сообщества</);
+    assert.match(products, /product-communities/);
+    assert.match(products, /className=\{styles\.catalogHubCard\}/);
+    assert.match(products, /className=\{styles\.communityCard\}/);
+    assert.match(products, /categorySlug/);
 });
 
 test('decimal inputs do not require thousandths and stored values are compacted', () => {
@@ -198,7 +223,7 @@ test('decimal inputs do not require thousandths and stored values are compacted'
 });
 
 test('every assortment file input exposes upload progress and outcome', () => {
-    for (const source of [models, patterns, products, boxes, accessories]) {
+    for (const source of [models, patterns, products, accessories]) {
         assert.match(source, /state: 'uploading'/);
         assert.match(source, /state: 'success'/);
         assert.match(source, /state: 'error'/);

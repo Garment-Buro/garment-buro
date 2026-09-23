@@ -9,6 +9,7 @@ import {
     PiPencilSimple,
     PiPlus,
     PiRuler,
+    PiTShirt,
     PiTrash,
     PiUploadSimple,
 } from 'react-icons/pi';
@@ -20,6 +21,7 @@ import {
 import { compactDecimal } from '@/lib/production/numbers';
 import type {
     GarmentModel,
+    GarmentModelCategory,
     GarmentSize,
     ReferencePage,
 } from '@/lib/production/assortmentTypes';
@@ -56,7 +58,8 @@ type ModelForm = Omit<
 
 type ModelEditor = ModelForm & { size_chart_url?: string | null };
 
-const emptyModel = (): ModelForm => ({
+const emptyModel = (categoryId: number | null): ModelForm => ({
+    category_id: categoryId,
     code: '',
     name: '',
     description: null,
@@ -167,7 +170,10 @@ const sizeSummary = (size: GarmentSize) => {
 export function AdminModels() {
     const { data, loading, error, reload } =
         useAssortmentResource<ReferencePage<GarmentModel>>('models');
+    const categories =
+        useAssortmentResource<GarmentModelCategory[]>('model-categories');
     const [search, setSearch] = useState('');
+    const [categoryFilter, setCategoryFilter] = useState<number | null>(null);
     const [editor, setEditor] = useState<ModelEditor | null>(null);
     const [activeSizeIndex, setActiveSizeIndex] = useState(0);
     const [saving, setSaving] = useState(false);
@@ -177,12 +183,20 @@ export function AdminModels() {
         useState<FileUploadStatusValue>(idleFileUploadStatus);
     const models = useMemo(() => {
         const query = search.trim().toLocaleLowerCase('ru');
-        if (!query) return data?.items ?? [];
-        return (data?.items ?? []).filter((model) =>
-            `${model.name} ${model.code}`.toLocaleLowerCase('ru').includes(query),
+        return (data?.items ?? []).filter(
+            (model) =>
+                (categoryFilter == null ||
+                    model.category_id === categoryFilter) &&
+                (!query ||
+                    `${model.name} ${model.code}`
+                        .toLocaleLowerCase('ru')
+                        .includes(query)),
         );
-    }, [data, search]);
+    }, [categoryFilter, data, search]);
     const activeSize = editor?.sizes[activeSizeIndex] ?? null;
+    const categoryName = (categoryId: number | null) =>
+        categories.data?.find((category) => category.id === categoryId)?.name ??
+        'Без категории';
 
     const openEditor = (model?: GarmentModel) => {
         setActiveSizeIndex(0);
@@ -211,7 +225,7 @@ export function AdminModels() {
                       base_weight_g: compactNullableDecimal(model.base_weight_g),
                       sizes: model.sizes.map(compactSize),
                   }
-                : emptyModel(),
+                : emptyModel(categories.data?.find((item) => item.is_active)?.id ?? null),
         );
     };
 
@@ -237,6 +251,7 @@ export function AdminModels() {
         setSaving(true);
         setFormError('');
         const payload = {
+            category_id: editor.category_id,
             code: editor.code,
             name: editor.name,
             description: editor.description,
@@ -293,7 +308,7 @@ export function AdminModels() {
     };
 
     return (
-        <section aria-busy={loading}>
+        <section aria-busy={loading || categories.loading}>
             <div className={styles.assortmentHeading}>
                 <div>
                     <h3>Модели изделий</h3>
@@ -305,6 +320,37 @@ export function AdminModels() {
                     <PiPlus aria-hidden /> Добавить модель
                 </button>
             </div>
+            <div
+                className={styles.assortmentCategoryGrid}
+                aria-label="Категории моделей"
+            >
+                {(categories.data ?? [])
+                    .filter((category) => category.is_active)
+                    .map((category) => {
+                        const count = (data?.items ?? []).filter(
+                            (model) => model.category_id === category.id,
+                        ).length;
+                        return (
+                            <button
+                                type="button"
+                                key={category.id}
+                                data-selected={categoryFilter === category.id}
+                                aria-pressed={categoryFilter === category.id}
+                                onClick={() =>
+                                    setCategoryFilter((current) =>
+                                        current === category.id ? null : category.id,
+                                    )
+                                }
+                            >
+                                <PiTShirt aria-hidden />
+                                <span>
+                                    <strong>{category.name}</strong>
+                                    <small>{count} моделей</small>
+                                </span>
+                            </button>
+                        );
+                    })}
+            </div>
             <label className={styles.assortmentSearch}>
                 Поиск модели
                 <input
@@ -314,8 +360,8 @@ export function AdminModels() {
                 />
             </label>
             <AssortmentFeedback
-                loading={loading}
-                error={error}
+                loading={loading || categories.loading}
+                error={error || categories.error}
                 empty={!loading && models.length === 0}
             />
             {models.length > 0 && (
@@ -324,8 +370,11 @@ export function AdminModels() {
                         <article className={styles.assortmentCard} key={model.id}>
                             <div className={styles.assortmentCardTop}>
                                 <div>
-                                    <span className={styles.badge}>{model.code}</span>
+                                    <span className={styles.badge}>
+                                        {categoryName(model.category_id)}
+                                    </span>
                                     <h4>{model.name}</h4>
+                                    <small>{model.code}</small>
                                 </div>
                                 <button
                                     className={styles.iconButton}
@@ -417,6 +466,32 @@ export function AdminModels() {
                         <fieldset className={styles.formSection}>
                             <legend>Основная информация</legend>
                             <div className={styles.formGrid}>
+                                <label>
+                                    Категория
+                                    <select
+                                        required
+                                        value={editor.category_id ?? ''}
+                                        onChange={(event) =>
+                                            setEditor({
+                                                ...editor,
+                                                category_id:
+                                                    Number(event.target.value) || null,
+                                            })
+                                        }
+                                    >
+                                        <option value="">Выберите категорию</option>
+                                        {(categories.data ?? [])
+                                            .filter((category) => category.is_active)
+                                            .map((category) => (
+                                                <option
+                                                    key={category.id}
+                                                    value={category.id}
+                                                >
+                                                    {category.name}
+                                                </option>
+                                            ))}
+                                    </select>
+                                </label>
                                 <label>
                                     Название
                                     <input

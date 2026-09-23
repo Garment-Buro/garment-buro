@@ -131,6 +131,7 @@ class CrmPublishedTechCardRead(BaseModel):
 
 class CrmGarmentModelRead(BaseModel):
     id: int
+    category_id: int | None
     code: str
     name: str
     description: str | None

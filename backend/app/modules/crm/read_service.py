@@ -273,6 +273,7 @@ class CrmReadService:
             )
         return CrmGarmentModelRead(
             id=model.id,
+            category_id=model.category_id,
             code=model.code,
             name=model.name,
             description=model.description,

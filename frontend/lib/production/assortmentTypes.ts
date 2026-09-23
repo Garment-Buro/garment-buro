@@ -30,6 +30,7 @@ export interface GarmentSize {
 
 export interface GarmentModel {
     id: number;
+    category_id: number | null;
     code: string;
     name: string;
     description: string | null;
@@ -49,6 +50,14 @@ export interface GarmentModel {
         revision_number: number;
         name: string;
     } | null;
+}
+
+export interface GarmentModelCategory {
+    id: number;
+    code: string;
+    name: string;
+    is_active: boolean;
+    version: number;
 }
 
 export interface ReferencePage<T> {
@@ -222,6 +231,16 @@ export interface ProductCategory {
     description: string | null;
     is_active: boolean;
     version: number;
+}
+
+export interface ProductCommunity {
+    id: number;
+    title: string;
+    slug: string;
+    image_url: string | null;
+    status: string;
+    partner_name: string;
+    product_ids: number[];
 }
 
 export interface ProductDetail {

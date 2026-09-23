@@ -108,6 +108,7 @@ class CrmReferenceService:
         actor_user_id: int | None,
         now: datetime | None = None,
     ) -> CrmGarmentModel:
+        await self._validate_garment_model_category(session, payload.category_id)
         await self._validate_size_chart_media(session, payload.size_chart_media_object_id)
         garment_model = CrmGarmentModel(version=1)
         self._apply_garment_model(garment_model, payload)
@@ -143,6 +144,7 @@ class CrmReferenceService:
         if garment_model is None:
             raise CrmReferenceNotFoundError("CRM garment model was not found")
         self._require_version(garment_model.version, expected_version)
+        await self._validate_garment_model_category(session, payload.category_id)
         await self._validate_size_chart_media(session, payload.size_chart_media_object_id)
         self._apply_garment_model(garment_model, payload)
 
@@ -459,6 +461,7 @@ class CrmReferenceService:
         garment_model: CrmGarmentModel,
         payload: CrmGarmentModelWrite,
     ) -> None:
+        garment_model.category_id = payload.category_id
         garment_model.code = payload.code
         garment_model.name = payload.name
         garment_model.description = payload.description
@@ -471,6 +474,19 @@ class CrmReferenceService:
         garment_model.base_weight_g = payload.base_weight_g
         garment_model.size_chart_media_object_id = payload.size_chart_media_object_id
         garment_model.is_active = payload.is_active
+
+    async def _validate_garment_model_category(
+        self,
+        session: AsyncSession,
+        category_id: int | None,
+    ) -> None:
+        if category_id is None:
+            return
+        if not await self.repository.active_garment_model_category_exists(
+            session,
+            category_id=category_id,
+        ):
+            raise CrmReferenceConflictError("Active garment model category was not found")
 
     @classmethod
     def _new_size(cls, payload: CrmGarmentSizeWrite) -> CrmGarmentSize:

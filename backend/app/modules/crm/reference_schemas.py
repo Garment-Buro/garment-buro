@@ -122,6 +122,7 @@ class CrmGarmentSizeWrite(BaseModel):
 
 
 class CrmGarmentModelWrite(BaseModel):
+    category_id: int | None = Field(default=None, gt=0)
     code: str = Field(min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=255)
     description: str | None = None
@@ -275,10 +276,21 @@ class CrmGarmentSizeReferenceRead(CrmGarmentSizeWrite):
     version: int
 
 
+class CrmGarmentModelCategoryRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    code: str
+    name: str
+    is_active: bool
+    version: int
+
+
 class CrmGarmentModelReferenceRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    category_id: int | None
     code: str
     name: str
     description: str | None

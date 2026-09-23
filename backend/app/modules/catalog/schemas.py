@@ -13,7 +13,7 @@ class ProductCategoryWrite(BaseModel):
     description: str | None = None
     is_active: bool = True
 
-    @field_validator("slug")
+    @field_validator("slug", mode="before")
     @classmethod
     def normalize_slug(cls, value: str) -> str:
         return value.strip().casefold()

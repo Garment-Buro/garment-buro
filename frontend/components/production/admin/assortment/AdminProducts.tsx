@@ -2,11 +2,15 @@
 
 import { useMemo, useState, type FormEvent } from 'react';
 import {
+    PiArrowLeft,
+    PiArrowRight,
     PiCheck,
     PiImage,
     PiPackage,
     PiPencilSimple,
     PiPlus,
+    PiTShirt,
+    PiUsersThree,
 } from 'react-icons/pi';
 import { useAssortmentResource } from '@/hooks/production/useAssortmentResource';
 import {
@@ -18,6 +22,7 @@ import type {
     Fabric,
     GarmentModel,
     ProductCategory,
+    ProductCommunity,
     ProductDetail,
     ProductReference,
     ProductVariantReference,
@@ -92,13 +97,38 @@ const productPrice = (value: string | number) =>
         maximumFractionDigits: 2,
     }).format(Number(value));
 
+const categorySlug = (value: string) => {
+    const transliteration: Record<string, string> = {
+        а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'e', ж: 'zh',
+        з: 'z', и: 'i', й: 'i', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o',
+        п: 'p', р: 'r', с: 's', т: 't', у: 'u', ф: 'f', х: 'h', ц: 'c',
+        ч: 'ch', ш: 'sh', щ: 'sch', ъ: '', ы: 'y', ь: '', э: 'e', ю: 'yu',
+        я: 'ya',
+    };
+    return value
+        .trim()
+        .toLocaleLowerCase('ru')
+        .split('')
+        .map((character) => transliteration[character] ?? character)
+        .join('')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 96);
+};
+
 export function AdminProducts() {
     const products = useAssortmentResource<ProductReference[]>('products');
     const categories =
         useAssortmentResource<ProductCategory[]>('product-categories');
+    const communities =
+        useAssortmentResource<ProductCommunity[]>('product-communities');
     const models = useAssortmentResource<ReferencePage<GarmentModel>>('models');
     const fabrics = useAssortmentResource<ReferencePage<Fabric>>('fabrics');
     const [search, setSearch] = useState('');
+    const [workspace, setWorkspace] = useState<
+        'overview' | 'blanks' | 'communities'
+    >('overview');
+    const [communityId, setCommunityId] = useState<number | null>(null);
     const [editor, setEditor] = useState<ProductEditor | null>(null);
     const [categoryEditor, setCategoryEditor] = useState<CategoryEditor | null>(null);
     const [loadingEditor, setLoadingEditor] = useState(false);
@@ -107,9 +137,17 @@ export function AdminProducts() {
     const [uploadStatus, setUploadStatus] =
         useState<FileUploadStatusValue>(idleFileUploadStatus);
     const [formError, setFormError] = useState('');
+    const selectedCommunity = communities.data?.find(
+        (community) => community.id === communityId,
+    );
     const visibleProducts = useMemo(() => {
         const query = search.trim().toLocaleLowerCase('ru');
-        const rows = products.data ?? [];
+        const allowedIds = selectedCommunity
+            ? new Set(selectedCommunity.product_ids)
+            : null;
+        const rows = (products.data ?? []).filter(
+            (product) => !allowedIds || allowedIds.has(product.id),
+        );
         return query
             ? rows.filter((product) =>
                   `${product.title} ${product.slug ?? ''}`
@@ -117,7 +155,7 @@ export function AdminProducts() {
                       .includes(query),
               )
             : rows;
-    }, [products.data, search]);
+    }, [products.data, search, selectedCommunity]);
     const categoryName = (id: number | null) =>
         categories.data?.find((category) => category.id === id)?.name ??
         'Без категории';
@@ -177,6 +215,11 @@ export function AdminProducts() {
     const submitCategory = async (event: FormEvent) => {
         event.preventDefault();
         if (!categoryEditor) return;
+        const slug = categorySlug(categoryEditor.slug || categoryEditor.name);
+        if (!slug) {
+            setFormError('Укажите название категории.');
+            return;
+        }
         setSaving(true);
         setFormError('');
         try {
@@ -186,7 +229,7 @@ export function AdminProducts() {
                     : 'product-categories',
                 categoryEditor.id ? 'PUT' : 'POST',
                 {
-                    slug: categoryEditor.slug,
+                    slug,
                     name: categoryEditor.name,
                     description: categoryEditor.description,
                     is_active: categoryEditor.is_active,
@@ -378,67 +421,216 @@ export function AdminProducts() {
     };
 
     return (
-        <section aria-busy={products.loading || loadingEditor}>
-            <div className={styles.assortmentHeading}>
-                <div>
-                    <h3>Товары</h3>
-                    <p className={styles.muted}>
-                        Каталог, цены, остатки, варианты и связь с производственной моделью.
-                    </p>
-                </div>
-                <div className={styles.headingActions}>
-                    <button
-                        onClick={() =>
-                            setCategoryEditor({
-                                slug: '',
-                                name: '',
-                                description: null,
-                                is_active: true,
-                            })
+        <section
+            aria-busy={products.loading || communities.loading || loadingEditor}
+        >
+            {workspace === 'overview' && (
+                <>
+                    <div className={styles.assortmentHeading}>
+                        <div>
+                            <h3>Товары</h3>
+                            <p className={styles.muted}>
+                                Выберите основной каталог или товары конкретного
+                                сообщества.
+                            </p>
+                        </div>
+                    </div>
+                    <div className={styles.catalogHub}>
+                        <button
+                            type="button"
+                            className={styles.catalogHubCard}
+                            onClick={() => setWorkspace('blanks')}
+                        >
+                            <span className={styles.catalogHubIcon}>
+                                <PiTShirt aria-hidden />
+                            </span>
+                            <span>
+                                <strong>Garment-Buro бланки</strong>
+                                <small>{products.data?.length ?? 0} товаров</small>
+                            </span>
+                            <PiArrowRight aria-hidden />
+                        </button>
+                        <button
+                            type="button"
+                            className={styles.catalogHubCard}
+                            onClick={() => setWorkspace('communities')}
+                        >
+                            <span className={styles.catalogHubIcon}>
+                                <PiUsersThree aria-hidden />
+                            </span>
+                            <span>
+                                <strong>Сообщества</strong>
+                                <small>
+                                    {communities.data?.length ?? 0} лендингов
+                                </small>
+                            </span>
+                            <PiArrowRight aria-hidden />
+                        </button>
+                    </div>
+                </>
+            )}
+            {workspace === 'communities' && !selectedCommunity && (
+                <>
+                    <div className={styles.assortmentHeading}>
+                        <div>
+                            <button
+                                type="button"
+                                className={styles.workspaceBack}
+                                onClick={() => setWorkspace('overview')}
+                            >
+                                <PiArrowLeft aria-hidden /> Все товары
+                            </button>
+                            <h3>Сообщества</h3>
+                            <p className={styles.muted}>
+                                Лендинги и товары, которые показываются в каждом из
+                                них.
+                            </p>
+                        </div>
+                    </div>
+                    <AssortmentFeedback
+                        loading={communities.loading}
+                        error={communities.error}
+                        empty={
+                            !communities.loading &&
+                            (communities.data ?? []).length === 0
                         }
-                    >
-                        <PiPlus aria-hidden /> Категория
-                    </button>
-                    <button
-                        onClick={() => {
-                            setUploadStatus(idleFileUploadStatus);
-                            setEditor(emptyProduct());
-                        }}
-                    >
-                        <PiPlus aria-hidden /> Добавить товар
-                    </button>
-                </div>
-            </div>
-            <div className={styles.chipList} aria-label="Категории товаров">
-                {(categories.data ?? []).map((category) => (
-                    <button
-                        key={category.id}
-                        onClick={() => setCategoryEditor({ ...category })}
-                    >
-                        {category.name}
-                    </button>
-                ))}
-            </div>
-            <label className={styles.assortmentSearch}>
-                Поиск товара
-                <input
-                    value={search}
-                    placeholder="Название или slug"
-                    onChange={(event) => setSearch(event.target.value)}
-                />
-            </label>
+                    />
+                    <div className={styles.communityGrid}>
+                        {(communities.data ?? []).map((community) => {
+                            const image = safeImage(community.image_url);
+                            return (
+                                <button
+                                    type="button"
+                                    className={styles.communityCard}
+                                    key={community.id}
+                                    onClick={() => setCommunityId(community.id)}
+                                >
+                                    <span className={styles.communityMedia}>
+                                        {image ? (
+                                            // eslint-disable-next-line @next/next/no-img-element
+                                            <img src={image} alt="" loading="lazy" />
+                                        ) : (
+                                            <PiUsersThree aria-hidden />
+                                        )}
+                                    </span>
+                                    <span className={styles.communityBody}>
+                                        <span>
+                                            <small>{community.partner_name}</small>
+                                            <strong>{community.title}</strong>
+                                            <small>/{community.slug}</small>
+                                        </span>
+                                        <span>
+                                            {community.product_ids.length} товаров
+                                            <PiArrowRight aria-hidden />
+                                        </span>
+                                    </span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </>
+            )}
+            {(workspace === 'blanks' || selectedCommunity) && (
+                <>
+                    <div className={styles.assortmentHeading}>
+                        <div>
+                            <button
+                                type="button"
+                                className={styles.workspaceBack}
+                                onClick={() => {
+                                    setSearch('');
+                                    if (selectedCommunity) {
+                                        setCommunityId(null);
+                                    } else {
+                                        setWorkspace('overview');
+                                    }
+                                }}
+                            >
+                                <PiArrowLeft aria-hidden />
+                                {selectedCommunity ? 'Сообщества' : 'Все товары'}
+                            </button>
+                            <h3>
+                                {selectedCommunity?.title ??
+                                    'Garment-Buro бланки'}
+                            </h3>
+                            <p className={styles.muted}>
+                                {selectedCommunity
+                                    ? `${selectedCommunity.partner_name} · /${selectedCommunity.slug}`
+                                    : 'Основной каталог, цены, остатки и варианты товаров.'}
+                            </p>
+                        </div>
+                        {workspace === 'blanks' && (
+                            <div className={styles.headingActions}>
+                                <button
+                                    onClick={() =>
+                                        setCategoryEditor({
+                                            slug: '',
+                                            name: '',
+                                            description: null,
+                                            is_active: true,
+                                        })
+                                    }
+                                >
+                                    <PiPlus aria-hidden /> Категория каталога
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        setUploadStatus(idleFileUploadStatus);
+                                        setEditor(emptyProduct());
+                                    }}
+                                >
+                                    <PiPlus aria-hidden /> Добавить товар
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                    {workspace === 'blanks' && (
+                        <div
+                            className={styles.chipList}
+                            aria-label="Категории товаров"
+                        >
+                            {(categories.data ?? []).map((category) => (
+                                <button
+                                    key={category.id}
+                                    onClick={() =>
+                                        setCategoryEditor({ ...category })
+                                    }
+                                >
+                                    {category.name}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                    <label className={styles.assortmentSearch}>
+                        Поиск товара
+                        <input
+                            value={search}
+                            placeholder="Название или адрес"
+                            onChange={(event) => setSearch(event.target.value)}
+                        />
+                    </label>
+                </>
+            )}
             {formError && !editor && !categoryEditor && (
                 <p className={styles.error}>{formError}</p>
             )}
-            <AssortmentFeedback
-                loading={products.loading}
-                error={products.error}
-                empty={!products.loading && visibleProducts.length === 0}
-            />
-            <div className={styles.productGrid}>
+            {(workspace === 'blanks' || selectedCommunity) && (
+                <AssortmentFeedback
+                    loading={products.loading}
+                    error={products.error}
+                    empty={!products.loading && visibleProducts.length === 0}
+                />
+            )}
+            {(workspace === 'blanks' || selectedCommunity) && (
+                <div className={styles.productGrid}>
                 {visibleProducts.map((product) => {
                     const image = safeImage(product.image_url);
                     const sku = product.variants.find((variant) => variant.sku)?.sku;
+                    const productCommunities = (communities.data ?? [])
+                        .filter((community) =>
+                            community.product_ids.includes(product.id),
+                        )
+                        .map((community) => community.title);
                     return (
                         <article className={styles.productCard} key={product.id}>
                             <div className={styles.productMedia}>
@@ -489,6 +681,14 @@ export function AdminProducts() {
                                     <PiPackage aria-hidden />
                                     <span>{modelName(product.garment_model_id)}</span>
                                 </p>
+                                <p className={styles.productCommunity}>
+                                    <PiUsersThree aria-hidden />
+                                    <span>
+                                        {productCommunities.length
+                                            ? productCommunities.join(', ')
+                                            : 'Без сообщества'}
+                                    </span>
+                                </p>
                                 <dl className={styles.productFacts}>
                                     <div>
                                         <dt>Цена</dt>
@@ -507,7 +707,8 @@ export function AdminProducts() {
                         </article>
                     );
                 })}
-            </div>
+                </div>
+            )}
             {categoryEditor && (
                 <AssortmentDialog
                     title={categoryEditor.id ? 'Изменить категорию' : 'Новая категория'}
@@ -524,20 +725,27 @@ export function AdminProducts() {
                                         setCategoryEditor({
                                             ...categoryEditor,
                                             name: event.target.value,
+                                            ...(!categoryEditor.id
+                                                ? {
+                                                      slug: categorySlug(
+                                                          event.target.value,
+                                                      ),
+                                                  }
+                                                : {}),
                                         })
                                     }
                                 />
                             </label>
                             <label>
-                                Slug
+                                Адрес категории
                                 <input
-                                    required
                                     pattern="[a-z0-9][a-z0-9-]*"
                                     value={categoryEditor.slug}
+                                    placeholder="Заполнится по названию"
                                     onChange={(event) =>
                                         setCategoryEditor({
                                             ...categoryEditor,
-                                            slug: event.target.value.toLowerCase(),
+                                            slug: categorySlug(event.target.value),
                                         })
                                     }
                                 />

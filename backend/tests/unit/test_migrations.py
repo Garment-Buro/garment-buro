@@ -14,7 +14,7 @@ def test_alembic_has_one_linear_partner_cabinet_head() -> None:
     config = Config(str(backend_dir / "alembic.ini"))
     scripts = ScriptDirectory.from_config(config)
 
-    assert scripts.get_heads() == ["20260923_0049"]
+    assert scripts.get_heads() == ["20260923_0050"]
     assert scripts.get_revision("20260923_0049").down_revision == "20260921_0048"
     assert scripts.get_revision("20260921_0048").down_revision == "20260921_0047"
     assert scripts.get_revision("20260921_0047").down_revision == "20260921_0046"
@@ -229,6 +229,7 @@ def test_crm_reference_data_shares_the_target_metadata() -> None:
     assert {
         "crm_fabrics",
         "crm_garment_models",
+        "crm_garment_model_categories",
         "crm_garment_sizes",
         "crm_tech_cards",
         "crm_tech_card_revisions",
@@ -259,6 +260,7 @@ def test_product_assortment_foundation_shares_the_target_metadata() -> None:
     } <= set(Base.metadata.tables)
     assert "minimum_stock_meters" in Base.metadata.tables["crm_fabrics"].c
     assert "size_chart_media_object_id" in Base.metadata.tables["crm_garment_models"].c
+    assert "category_id" in Base.metadata.tables["crm_garment_models"].c
     assert {
         "base_size_code",
         "fit_model_name",

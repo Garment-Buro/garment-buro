@@ -59,3 +59,31 @@ test('requestJson joins relative paths and preserves backend error details', asy
         globalThis.fetch = originalFetch;
     }
 });
+
+test('requestJson explains validation errors instead of returning a generic 422', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () =>
+        Response.json(
+            {
+                detail: [
+                    {
+                        loc: ['body', 'slug'],
+                        msg: 'String should match pattern',
+                    },
+                ],
+            },
+            { status: 422 },
+        );
+
+    try {
+        await assert.rejects(
+            requestJson('/product-categories'),
+            (error) =>
+                error instanceof ApiError &&
+                error.status === 422 &&
+                error.message === 'slug: String should match pattern',
+        );
+    } finally {
+        globalThis.fetch = originalFetch;
+    }
+});

@@ -36,6 +36,7 @@ from app.modules.crm.production_models import (
 from app.modules.crm.reference_models import (
     CrmFabric,
     CrmGarmentModel,
+    CrmGarmentModelCategory,
     CrmGarmentSize,
     CrmReferenceEvent,
     CrmTechCard,
@@ -126,6 +127,7 @@ __all__ = [
     "CrmProjectEvent",
     "CrmFabric",
     "CrmGarmentModel",
+    "CrmGarmentModelCategory",
     "CrmGarmentSize",
     "CrmTechCard",
     "CrmTechCardRevision",

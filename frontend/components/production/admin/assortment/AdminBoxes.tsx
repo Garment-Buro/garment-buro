@@ -1,17 +1,9 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
-import {
-    PiLink,
-    PiPencilSimple,
-    PiPlus,
-    PiUploadSimple,
-} from 'react-icons/pi';
+import { PiLink, PiPencilSimple, PiPlus } from 'react-icons/pi';
 import { useAssortmentResource } from '@/hooks/production/useAssortmentResource';
-import {
-    saveAssortment,
-    uploadAssortmentMedia,
-} from '@/lib/api/productionAssortment';
+import { saveAssortment } from '@/lib/api/productionAssortment';
 import { compactDecimal } from '@/lib/production/numbers';
 import type {
     GarmentModel,
@@ -19,13 +11,7 @@ import type {
     PackagingRule,
     ReferencePage,
 } from '@/lib/production/assortmentTypes';
-import {
-    AssortmentDialog,
-    AssortmentFeedback,
-    FileUploadStatus,
-    idleFileUploadStatus,
-    type FileUploadStatusValue,
-} from './AssortmentDialog';
+import { AssortmentDialog, AssortmentFeedback } from './AssortmentDialog';
 import styles from '../ProductionAdmin.module.css';
 
 type BoxForm = Partial<PackagingBox> & {
@@ -55,9 +41,6 @@ export function AdminBoxes() {
     const [editor, setEditor] = useState<BoxForm | null>(null);
     const [ruleEditor, setRuleEditor] = useState<RuleForm | null>(null);
     const [saving, setSaving] = useState(false);
-    const [uploading, setUploading] = useState(false);
-    const [uploadStatus, setUploadStatus] =
-        useState<FileUploadStatusValue>(idleFileUploadStatus);
     const [formError, setFormError] = useState('');
     const boxName = (id: number) =>
         boxes.data?.find((box) => box.id === id)?.name ?? `№${id}`;
@@ -162,7 +145,6 @@ export function AdminBoxes() {
                     </button>
                     <button
                         onClick={() => {
-                            setUploadStatus(idleFileUploadStatus);
                             setEditor({
                                 code: '',
                                 name: '',
@@ -198,15 +180,6 @@ export function AdminBoxes() {
                             <button
                                 className={styles.iconButton}
                                 onClick={() => {
-                                    setUploadStatus(
-                                        box.photo_media_object_id
-                                            ? {
-                                                  state: 'success',
-                                                  message:
-                                                      'Фото коробки уже загружено',
-                                              }
-                                            : idleFileUploadStatus,
-                                    );
                                     setEditor({
                                         ...box,
                                         inner_length_cm: compactDecimal(
@@ -384,63 +357,6 @@ export function AdminBoxes() {
                                     }
                                 />
                             </label>
-                            <div
-                                className={`${styles.fullField} ${styles.patternFileField}`}
-                            >
-                                <span>Фото коробки</span>
-                                <label className={styles.patternFilePicker}>
-                                    <input
-                                    type="file"
-                                    accept="image/jpeg,image/png,image/webp"
-                                    disabled={uploading}
-                                    onChange={async (event) => {
-                                        const file = event.target.files?.[0];
-                                        if (!file) return;
-                                        setUploading(true);
-                                        setFormError('');
-                                        setUploadStatus({
-                                            state: 'uploading',
-                                            fileName: file.name,
-                                        });
-                                        try {
-                                            const media = await uploadAssortmentMedia(
-                                                file,
-                                                'public',
-                                            );
-                                            setEditor((current) =>
-                                                current
-                                                    ? {
-                                                          ...current,
-                                                          photo_media_object_id:
-                                                              media.id,
-                                                      }
-                                                    : current,
-                                            );
-                                            setUploadStatus({
-                                                state: 'success',
-                                                fileName: file.name,
-                                            });
-                                        } catch (reason) {
-                                            const message =
-                                                reason instanceof Error
-                                                    ? reason.message
-                                                    : 'Не удалось загрузить фото';
-                                            setFormError(message);
-                                            setUploadStatus({
-                                                state: 'error',
-                                                fileName: file.name,
-                                                message,
-                                            });
-                                        } finally {
-                                            setUploading(false);
-                                        }
-                                    }}
-                                    />
-                                    <PiUploadSimple aria-hidden />
-                                    <span>JPEG, PNG или WebP</span>
-                                </label>
-                                <FileUploadStatus value={uploadStatus} />
-                            </div>
                             <label className={styles.checkField}>
                                 <input
                                     type="checkbox"
@@ -462,7 +378,7 @@ export function AdminBoxes() {
                             </button>
                             <button
                                 className={styles.primaryButton}
-                                disabled={saving || uploading}
+                                disabled={saving}
                             >
                                 Сохранить
                             </button>
