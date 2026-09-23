@@ -276,8 +276,7 @@ def test_product_assortment_foundation_shares_the_target_metadata() -> None:
         Base.metadata.tables["product_variants"].c.keys()
     )
     assert "uq_product_variant_selection" in {
-        constraint.name
-        for constraint in Base.metadata.tables["product_variants"].constraints
+        constraint.name for constraint in Base.metadata.tables["product_variants"].constraints
     }
 
 

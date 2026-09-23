@@ -127,9 +127,7 @@ class CrmGarmentModelWrite(BaseModel):
     description: str | None = None
     base_size_code: str | None = Field(default=None, min_length=1, max_length=32)
     fit_model_name: str | None = Field(default=None, max_length=120)
-    fit_model_height_cm: Decimal | None = Field(
-        default=None, gt=0, max_digits=10, decimal_places=2
-    )
+    fit_model_height_cm: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)
     base_length_cm: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)
     base_width_cm: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)
     base_weight_g: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)
