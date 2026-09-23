@@ -75,7 +75,7 @@ test('assortment remains usable on phones', () => {
     );
     assert.match(
         css,
-        /\.assortmentDialog\s*\{[^}]*height:\s*calc\(100dvh - max\(16px, env\(safe-area-inset-top\)\)\)/s,
+        /\.assortmentDialog\s*\{[^}]*height:\s*100dvh/s,
     );
     assert.match(css, /\.measureGrid\s*\{[^}]*repeat\(2, minmax\(0, 1fr\)\)/s);
     assert.match(
@@ -106,7 +106,23 @@ test('model editor explains the flow and keeps one compact size editor open', ()
     assert.match(models, /className=\{styles\.sizeDetailCard\}/);
     assert.match(models, /<SizeRangeEditor/);
     assert.match(models, /step="2"/);
+    assert.match(models, /Базовый размер/);
+    assert.match(models, /Имя модели на фото/);
+    assert.match(models, /Рост модели на фото, см/);
+    assert.match(models, /Длина по росту/);
+    assert.match(models, /Стандартный/);
+    assert.match(models, /Под рост/);
+    assert.match(models, /className=\{styles\.sizeChartPreview\}/);
+    assert.doesNotMatch(models, /Базовый рост, см/);
     assert.doesNotMatch(models, /Сначала задайте общие параметры/);
+});
+
+test('product variants use compact multi-select matrices', () => {
+    assert.match(products, /className=\{styles\.variantChoiceGrid\}/);
+    assert.match(products, /rebuildVariantMatrix/);
+    assert.match(products, /aria-pressed=\{selected\}/);
+    assert.match(products, /Созданные варианты/);
+    assert.doesNotMatch(products, /Добавить вариант/);
 });
 
 test('assortment dialog scrolls below an opaque fixed header', () => {

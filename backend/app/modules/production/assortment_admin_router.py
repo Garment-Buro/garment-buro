@@ -4,6 +4,8 @@ from collections.abc import Awaitable
 from typing import Annotated, TypeVar
 
 from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
+from fastapi.responses import RedirectResponse
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.modules.catalog.mapper import CatalogResponseMapper
@@ -73,6 +75,7 @@ from app.modules.crm.reference_service import (
     CrmReferenceService,
     CrmReferenceVersionConflictError,
 )
+from app.modules.media.models import MediaObject, MediaStatus
 from app.modules.media.service import MediaService, UnsupportedMediaError
 from app.modules.production.admin_router import Session
 from app.modules.production.admin_router import SystemAdmin as Admin
@@ -757,6 +760,23 @@ async def upload_public_media(
     except UnsupportedMediaError as error:
         raise HTTPException(415, str(error)) from error
     return {"id": uploaded.media_id, "url": uploaded.public_url}
+
+
+@router.get("/media/public/{media_id}", include_in_schema=False)
+async def view_public_media(
+    media_id: int,
+    request: Request,
+    _admin: Admin,
+    session: Session,
+):
+    media = await session.scalar(select(MediaObject).where(MediaObject.id == media_id))
+    if media is None or not media.is_public or media.status != MediaStatus.READY.value:
+        raise HTTPException(404, "Изображение не найдено")
+    return RedirectResponse(
+        request.app.state.storage.public_url(media.object_key),
+        status_code=307,
+        headers={"Cache-Control": "private, max-age=300"},
+    )
 
 
 @router.post("/media/pattern", status_code=201)

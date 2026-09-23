@@ -2,11 +2,11 @@
 
 import { useMemo, useState, type FormEvent } from 'react';
 import {
+    PiCheck,
     PiImage,
     PiPackage,
     PiPencilSimple,
     PiPlus,
-    PiTrash,
 } from 'react-icons/pi';
 import { useAssortmentResource } from '@/hooks/production/useAssortmentResource';
 import {
@@ -116,6 +116,23 @@ export function AdminProducts() {
     const modelName = (id: number | null) =>
         models.data?.items.find((model) => model.id === id)?.name ??
         'Модель не назначена';
+    const selectedModel = models.data?.items.find(
+        (model) => model.id === editor?.garment_model_id,
+    );
+    const selectedSizeIds = Array.from(
+        new Set(
+            (editor?.variantReferences ?? [])
+                .map((reference) => reference.garment_size_id)
+                .filter((id): id is number => id != null),
+        ),
+    );
+    const selectedFabricIds = Array.from(
+        new Set(
+            (editor?.variantReferences ?? [])
+                .map((reference) => reference.fabric_id)
+                .filter((id): id is number => id != null),
+        ),
+    );
 
     const editProduct = async (reference: ProductReference) => {
         setLoadingEditor(true);
@@ -278,6 +295,69 @@ export function AdminProducts() {
                 ...referenceChanges,
             };
             return { ...current, variants, variantReferences };
+        });
+    };
+    const rebuildVariantMatrix = (
+        sizeIds: number[],
+        fabricIds: number[],
+    ) => {
+        setEditor((current) => {
+            if (!current) return current;
+            const selectedModel = models.data?.items.find(
+                (model) => model.id === current.garment_model_id,
+            );
+            const existing = new Map(
+                current.variantReferences.map((reference, index) => [
+                    `${reference.garment_size_id ?? ''}:${reference.fabric_id ?? ''}`,
+                    { variant: current.variants[index], reference },
+                ]),
+            );
+            const combinations =
+                sizeIds.length === 0 && fabricIds.length === 0
+                    ? []
+                    : (sizeIds.length ? sizeIds : [null]).flatMap((sizeId) =>
+                          (fabricIds.length ? fabricIds : [null]).map(
+                              (fabricId) => ({ sizeId, fabricId }),
+                          ),
+                      );
+            const next = combinations.map(({ sizeId, fabricId }) => {
+                const key = `${sizeId ?? ''}:${fabricId ?? ''}`;
+                const previous = existing.get(key);
+                if (previous) return previous;
+                const size = selectedModel?.sizes.find(
+                    (item) => item.id === sizeId,
+                );
+                const fabric = fabrics.data?.items.find(
+                    (item) => item.id === fabricId,
+                );
+                return {
+                    variant: {
+                        id: 0,
+                        size: size?.code ?? null,
+                        color: fabric?.color_name ?? null,
+                        color_hex: fabric?.color_hex ?? null,
+                        stock_quantity: 0,
+                        width_cm: null,
+                        height_cm: null,
+                        preview_image: null,
+                        images: null,
+                    },
+                    reference: {
+                        id: 0,
+                        sku: null,
+                        size: size?.code ?? null,
+                        garment_size_id: sizeId,
+                        fabric_id: fabricId,
+                        color: fabric?.color_name ?? null,
+                        stock_quantity: 0,
+                    },
+                };
+            });
+            return {
+                ...current,
+                variants: next.map((item) => item.variant),
+                variantReferences: next.map((item) => item.reference),
+            };
         });
     };
 
@@ -546,13 +626,8 @@ export function AdminProducts() {
                                                 garment_model_id: event.target.value
                                                     ? Number(event.target.value)
                                                     : null,
-                                                variantReferences:
-                                                    editor.variantReferences.map(
-                                                        (reference) => ({
-                                                            ...reference,
-                                                            garment_size_id: null,
-                                                        }),
-                                                    ),
+                                                variants: [],
+                                                variantReferences: [],
                                             })
                                         }
                                     >
@@ -722,197 +797,156 @@ export function AdminProducts() {
                         </fieldset>
                         <fieldset className={styles.formSection}>
                             <legend>Варианты</legend>
-                            <div className={styles.sizeList}>
-                                {editor.variants.map((variant, index) => {
-                                    const reference =
-                                        editor.variantReferences[index];
-                                    const selectedModel = models.data?.items.find(
-                                        (model) =>
-                                            model.id === editor.garment_model_id,
-                                    );
-                                    return (
-                                        <article
-                                            className={styles.sizeEditor}
-                                            key={variant.id || index}
-                                        >
-                                            <div className={styles.assortmentCardTop}>
-                                                <h4>Вариант {index + 1}</h4>
-                                                <button
-                                                    type="button"
-                                                    className={styles.iconButton}
-                                                    onClick={() =>
-                                                        setEditor({
-                                                            ...editor,
-                                                            variants:
-                                                                editor.variants.filter(
-                                                                    (_, itemIndex) =>
-                                                                        itemIndex !==
-                                                                        index,
-                                                                ),
-                                                            variantReferences:
-                                                                editor.variantReferences.filter(
-                                                                    (_, itemIndex) =>
-                                                                        itemIndex !==
-                                                                        index,
-                                                                ),
-                                                        })
-                                                    }
-                                                    aria-label={`Удалить вариант ${index + 1}`}
-                                                >
-                                                    <PiTrash aria-hidden />
-                                                </button>
-                                            </div>
-                                            <div className={styles.formGrid}>
-                                                <label>
-                                                    Размер модели
-                                                    <select
-                                                        value={
-                                                            reference?.garment_size_id ??
-                                                            ''
-                                                        }
-                                                        onChange={(event) => {
-                                                            const size =
-                                                                selectedModel?.sizes.find(
-                                                                    (item) =>
-                                                                        item.id ===
-                                                                        Number(
-                                                                            event.target
-                                                                                .value,
-                                                                        ),
-                                                                );
-                                                            updateVariant(
-                                                                index,
-                                                                {
-                                                                    size:
-                                                                        size?.code ??
-                                                                        null,
-                                                                },
-                                                                {
-                                                                    garment_size_id:
-                                                                        size?.id ?? null,
-                                                                },
+                            {!selectedModel ? (
+                                <p className={styles.muted}>
+                                    Сначала выберите производственную модель.
+                                </p>
+                            ) : (
+                                <div className={styles.variantBuilder}>
+                                    <section>
+                                        <h4>Размеры</h4>
+                                        <div className={styles.variantChoiceGrid}>
+                                            {selectedModel.sizes.map((size) => {
+                                                const selected =
+                                                    size.id != null &&
+                                                    selectedSizeIds.includes(size.id);
+                                                return (
+                                                    <button
+                                                        type="button"
+                                                        key={size.id ?? size.code}
+                                                        data-selected={selected}
+                                                        aria-pressed={selected}
+                                                        onClick={() => {
+                                                            if (size.id == null) return;
+                                                            rebuildVariantMatrix(
+                                                                selected
+                                                                    ? selectedSizeIds.filter(
+                                                                          (id) =>
+                                                                              id !== size.id,
+                                                                      )
+                                                                    : [
+                                                                          ...selectedSizeIds,
+                                                                          size.id,
+                                                                      ],
+                                                                selectedFabricIds,
                                                             );
                                                         }}
                                                     >
-                                                        <option value="">
-                                                            Не назначен
-                                                        </option>
-                                                        {(
-                                                            selectedModel?.sizes ?? []
-                                                        ).map((size) => (
-                                                            <option
-                                                                key={size.id}
-                                                                value={size.id}
-                                                            >
-                                                                {size.code}
-                                                            </option>
-                                                        ))}
-                                                    </select>
-                                                </label>
-                                                <label>
-                                                    Ткань
-                                                    <select
-                                                        value={reference?.fabric_id ?? ''}
-                                                        onChange={(event) =>
-                                                            updateVariant(
-                                                                index,
-                                                                {},
-                                                                {
-                                                                    fabric_id: event.target
-                                                                        .value
-                                                                        ? Number(
-                                                                              event.target
-                                                                                  .value,
+                                                        <PiCheck aria-hidden />
+                                                        <strong>{size.code}</strong>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </section>
+                                    <section>
+                                        <h4>Ткани и цвета</h4>
+                                        <div className={styles.variantChoiceGrid}>
+                                            {(fabrics.data?.items ?? []).map(
+                                                (fabric) => {
+                                                    const selected =
+                                                        selectedFabricIds.includes(
+                                                            fabric.id,
+                                                        );
+                                                    return (
+                                                        <button
+                                                            type="button"
+                                                            key={fabric.id}
+                                                            data-selected={selected}
+                                                            aria-pressed={selected}
+                                                            onClick={() =>
+                                                                rebuildVariantMatrix(
+                                                                    selectedSizeIds,
+                                                                    selected
+                                                                        ? selectedFabricIds.filter(
+                                                                              (id) =>
+                                                                                  id !==
+                                                                                  fabric.id,
                                                                           )
-                                                                        : null,
-                                                                },
-                                                            )
-                                                        }
-                                                    >
-                                                        <option value="">
-                                                            Не назначена
-                                                        </option>
-                                                        {(fabrics.data?.items ?? []).map(
-                                                            (fabric) => (
-                                                                <option
-                                                                    key={fabric.id}
-                                                                    value={fabric.id}
-                                                                >
-                                                                    {fabric.name}
-                                                                </option>
-                                                            ),
-                                                        )}
-                                                    </select>
-                                                </label>
-                                                <label>
-                                                    Цвет
-                                                    <input
-                                                        value={variant.color ?? ''}
-                                                        onChange={(event) =>
-                                                            updateVariant(index, {
-                                                                color:
-                                                                    event.target.value ||
-                                                                    null,
-                                                            })
-                                                        }
-                                                    />
-                                                </label>
-                                                <label>
-                                                    Остаток
-                                                    <input
-                                                        type="number"
-                                                        min="0"
-                                                        value={variant.stock_quantity}
-                                                        onChange={(event) =>
-                                                            updateVariant(index, {
-                                                                stock_quantity: Number(
-                                                                    event.target.value,
-                                                                ),
-                                                            })
-                                                        }
-                                                    />
-                                                </label>
+                                                                        : [
+                                                                              ...selectedFabricIds,
+                                                                              fabric.id,
+                                                                          ],
+                                                                )
+                                                            }
+                                                        >
+                                                            <span
+                                                                className={
+                                                                    styles.variantColor
+                                                                }
+                                                                style={{
+                                                                    background:
+                                                                        fabric.color_hex ??
+                                                                        '#f2f0ef',
+                                                                }}
+                                                            />
+                                                            <PiCheck aria-hidden />
+                                                            <strong>
+                                                                {fabric.color_name ||
+                                                                    fabric.name}
+                                                            </strong>
+                                                            <small>{fabric.name}</small>
+                                                        </button>
+                                                    );
+                                                },
+                                            )}
+                                        </div>
+                                    </section>
+                                    {editor.variants.length > 0 && (
+                                        <section>
+                                            <div className={styles.variantSummaryHeading}>
+                                                <h4>Созданные варианты</h4>
+                                                <span>
+                                                    {editor.variants.length} шт.
+                                                </span>
                                             </div>
-                                        </article>
-                                    );
-                                })}
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() =>
-                                    setEditor({
-                                        ...editor,
-                                        variants: [
-                                            ...editor.variants,
-                                            {
-                                                id: 0,
-                                                size: null,
-                                                color: null,
-                                                color_hex: null,
-                                                stock_quantity: 0,
-                                                width_cm: null,
-                                                height_cm: null,
-                                                preview_image: null,
-                                                images: null,
-                                            },
-                                        ],
-                                        variantReferences: [
-                                            ...editor.variantReferences,
-                                            {
-                                                id: 0,
-                                                sku: null,
-                                                size: null,
-                                                garment_size_id: null,
-                                                fabric_id: null,
-                                                color: null,
-                                                stock_quantity: 0,
-                                            },
-                                        ],
-                                    })
-                                }
-                            >
-                                <PiPlus aria-hidden /> Добавить вариант
-                            </button>
+                                            <div className={styles.variantRows}>
+                                                {editor.variants.map(
+                                                    (variant, index) => (
+                                                        <article
+                                                            key={`${editor.variantReferences[index]?.garment_size_id}-${editor.variantReferences[index]?.fabric_id}`}
+                                                        >
+                                                            <div>
+                                                                <strong>
+                                                                    {variant.size ??
+                                                                        'Все размеры'}
+                                                                </strong>
+                                                                <small>
+                                                                    {variant.color ??
+                                                                        'Без ткани'}
+                                                                </small>
+                                                            </div>
+                                                            <label>
+                                                                Остаток
+                                                                <input
+                                                                    type="number"
+                                                                    min="0"
+                                                                    value={
+                                                                        variant.stock_quantity
+                                                                    }
+                                                                    onChange={(event) =>
+                                                                        updateVariant(
+                                                                            index,
+                                                                            {
+                                                                                stock_quantity:
+                                                                                    Number(
+                                                                                        event
+                                                                                            .target
+                                                                                            .value,
+                                                                                    ),
+                                                                            },
+                                                                        )
+                                                                    }
+                                                                />
+                                                            </label>
+                                                        </article>
+                                                    ),
+                                                )}
+                                            </div>
+                                        </section>
+                                    )}
+                                </div>
+                            )}
                         </fieldset>
                         {formError && <p className={styles.error}>{formError}</p>}
                         <div className={styles.editorActions}>

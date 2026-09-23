@@ -462,7 +462,10 @@ class CrmReferenceService:
         garment_model.code = payload.code
         garment_model.name = payload.name
         garment_model.description = payload.description
-        garment_model.base_height_cm = payload.base_height_cm
+        garment_model.base_height_cm = None
+        garment_model.base_size_code = payload.base_size_code
+        garment_model.fit_model_name = payload.fit_model_name
+        garment_model.fit_model_height_cm = payload.fit_model_height_cm
         garment_model.base_length_cm = payload.base_length_cm
         garment_model.base_width_cm = payload.base_width_cm
         garment_model.base_weight_g = payload.base_weight_g
@@ -488,6 +491,8 @@ class CrmReferenceService:
         size.max_width_cm = payload.max_width_cm
         size.min_sleeve_length_cm = payload.min_sleeve_length_cm
         size.max_sleeve_length_cm = payload.max_sleeve_length_cm
+        size.allow_standard_sleeve = payload.allow_standard_sleeve
+        size.allow_height_sleeve = payload.allow_height_sleeve
         size.extra_width_price_per_cm = payload.extra_width_price_per_cm
         size.currency = payload.currency
 

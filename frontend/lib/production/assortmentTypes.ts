@@ -20,6 +20,8 @@ export interface GarmentSize {
     max_width_cm: string | null;
     min_sleeve_length_cm: string | null;
     max_sleeve_length_cm: string | null;
+    allow_standard_sleeve: boolean;
+    allow_height_sleeve: boolean;
     extra_width_price_per_cm?: string | null;
     currency?: string;
     is_active?: boolean;
@@ -31,7 +33,9 @@ export interface GarmentModel {
     code: string;
     name: string;
     description: string | null;
-    base_height_cm: string | null;
+    base_size_code: string | null;
+    fit_model_name: string | null;
+    fit_model_height_cm: string | null;
     base_length_cm: string | null;
     base_width_cm: string | null;
     base_weight_g: string | null;

@@ -88,6 +88,8 @@ class CrmGarmentSizeWrite(BaseModel):
     max_sleeve_length_cm: Decimal | None = Field(
         default=None, gt=0, max_digits=10, decimal_places=2
     )
+    allow_standard_sleeve: bool = True
+    allow_height_sleeve: bool = True
     extra_width_price_per_cm: Decimal | None = Field(
         default=None,
         ge=0,
@@ -114,6 +116,8 @@ class CrmGarmentSizeWrite(BaseModel):
         ):
             if minimum is not None and maximum is not None and minimum > maximum:
                 raise ValueError(f"Garment size {label} range is inverted")
+        if not self.allow_standard_sleeve and not self.allow_height_sleeve:
+            raise ValueError("At least one sleeve option must be enabled")
         return self
 
 
@@ -121,7 +125,11 @@ class CrmGarmentModelWrite(BaseModel):
     code: str = Field(min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=255)
     description: str | None = None
-    base_height_cm: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)
+    base_size_code: str | None = Field(default=None, min_length=1, max_length=32)
+    fit_model_name: str | None = Field(default=None, max_length=120)
+    fit_model_height_cm: Decimal | None = Field(
+        default=None, gt=0, max_digits=10, decimal_places=2
+    )
     base_length_cm: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)
     base_width_cm: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)
     base_weight_g: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)
@@ -147,6 +155,16 @@ class CrmGarmentModelWrite(BaseModel):
     def normalize_description(cls, value: str | None) -> str | None:
         return _strip_optional(value)
 
+    @field_validator("base_size_code")
+    @classmethod
+    def normalize_base_size_code(cls, value: str | None) -> str | None:
+        return value.strip().upper() if value is not None else None
+
+    @field_validator("fit_model_name")
+    @classmethod
+    def normalize_fit_model_name(cls, value: str | None) -> str | None:
+        return _strip_optional(value)
+
     @model_validator(mode="after")
     def validate_size_identity(self) -> CrmGarmentModelWrite:
         codes = [size.code for size in self.sizes]
@@ -155,6 +173,8 @@ class CrmGarmentModelWrite(BaseModel):
         sort_orders = [size.sort_order for size in self.sizes]
         if len(sort_orders) != len(set(sort_orders)):
             raise ValueError("Active garment size sort orders must be unique")
+        if self.base_size_code is not None and self.base_size_code not in codes:
+            raise ValueError("Base size must be selected from the model sizes")
         return self
 
 
@@ -264,7 +284,9 @@ class CrmGarmentModelReferenceRead(BaseModel):
     code: str
     name: str
     description: str | None
-    base_height_cm: Decimal | None
+    base_size_code: str | None
+    fit_model_name: str | None
+    fit_model_height_cm: Decimal | None
     base_length_cm: Decimal | None
     base_width_cm: Decimal | None
     base_weight_g: Decimal | None

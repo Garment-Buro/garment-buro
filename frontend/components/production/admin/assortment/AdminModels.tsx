@@ -3,10 +3,14 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import {
     PiArrowRight,
+    PiCaretDown,
+    PiCheck,
+    PiImage,
     PiPencilSimple,
     PiPlus,
     PiRuler,
     PiTrash,
+    PiUploadSimple,
 } from 'react-icons/pi';
 import { useAssortmentResource } from '@/hooks/production/useAssortmentResource';
 import {
@@ -33,6 +37,8 @@ const emptySize = (sortOrder: number): GarmentSize => ({
     max_width_cm: null,
     min_sleeve_length_cm: null,
     max_sleeve_length_cm: null,
+    allow_standard_sleeve: true,
+    allow_height_sleeve: true,
     extra_width_price_per_cm: null,
 });
 
@@ -41,11 +47,15 @@ type ModelForm = Omit<
     'id' | 'version' | 'catalog_product_ids' | 'published_tech_card'
 > & { id?: number; version?: number };
 
+type ModelEditor = ModelForm & { size_chart_url?: string | null };
+
 const emptyModel = (): ModelForm => ({
     code: '',
     name: '',
     description: null,
-    base_height_cm: null,
+    base_size_code: null,
+    fit_model_name: null,
+    fit_model_height_cm: null,
     base_length_cm: null,
     base_width_cm: null,
     base_weight_g: null,
@@ -63,9 +73,7 @@ type SizeRangeField =
     | 'min_length_cm'
     | 'max_length_cm'
     | 'min_height_cm'
-    | 'max_height_cm'
-    | 'min_sleeve_length_cm'
-    | 'max_sleeve_length_cm';
+    | 'max_height_cm';
 
 function SizeRangeEditor({
     label,
@@ -134,7 +142,7 @@ export function AdminModels() {
     const { data, loading, error, reload } =
         useAssortmentResource<ReferencePage<GarmentModel>>('models');
     const [search, setSearch] = useState('');
-    const [editor, setEditor] = useState<ModelForm | null>(null);
+    const [editor, setEditor] = useState<ModelEditor | null>(null);
     const [activeSizeIndex, setActiveSizeIndex] = useState(0);
     const [saving, setSaving] = useState(false);
     const [formError, setFormError] = useState('');
@@ -154,6 +162,9 @@ export function AdminModels() {
             model
                 ? {
                       ...model,
+                      size_chart_url: model.size_chart_media_object_id
+                          ? `/production/admin/assortment/media/public/${model.size_chart_media_object_id}`
+                          : null,
                       sizes: model.sizes.map((size) => ({ ...size })),
                   }
                 : emptyModel(),
@@ -185,7 +196,9 @@ export function AdminModels() {
             code: editor.code,
             name: editor.name,
             description: editor.description,
-            base_height_cm: optionalNumber(editor.base_height_cm),
+            base_size_code: editor.base_size_code,
+            fit_model_name: editor.fit_model_name,
+            fit_model_height_cm: optionalNumber(editor.fit_model_height_cm),
             base_length_cm: optionalNumber(editor.base_length_cm),
             base_width_cm: optionalNumber(editor.base_width_cm),
             base_weight_g: optionalNumber(editor.base_weight_g),
@@ -207,6 +220,8 @@ export function AdminModels() {
                 max_sleeve_length_cm: optionalNumber(
                     size.max_sleeve_length_cm,
                 ),
+                allow_standard_sleeve: size.allow_standard_sleeve,
+                allow_height_sleeve: size.allow_height_sleeve,
                 extra_width_price_per_cm: optionalNumber(
                     size.extra_width_price_per_cm,
                 ),
@@ -307,6 +322,42 @@ export function AdminModels() {
             {editor && (
                 <AssortmentDialog
                     title={editor.id ? 'Изменить модель' : 'Новая модель'}
+                    headerActions={
+                        <details className={styles.patternStatusMenu}>
+                            <summary>
+                                <span
+                                    className={styles.patternStatusDot}
+                                    data-active={editor.is_active}
+                                />
+                                {editor.is_active ? 'Активна' : 'Скрыта'}
+                                <PiCaretDown aria-hidden />
+                            </summary>
+                            <div role="menu">
+                                {([
+                                    [true, 'Активна'],
+                                    [false, 'Скрыта'],
+                                ] as const).map(([active, label]) => (
+                                    <button
+                                        type="button"
+                                        role="menuitemradio"
+                                        aria-checked={editor.is_active === active}
+                                        key={String(active)}
+                                        onClick={(event) => {
+                                            setEditor({ ...editor, is_active: active });
+                                            event.currentTarget
+                                                .closest('details')
+                                                ?.removeAttribute('open');
+                                        }}
+                                    >
+                                        <span>{label}</span>
+                                        {editor.is_active === active && (
+                                            <PiCheck aria-hidden />
+                                        )}
+                                    </button>
+                                ))}
+                            </div>
+                        </details>
+                    }
                     description={
                         <span className={styles.modelSetupFlow}>
                             <span>1. Модель</span>
@@ -362,10 +413,36 @@ export function AdminModels() {
                                         }
                                     />
                                 </label>
+                                <label>
+                                    Базовый размер
+                                    <select
+                                        required
+                                        value={editor.base_size_code ?? ''}
+                                        onChange={(event) =>
+                                            setEditor({
+                                                ...editor,
+                                                base_size_code:
+                                                    event.target.value || null,
+                                            })
+                                        }
+                                    >
+                                        <option value="">Выберите размер</option>
+                                        {editor.sizes
+                                            .filter((size) => size.code.trim())
+                                            .map((size, index) => (
+                                                <option
+                                                    key={`${size.code}-${index}`}
+                                                    value={size.code}
+                                                >
+                                                    {size.code}
+                                                </option>
+                                            ))}
+                                    </select>
+                                    <small>Один из размеров в размерной сетке</small>
+                                </label>
                                 {(
                                     [
                                         ['base_weight_g', 'Вес, г'],
-                                        ['base_height_cm', 'Базовый рост, см'],
                                         ['base_width_cm', 'Базовая ширина, см'],
                                         ['base_length_cm', 'Базовая длина, см'],
                                     ] as const
@@ -387,62 +464,113 @@ export function AdminModels() {
                                         />
                                     </label>
                                 ))}
-                                <label className={styles.fullField}>
-                                    Таблица размеров для сайта
+                                <label>
+                                    Имя модели на фото
                                     <input
-                                        type="file"
-                                        accept="image/jpeg,image/png,image/webp"
-                                        disabled={uploading}
-                                        onChange={async (event) => {
-                                            const file = event.target.files?.[0];
-                                            if (!file) return;
-                                            setUploading(true);
-                                            setFormError('');
-                                            try {
-                                                const uploaded =
-                                                    await uploadAssortmentMedia(
-                                                        file,
-                                                        'public',
-                                                    );
-                                                setEditor((current) =>
-                                                    current
-                                                        ? {
-                                                              ...current,
-                                                              size_chart_media_object_id:
-                                                                  uploaded.id,
-                                                          }
-                                                        : current,
-                                                );
-                                            } catch (reason) {
-                                                setFormError(
-                                                    reason instanceof Error
-                                                        ? reason.message
-                                                        : 'Не удалось загрузить изображение',
-                                                );
-                                            } finally {
-                                                setUploading(false);
-                                            }
-                                        }}
-                                    />
-                                    <small>
-                                        {editor.size_chart_media_object_id
-                                            ? `Медиа №${editor.size_chart_media_object_id}`
-                                            : 'JPEG, PNG или WebP'}
-                                    </small>
-                                </label>
-                                <label className={styles.checkField}>
-                                    <input
-                                        type="checkbox"
-                                        checked={editor.is_active}
+                                        value={editor.fit_model_name ?? ''}
+                                        placeholder="Алексей"
                                         onChange={(event) =>
                                             setEditor({
                                                 ...editor,
-                                                is_active: event.target.checked,
+                                                fit_model_name:
+                                                    event.target.value || null,
                                             })
                                         }
                                     />
-                                    Модель активна
                                 </label>
+                                <label>
+                                    Рост модели на фото, см
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        step="1"
+                                        value={editor.fit_model_height_cm ?? ''}
+                                        placeholder="180"
+                                        onChange={(event) =>
+                                            setEditor({
+                                                ...editor,
+                                                fit_model_height_cm:
+                                                    event.target.value || null,
+                                            })
+                                        }
+                                    />
+                                </label>
+                                <div
+                                    className={`${styles.fullField} ${styles.patternFileField}`}
+                                >
+                                    <span>Таблица размеров для сайта</span>
+                                    <label className={styles.patternFilePicker}>
+                                        <input
+                                            type="file"
+                                            accept="image/jpeg,image/png,image/webp"
+                                            disabled={uploading}
+                                            onChange={async (event) => {
+                                                const file = event.target.files?.[0];
+                                                if (!file) return;
+                                                setUploading(true);
+                                                setFormError('');
+                                                try {
+                                                    const uploaded =
+                                                        await uploadAssortmentMedia(
+                                                            file,
+                                                            'public',
+                                                        );
+                                                    setEditor((current) =>
+                                                        current
+                                                            ? {
+                                                                  ...current,
+                                                                  size_chart_media_object_id:
+                                                                      uploaded.id,
+                                                                  size_chart_url:
+                                                                      uploaded.url ??
+                                                                      `/production/admin/assortment/media/public/${uploaded.id}`,
+                                                              }
+                                                            : current,
+                                                    );
+                                                } catch (reason) {
+                                                    setFormError(
+                                                        reason instanceof Error
+                                                            ? reason.message
+                                                            : 'Не удалось загрузить изображение',
+                                                    );
+                                                } finally {
+                                                    setUploading(false);
+                                                }
+                                            }}
+                                        />
+                                        <PiUploadSimple aria-hidden />
+                                        <span>
+                                            {editor.size_chart_url
+                                                ? 'Заменить изображение'
+                                                : 'JPEG, PNG или WebP'}
+                                        </span>
+                                    </label>
+                                </div>
+                                {editor.size_chart_url && (
+                                    <figure className={styles.sizeChartPreview}>
+                                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                                        <img
+                                            src={editor.size_chart_url}
+                                            alt="Загруженная таблица размеров"
+                                        />
+                                        <figcaption>
+                                            <PiImage aria-hidden />
+                                            Изображение добавлено
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    setEditor({
+                                                        ...editor,
+                                                        size_chart_media_object_id: null,
+                                                        size_chart_url: null,
+                                                    })
+                                                }
+                                            >
+                                                Удалить
+                                            </button>
+                                        </figcaption>
+                                    </figure>
+                                )}
                             </div>
                         </fieldset>
                         <fieldset className={styles.formSection}>
@@ -508,7 +636,17 @@ export function AdminModels() {
                                                     (_, index) =>
                                                         index !== activeSizeIndex,
                                                 );
-                                                setEditor({ ...editor, sizes });
+                                                const removedCode =
+                                                    editor.sizes[activeSizeIndex]?.code;
+                                                setEditor({
+                                                    ...editor,
+                                                    sizes,
+                                                    base_size_code:
+                                                        editor.base_size_code ===
+                                                        removedCode
+                                                            ? sizes[0]?.code || null
+                                                            : editor.base_size_code,
+                                                });
                                                 setActiveSizeIndex((current) =>
                                                     Math.max(
                                                         0,
@@ -531,13 +669,32 @@ export function AdminModels() {
                                                 required
                                                 value={activeSize.code}
                                                 placeholder="M"
-                                                onChange={(event) =>
-                                                    updateSize(
-                                                        activeSizeIndex,
-                                                        'code',
-                                                        event.target.value.toUpperCase(),
-                                                    )
-                                                }
+                                                onChange={(event) => {
+                                                    const nextCode =
+                                                        event.target.value.toUpperCase();
+                                                    setEditor((current) => {
+                                                        if (!current) return current;
+                                                        const sizes = [
+                                                            ...current.sizes,
+                                                        ];
+                                                        const previousCode =
+                                                            sizes[activeSizeIndex].code;
+                                                        sizes[activeSizeIndex] = {
+                                                            ...sizes[activeSizeIndex],
+                                                            code: nextCode,
+                                                        };
+                                                        return {
+                                                            ...current,
+                                                            sizes,
+                                                            base_size_code:
+                                                                !current.base_size_code ||
+                                                                current.base_size_code ===
+                                                                    previousCode
+                                                                    ? nextCode || null
+                                                                    : current.base_size_code,
+                                                        };
+                                                    });
+                                                }}
                                             />
                                         </label>
                                         <label>
@@ -558,45 +715,155 @@ export function AdminModels() {
                                         </label>
                                     </div>
                                     <div className={styles.sizeRangeGrid}>
-                                        {(
-                                            [
-                                                [
-                                                    'Ширина',
-                                                    'min_width_cm',
-                                                    'max_width_cm',
-                                                ],
-                                                [
-                                                    'Длина',
-                                                    'min_length_cm',
-                                                    'max_length_cm',
-                                                ],
-                                                [
-                                                    'Рост',
-                                                    'min_height_cm',
-                                                    'max_height_cm',
-                                                ],
-                                                [
-                                                    'Рукав',
-                                                    'min_sleeve_length_cm',
-                                                    'max_sleeve_length_cm',
-                                                ],
-                                            ] as const
-                                        ).map(([label, minimum, maximum]) => (
-                                            <SizeRangeEditor
-                                                key={minimum}
-                                                label={label}
-                                                size={activeSize}
-                                                minimum={minimum}
-                                                maximum={maximum}
-                                                onChange={(field, value) =>
-                                                    updateSize(
-                                                        activeSizeIndex,
-                                                        field,
-                                                        value,
-                                                    )
-                                                }
-                                            />
-                                        ))}
+                                        <SizeRangeEditor
+                                            label="Ширина изделия"
+                                            size={activeSize}
+                                            minimum="min_width_cm"
+                                            maximum="max_width_cm"
+                                            onChange={(field, value) =>
+                                                updateSize(
+                                                    activeSizeIndex,
+                                                    field,
+                                                    value,
+                                                )
+                                            }
+                                        />
+                                        <section className={styles.sizeRangeCard}>
+                                            <div className={styles.sizeRangeHeading}>
+                                                <PiRuler aria-hidden />
+                                                <strong>Длина по росту</strong>
+                                            </div>
+                                            <div className={styles.lengthHeightRows}>
+                                                {([
+                                                    [
+                                                        'min_length_cm',
+                                                        'min_height_cm',
+                                                        'Минимум',
+                                                    ],
+                                                    [
+                                                        'max_length_cm',
+                                                        'max_height_cm',
+                                                        'Максимум',
+                                                    ],
+                                                ] as const).map(
+                                                    ([lengthField, heightField, label]) => (
+                                                        <div key={lengthField}>
+                                                            <small>{label}</small>
+                                                            <label>
+                                                                Длина
+                                                                <span>
+                                                                    <input
+                                                                        type="number"
+                                                                        min="0.01"
+                                                                        step="2"
+                                                                        value={
+                                                                            activeSize[
+                                                                                lengthField
+                                                                            ] ?? ''
+                                                                        }
+                                                                        onChange={(event) =>
+                                                                            updateSize(
+                                                                                activeSizeIndex,
+                                                                                lengthField,
+                                                                                event.target.value,
+                                                                            )
+                                                                        }
+                                                                    />
+                                                                    см
+                                                                </span>
+                                                            </label>
+                                                            <PiArrowRight aria-hidden />
+                                                            <label>
+                                                                Рост человека
+                                                                <span>
+                                                                    <input
+                                                                        type="number"
+                                                                        min="0.01"
+                                                                        step="1"
+                                                                        value={
+                                                                            activeSize[
+                                                                                heightField
+                                                                            ] ?? ''
+                                                                        }
+                                                                        onChange={(event) =>
+                                                                            updateSize(
+                                                                                activeSizeIndex,
+                                                                                heightField,
+                                                                                event.target.value,
+                                                                            )
+                                                                        }
+                                                                    />
+                                                                    см
+                                                                </span>
+                                                            </label>
+                                                        </div>
+                                                    ),
+                                                )}
+                                            </div>
+                                        </section>
+                                        <section className={styles.sizeRangeCard}>
+                                            <div className={styles.sizeRangeHeading}>
+                                                <PiRuler aria-hidden />
+                                                <strong>Варианты рукава</strong>
+                                            </div>
+                                            <div className={styles.squareChoiceGrid}>
+                                                {([
+                                                    [
+                                                        'allow_standard_sleeve',
+                                                        'Стандартный',
+                                                        'По лекалу',
+                                                    ],
+                                                    [
+                                                        'allow_height_sleeve',
+                                                        'Под рост',
+                                                        'По росту человека',
+                                                    ],
+                                                ] as const).map(
+                                                    ([field, label, hint]) => {
+                                                        const selected = activeSize[field];
+                                                        const otherSelected =
+                                                            field ===
+                                                            'allow_standard_sleeve'
+                                                                ? activeSize.allow_height_sleeve
+                                                                : activeSize.allow_standard_sleeve;
+                                                        return (
+                                                            <button
+                                                                type="button"
+                                                                key={field}
+                                                                data-selected={selected}
+                                                                aria-pressed={selected}
+                                                                disabled={
+                                                                    selected && !otherSelected
+                                                                }
+                                                                onClick={() =>
+                                                                    setEditor((current) => {
+                                                                        if (!current)
+                                                                            return current;
+                                                                        const sizes = [
+                                                                            ...current.sizes,
+                                                                        ];
+                                                                        sizes[activeSizeIndex] = {
+                                                                            ...sizes[
+                                                                                activeSizeIndex
+                                                                            ],
+                                                                            [field]: !selected,
+                                                                        };
+                                                                        return {
+                                                                            ...current,
+                                                                            sizes,
+                                                                        };
+                                                                    })
+                                                                }
+                                                            >
+                                                                <PiCheck aria-hidden />
+                                                                <strong>{label}</strong>
+                                                                <small>{hint}</small>
+                                                            </button>
+                                                        );
+                                                    },
+                                                )}
+                                            </div>
+                                        </section>
                                     </div>
                                 </article>
                             )}
