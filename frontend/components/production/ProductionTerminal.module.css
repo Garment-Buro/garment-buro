@@ -521,20 +521,30 @@
     flex-wrap: wrap;
     margin: 12px 0;
 }
+.intakeSection {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
+}
 .approvalPanel {
-    margin-bottom: 20px;
+    margin-bottom: 16px;
     padding: 16px;
     border: 1px solid var(--line);
     border-radius: 16px;
     background: #f8f7fa;
 }
-.approvalPanel > p {
-    margin-bottom: 12px;
+.intakeHeading h3,
+.intakeHeading p {
+    margin: 0;
+}
+.intakeHeading p {
+    margin-top: 4px;
 }
 .approvalGrid {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
+    margin-top: 12px;
 }
 .approvalGrid > span {
     padding: 10px 12px;
@@ -551,6 +561,53 @@
     display: block;
     margin-top: 3px;
     color: var(--ink);
+}
+.intakeActions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+}
+.intakeActions button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 48px;
+}
+.intakeActions svg {
+    width: 20px;
+    height: 20px;
+    flex: 0 0 20px;
+}
+.terminal button.problemButton {
+    border-color: #d7a09c;
+    background: #fff;
+    color: #8f2c25;
+}
+.terminal button.problemButton:hover:not(:disabled) {
+    border-color: #8f2c25;
+    background: #fbeae7;
+}
+.reviewHint {
+    margin: 12px 0 0 !important;
+    padding: 12px;
+    border-radius: 12px;
+    background: #fff7e6;
+    color: #76520f;
+    font-size: 14px;
+}
+.issueForm {
+    margin: 12px 0 0 !important;
+    padding: 16px;
+    border-radius: 12px;
+    background: #fff;
+}
+.issueActions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
 }
 .warning,
 .error,
@@ -805,6 +862,15 @@
     }
     .actions {
         align-items: stretch;
+    }
+    .intakeActions,
+    .issueActions {
+        display: grid;
+        grid-template-columns: 1fr;
+    }
+    .intakeActions > button,
+    .issueActions > button {
+        width: 100%;
     }
     .actions > button,
     .file > button,

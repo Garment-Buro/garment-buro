@@ -222,6 +222,7 @@ def test_factory_registers_catalog_mutations_only_for_guarded_cutover() -> None:
         ("POST", "/api/crm/files"),
         ("GET", "/api/crm/files/{attachment_id}/download"),
         ("GET", "/api/production/admin/assortment/models"),
+        ("GET", "/api/production/admin/assortment/model-categories"),
         ("POST", "/api/production/admin/assortment/models"),
         ("GET", "/api/production/admin/assortment/tech-cards"),
         ("GET", "/api/production/admin/assortment/fabrics"),
@@ -229,6 +230,7 @@ def test_factory_registers_catalog_mutations_only_for_guarded_cutover() -> None:
         ("GET", "/api/production/admin/assortment/accessories"),
         ("GET", "/api/production/admin/assortment/boxes"),
         ("GET", "/api/production/admin/assortment/products"),
+        ("GET", "/api/production/admin/assortment/product-communities"),
         ("POST", "/api/production/admin/assortment/media/public"),
         ("POST", "/api/production/admin/assortment/media/pattern"),
     } <= registered

@@ -29,6 +29,28 @@ const getErrorMessage = async (response: Response) => {
         const payload = await response.json() as { detail?: unknown; message?: unknown };
         if (typeof payload.detail === 'string' && payload.detail) return payload.detail;
         if (typeof payload.message === 'string' && payload.message) return payload.message;
+        if (Array.isArray(payload.detail)) {
+            const messages = payload.detail
+                .map((item) => {
+                    if (!item || typeof item !== 'object') return null;
+                    const issue = item as { loc?: unknown; msg?: unknown };
+                    if (typeof issue.msg !== 'string') return null;
+                    const location = Array.isArray(issue.loc)
+                        ? issue.loc.filter((part) => part !== 'body').join('.')
+                        : '';
+                    return location ? `${location}: ${issue.msg}` : issue.msg;
+                })
+                .filter((message): message is string => Boolean(message));
+            if (messages.length) return messages.join('; ');
+        }
+        if (
+            payload.detail &&
+            typeof payload.detail === 'object' &&
+            'message' in payload.detail &&
+            typeof payload.detail.message === 'string'
+        ) {
+            return payload.detail.message;
+        }
     } catch {
         // The status-based fallback below also covers non-JSON error responses.
     }

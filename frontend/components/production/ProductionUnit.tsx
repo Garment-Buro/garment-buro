@@ -1,6 +1,5 @@
 'use client';
 import { useState } from 'react';
-import { PiChatCircleDots } from 'react-icons/pi';
 import {
     labels,
     type Project,
@@ -43,10 +42,7 @@ export function ProductionUnit({
                 ? 'cut'
                 : currentStage(unit),
         spec = unit.specification,
-        tech = stations.includes('tech'),
-        rawComment = unit.source.customization?.comment,
-        orderComment =
-            typeof rawComment === 'string' ? rawComment.trim() : '';
+        tech = stations.includes('tech');
     const download = async (id: number) => {
         setDownloading(true);
         setError('');
@@ -86,14 +82,7 @@ export function ProductionUnit({
                     {stage ? labels[stage] : spec ? 'Готово' : 'Нет задания'}
                 </span>
             </div>
-            <div className={styles.orderComment} data-empty={!orderComment}>
-                <PiChatCircleDots aria-hidden />
-                <div>
-                    <strong>Комментарий к заказу</strong>
-                    <p>{orderComment || 'Комментарий не оставлен'}</p>
-                </div>
-            </div>
-            <OrderEvidence unit={unit} />
+            {station !== 'tech' && <OrderEvidence unit={unit} />}
             {station === 'cut' && <ProductionCuttingBrief unit={unit} />}
             {project.flow_version === 2 && (
                 <UnitHandoff
@@ -160,53 +149,48 @@ export function ProductionUnit({
                         ))}
                     </ol>
                     <p className={styles.instructions}>{spec.instructions}</p>
-                    <details
-                        className={styles.section}
-                        open={station === 'kit'}
-                    >
-                        <summary>
-                            Комплектность ·{' '}
-                            {Object.values(unit.checks).filter(Boolean).length}/
-                            {spec.components.length}
-                        </summary>
-                        {spec.components.map((component) => (
-                            <label
-                                className={styles.component}
-                                key={component.key}
-                            >
-                                <input
-                                    type="checkbox"
-                                    checked={Boolean(
-                                        unit.checks[component.key],
-                                    )}
-                                    disabled={
-                                        busy ||
-                                        (project.flow_version === 2
-                                            ? !['kit', 'waiting_dtf'].includes(
-                                                  unit.lane ?? '',
-                                              )
-                                            : project.state !== 'kitting') ||
-                                        !canAct(stations, 'kit')
-                                    }
-                                    onChange={(event) =>
-                                        void send({
-                                            action: 'check_component',
-                                            unit_id: unit.id,
-                                            component_key: component.key,
-                                            checked: event.target.checked,
-                                        })
-                                    }
-                                />
-                                <span>
-                                    <strong>{component.name}</strong>
-                                    <small>{component.location}</small>
-                                </span>
-                                <span>
-                                    {component.quantity} {component.unit}
-                                </span>
-                            </label>
-                        ))}
-                    </details>
+                    {canAct(stations, 'kit') && (
+                        <details className={styles.section} open>
+                            <summary>Комплектующие</summary>
+                            {spec.components.map((component) => (
+                                <label
+                                    className={styles.component}
+                                    key={component.key}
+                                >
+                                    <input
+                                        type="checkbox"
+                                        checked={Boolean(
+                                            unit.checks[component.key],
+                                        )}
+                                        disabled={
+                                            busy ||
+                                            (project.flow_version === 2
+                                                ? ![
+                                                      'kit',
+                                                      'waiting_dtf',
+                                                  ].includes(unit.lane ?? '')
+                                                : project.state !== 'kitting')
+                                        }
+                                        onChange={(event) =>
+                                            void send({
+                                                action: 'check_component',
+                                                unit_id: unit.id,
+                                                component_key: component.key,
+                                                checked: event.target.checked,
+                                            })
+                                        }
+                                    />
+                                    <span>
+                                        <strong>{component.name}</strong>
+                                        <small>{component.location}</small>
+                                    </span>
+                                    <span>
+                                        {component.quantity} {component.unit}
+                                    </span>
+                                </label>
+                            ))}
+                        </details>
+                    )}
                     {spec.print_file_ids.length > 0 && (
                         <div className={styles.statusGrid}>
                             <p>
@@ -225,60 +209,67 @@ export function ProductionUnit({
                             </p>
                         </div>
                     )}
-                    {(tech || canAct(stations, 'cut') ||
-                        canAct(stations, 'workshop') ||
-                        canAct(stations, 'dtf') ||
-                        canAct(stations, 'application')) && (
-                        <details className={styles.section}>
-                            <summary>Закреплённые оригиналы</summary>
-                            {unit.files
-                                .filter(
-                                    (file) =>
-                                        tech ||
-                                        (spec.pattern_file_ids.includes(
-                                            file.id,
-                                        ) &&
-                                            (canAct(stations, 'cut') ||
-                                                canAct(
-                                                    stations,
-                                                    'workshop',
-                                                ))) ||
-                                        (spec.print_file_ids.includes(
-                                            file.id,
-                                        ) &&
-                                            (canAct(stations, 'dtf') ||
-                                                canAct(stations, 'workshop') ||
-                                                canAct(
-                                                    stations,
-                                                    'application',
-                                                ))),
-                                )
-                                .map((file) => (
-                                    <div key={file.id} className={styles.file}>
-                                        <span>
-                                            {file.name}
-                                            <small>
-                                                {spec.pattern_file_ids.includes(
-                                                    file.id,
-                                                )
-                                                    ? 'Лекала'
-                                                    : 'Печать'}{' '}
-                                                · SHA256{' '}
-                                                {file.sha256.slice(0, 12)}…
-                                            </small>
-                                        </span>
-                                        <button
-                                            disabled={downloading}
-                                            onClick={() =>
-                                                void download(file.id)
-                                            }
+                    {!tech &&
+                        (canAct(stations, 'cut') ||
+                            canAct(stations, 'workshop') ||
+                            canAct(stations, 'dtf') ||
+                            canAct(stations, 'application')) && (
+                            <details className={styles.section}>
+                                <summary>Закреплённые оригиналы</summary>
+                                {unit.files
+                                    .filter(
+                                        (file) =>
+                                            tech ||
+                                            (spec.pattern_file_ids.includes(
+                                                file.id,
+                                            ) &&
+                                                (canAct(stations, 'cut') ||
+                                                    canAct(
+                                                        stations,
+                                                        'workshop',
+                                                    ))) ||
+                                            (spec.print_file_ids.includes(
+                                                file.id,
+                                            ) &&
+                                                (canAct(stations, 'dtf') ||
+                                                    canAct(
+                                                        stations,
+                                                        'workshop',
+                                                    ) ||
+                                                    canAct(
+                                                        stations,
+                                                        'application',
+                                                    ))),
+                                    )
+                                    .map((file) => (
+                                        <div
+                                            key={file.id}
+                                            className={styles.file}
                                         >
-                                            Открыть оригинал
-                                        </button>
-                                    </div>
-                                ))}
-                        </details>
-                    )}
+                                            <span>
+                                                {file.name}
+                                                <small>
+                                                    {spec.pattern_file_ids.includes(
+                                                        file.id,
+                                                    )
+                                                        ? 'Лекала'
+                                                        : 'Печать'}{' '}
+                                                    · SHA256{' '}
+                                                    {file.sha256.slice(0, 12)}…
+                                                </small>
+                                            </span>
+                                            <button
+                                                disabled={downloading}
+                                                onClick={() =>
+                                                    void download(file.id)
+                                                }
+                                            >
+                                                Открыть оригинал
+                                            </button>
+                                        </div>
+                                    ))}
+                            </details>
+                        )}
                     <div className={styles.actions}>
                         {tech &&
                             project.state === 'inbox' &&
@@ -424,48 +415,44 @@ export function ProductionUnit({
                         )}
                 </>
             )}
-            {project.state !== 'dispatched' && (
-                    <details className={styles.section}>
-                        <summary>
-                            {unit.issue
-                                ? 'Решение проблемы'
-                                : 'Проблема'}
-                        </summary>
-                        <label>
-                            Описание
-                            <textarea
-                                rows={2}
-                                maxLength={1000}
-                                value={note}
-                                onChange={(event) =>
-                                    setNote(event.target.value)
+            {project.state !== 'dispatched' && station !== 'tech' && (
+                <details className={styles.section}>
+                    <summary>
+                        {unit.issue ? 'Решение проблемы' : 'Проблема'}
+                    </summary>
+                    <label>
+                        Описание
+                        <textarea
+                            rows={2}
+                            maxLength={1000}
+                            value={note}
+                            onChange={(event) => setNote(event.target.value)}
+                        />
+                    </label>
+                    <div className={styles.actions}>
+                        {!unit.issue && (
+                            <button
+                                disabled={busy || !note.trim()}
+                                onClick={() =>
+                                    void send({
+                                        action: 'report_issue',
+                                        unit_id: unit.id,
+                                        note,
+                                    })
                                 }
-                            />
-                        </label>
-                        <div className={styles.actions}>
-                            {!unit.issue && (
-                                <button
-                                    disabled={busy || !note.trim()}
-                                    onClick={() =>
-                                        void send({
-                                            action: 'report_issue',
-                                            unit_id: unit.id,
-                                            note,
-                                        })
-                                    }
-                                >
-                                    Отправить тикет администратору
-                                </button>
-                            )}
-                            {unit.issue && (
-                                <p className={styles.muted}>
-                                    Проблема передана администратору. Работа по
-                                    изделию возобновится после его решения.
-                                </p>
-                            )}
-                        </div>
-                    </details>
-                )}
+                            >
+                                Отправить тикет администратору
+                            </button>
+                        )}
+                        {unit.issue && (
+                            <p className={styles.muted}>
+                                Проблема передана администратору. Работа по
+                                изделию возобновится после его решения.
+                            </p>
+                        )}
+                    </div>
+                </details>
+            )}
             {error && (
                 <p className={styles.error} role="alert">
                     {error}

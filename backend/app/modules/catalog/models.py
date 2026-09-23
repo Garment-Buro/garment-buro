@@ -183,9 +183,9 @@ class ProductVariant(Base, IntegerIdMixin, TimestampMixin):
     __table_args__ = (
         UniqueConstraint(
             "product_id",
-            "size",
-            "color",
-            name="uq_product_variant_identity",
+            "garment_size_id",
+            "fabric_id",
+            name="uq_product_variant_selection",
         ),
         CheckConstraint(
             "stock_quantity >= 0",

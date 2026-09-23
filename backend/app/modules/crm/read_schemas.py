@@ -113,6 +113,8 @@ class CrmGarmentSizeRead(BaseModel):
     max_width_cm: Decimal | None
     min_sleeve_length_cm: Decimal | None
     max_sleeve_length_cm: Decimal | None
+    allow_standard_sleeve: bool
+    allow_height_sleeve: bool
     currency: str
     is_active: bool
     version: int
@@ -129,10 +131,13 @@ class CrmPublishedTechCardRead(BaseModel):
 
 class CrmGarmentModelRead(BaseModel):
     id: int
+    category_id: int | None
     code: str
     name: str
     description: str | None
-    base_height_cm: Decimal | None
+    base_size_code: str | None
+    fit_model_name: str | None
+    fit_model_height_cm: Decimal | None
     base_length_cm: Decimal | None
     base_width_cm: Decimal | None
     base_weight_g: Decimal | None

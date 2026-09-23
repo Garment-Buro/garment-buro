@@ -79,6 +79,12 @@ def _payload(
     )
 
 
+def test_product_category_slug_is_normalized_before_pattern_validation() -> None:
+    category = ProductCategoryWrite(slug=" GARMENT-BURO-BLANKS ", name="Бланки")
+
+    assert category.slug == "garment-buro-blanks"
+
+
 def test_catalog_write_service_replaces_normalized_children_and_keeps_audit(
     tmp_path: Path,
 ) -> None:

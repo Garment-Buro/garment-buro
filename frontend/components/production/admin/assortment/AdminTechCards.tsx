@@ -14,6 +14,7 @@ import {
     employeeStations,
     stationLabels,
 } from '@/lib/production/adminTypes';
+import { compactDecimal } from '@/lib/production/numbers';
 import type {
     GarmentModel,
     ReferencePage,
@@ -95,6 +96,11 @@ export function AdminTechCards() {
                         >[0],
                     ),
                     position: index + 1,
+                    standard_minutes:
+                        checkpoint.standard_minutes == null
+                            ? null
+                            : compactDecimal(checkpoint.standard_minutes),
+                    labor_cost: compactDecimal(checkpoint.labor_cost),
                 })) ?? [newCheckpoint(1)],
         });
     };

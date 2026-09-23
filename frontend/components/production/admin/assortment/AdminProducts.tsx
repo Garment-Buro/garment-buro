@@ -2,11 +2,15 @@
 
 import { useMemo, useState, type FormEvent } from 'react';
 import {
+    PiArrowLeft,
+    PiArrowRight,
+    PiCheck,
     PiImage,
     PiPackage,
     PiPencilSimple,
     PiPlus,
-    PiTrash,
+    PiTShirt,
+    PiUsersThree,
 } from 'react-icons/pi';
 import { useAssortmentResource } from '@/hooks/production/useAssortmentResource';
 import {
@@ -18,13 +22,20 @@ import type {
     Fabric,
     GarmentModel,
     ProductCategory,
+    ProductCommunity,
     ProductDetail,
     ProductReference,
     ProductVariantReference,
     ReferencePage,
 } from '@/lib/production/assortmentTypes';
 import { safeImage } from '@/lib/production/workflow';
-import { AssortmentDialog, AssortmentFeedback } from './AssortmentDialog';
+import {
+    AssortmentDialog,
+    AssortmentFeedback,
+    FileUploadStatus,
+    idleFileUploadStatus,
+    type FileUploadStatusValue,
+} from './AssortmentDialog';
 import styles from '../ProductionAdmin.module.css';
 
 type ProductEditor = ProductDetail & {
@@ -86,22 +97,57 @@ const productPrice = (value: string | number) =>
         maximumFractionDigits: 2,
     }).format(Number(value));
 
+const categorySlug = (value: string) => {
+    const transliteration: Record<string, string> = {
+        а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'e', ж: 'zh',
+        з: 'z', и: 'i', й: 'i', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o',
+        п: 'p', р: 'r', с: 's', т: 't', у: 'u', ф: 'f', х: 'h', ц: 'c',
+        ч: 'ch', ш: 'sh', щ: 'sch', ъ: '', ы: 'y', ь: '', э: 'e', ю: 'yu',
+        я: 'ya',
+    };
+    return value
+        .trim()
+        .toLocaleLowerCase('ru')
+        .split('')
+        .map((character) => transliteration[character] ?? character)
+        .join('')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 96);
+};
+
 export function AdminProducts() {
     const products = useAssortmentResource<ProductReference[]>('products');
     const categories =
         useAssortmentResource<ProductCategory[]>('product-categories');
+    const communities =
+        useAssortmentResource<ProductCommunity[]>('product-communities');
     const models = useAssortmentResource<ReferencePage<GarmentModel>>('models');
     const fabrics = useAssortmentResource<ReferencePage<Fabric>>('fabrics');
     const [search, setSearch] = useState('');
+    const [workspace, setWorkspace] = useState<
+        'overview' | 'blanks' | 'communities'
+    >('overview');
+    const [communityId, setCommunityId] = useState<number | null>(null);
     const [editor, setEditor] = useState<ProductEditor | null>(null);
     const [categoryEditor, setCategoryEditor] = useState<CategoryEditor | null>(null);
     const [loadingEditor, setLoadingEditor] = useState(false);
     const [saving, setSaving] = useState(false);
     const [uploading, setUploading] = useState(false);
+    const [uploadStatus, setUploadStatus] =
+        useState<FileUploadStatusValue>(idleFileUploadStatus);
     const [formError, setFormError] = useState('');
+    const selectedCommunity = communities.data?.find(
+        (community) => community.id === communityId,
+    );
     const visibleProducts = useMemo(() => {
         const query = search.trim().toLocaleLowerCase('ru');
-        const rows = products.data ?? [];
+        const allowedIds = selectedCommunity
+            ? new Set(selectedCommunity.product_ids)
+            : null;
+        const rows = (products.data ?? []).filter(
+            (product) => !allowedIds || allowedIds.has(product.id),
+        );
         return query
             ? rows.filter((product) =>
                   `${product.title} ${product.slug ?? ''}`
@@ -109,13 +155,30 @@ export function AdminProducts() {
                       .includes(query),
               )
             : rows;
-    }, [products.data, search]);
+    }, [products.data, search, selectedCommunity]);
     const categoryName = (id: number | null) =>
         categories.data?.find((category) => category.id === id)?.name ??
         'Без категории';
     const modelName = (id: number | null) =>
         models.data?.items.find((model) => model.id === id)?.name ??
         'Модель не назначена';
+    const selectedModel = models.data?.items.find(
+        (model) => model.id === editor?.garment_model_id,
+    );
+    const selectedSizeIds = Array.from(
+        new Set(
+            (editor?.variantReferences ?? [])
+                .map((reference) => reference.garment_size_id)
+                .filter((id): id is number => id != null),
+        ),
+    );
+    const selectedFabricIds = Array.from(
+        new Set(
+            (editor?.variantReferences ?? [])
+                .map((reference) => reference.fabric_id)
+                .filter((id): id is number => id != null),
+        ),
+    );
 
     const editProduct = async (reference: ProductReference) => {
         setLoadingEditor(true);
@@ -131,6 +194,14 @@ export function AdminProducts() {
                 garment_model_id: reference.garment_model_id,
                 variantReferences: reference.variants,
             });
+            setUploadStatus(
+                detail.image_left
+                    ? {
+                          state: 'success',
+                          message: 'Основное изображение уже загружено',
+                      }
+                    : idleFileUploadStatus,
+            );
         } catch (reason) {
             setFormError(
                 reason instanceof Error
@@ -144,6 +215,11 @@ export function AdminProducts() {
     const submitCategory = async (event: FormEvent) => {
         event.preventDefault();
         if (!categoryEditor) return;
+        const slug = categorySlug(categoryEditor.slug || categoryEditor.name);
+        if (!slug) {
+            setFormError('Укажите название категории.');
+            return;
+        }
         setSaving(true);
         setFormError('');
         try {
@@ -153,7 +229,7 @@ export function AdminProducts() {
                     : 'product-categories',
                 categoryEditor.id ? 'PUT' : 'POST',
                 {
-                    slug: categoryEditor.slug,
+                    slug,
                     name: categoryEditor.name,
                     description: categoryEditor.description,
                     is_active: categoryEditor.is_active,
@@ -280,64 +356,281 @@ export function AdminProducts() {
             return { ...current, variants, variantReferences };
         });
     };
+    const rebuildVariantMatrix = (
+        sizeIds: number[],
+        fabricIds: number[],
+    ) => {
+        setEditor((current) => {
+            if (!current) return current;
+            const selectedModel = models.data?.items.find(
+                (model) => model.id === current.garment_model_id,
+            );
+            const existing = new Map(
+                current.variantReferences.map((reference, index) => [
+                    `${reference.garment_size_id ?? ''}:${reference.fabric_id ?? ''}`,
+                    { variant: current.variants[index], reference },
+                ]),
+            );
+            const combinations =
+                sizeIds.length === 0 && fabricIds.length === 0
+                    ? []
+                    : (sizeIds.length ? sizeIds : [null]).flatMap((sizeId) =>
+                          (fabricIds.length ? fabricIds : [null]).map(
+                              (fabricId) => ({ sizeId, fabricId }),
+                          ),
+                      );
+            const next = combinations.map(({ sizeId, fabricId }) => {
+                const key = `${sizeId ?? ''}:${fabricId ?? ''}`;
+                const previous = existing.get(key);
+                if (previous) return previous;
+                const size = selectedModel?.sizes.find(
+                    (item) => item.id === sizeId,
+                );
+                const fabric = fabrics.data?.items.find(
+                    (item) => item.id === fabricId,
+                );
+                return {
+                    variant: {
+                        id: 0,
+                        size: size?.code ?? null,
+                        color: fabric?.color_name ?? null,
+                        color_hex: fabric?.color_hex ?? null,
+                        stock_quantity: 0,
+                        width_cm: null,
+                        height_cm: null,
+                        preview_image: null,
+                        images: null,
+                    },
+                    reference: {
+                        id: 0,
+                        sku: null,
+                        size: size?.code ?? null,
+                        garment_size_id: sizeId,
+                        fabric_id: fabricId,
+                        color: fabric?.color_name ?? null,
+                        stock_quantity: 0,
+                    },
+                };
+            });
+            return {
+                ...current,
+                variants: next.map((item) => item.variant),
+                variantReferences: next.map((item) => item.reference),
+            };
+        });
+    };
 
     return (
-        <section aria-busy={products.loading || loadingEditor}>
-            <div className={styles.assortmentHeading}>
-                <div>
-                    <h3>Товары</h3>
-                    <p className={styles.muted}>
-                        Каталог, цены, остатки, варианты и связь с производственной моделью.
-                    </p>
-                </div>
-                <div className={styles.headingActions}>
-                    <button
-                        onClick={() =>
-                            setCategoryEditor({
-                                slug: '',
-                                name: '',
-                                description: null,
-                                is_active: true,
-                            })
+        <section
+            aria-busy={products.loading || communities.loading || loadingEditor}
+        >
+            {workspace === 'overview' && (
+                <>
+                    <div className={styles.assortmentHeading}>
+                        <div>
+                            <h3>Товары</h3>
+                            <p className={styles.muted}>
+                                Выберите основной каталог или товары конкретного
+                                сообщества.
+                            </p>
+                        </div>
+                    </div>
+                    <div className={styles.catalogHub}>
+                        <button
+                            type="button"
+                            className={styles.catalogHubCard}
+                            onClick={() => setWorkspace('blanks')}
+                        >
+                            <span className={styles.catalogHubIcon}>
+                                <PiTShirt aria-hidden />
+                            </span>
+                            <span>
+                                <strong>Garment-Buro бланки</strong>
+                                <small>{products.data?.length ?? 0} товаров</small>
+                            </span>
+                            <PiArrowRight aria-hidden />
+                        </button>
+                        <button
+                            type="button"
+                            className={styles.catalogHubCard}
+                            onClick={() => setWorkspace('communities')}
+                        >
+                            <span className={styles.catalogHubIcon}>
+                                <PiUsersThree aria-hidden />
+                            </span>
+                            <span>
+                                <strong>Сообщества</strong>
+                                <small>
+                                    {communities.data?.length ?? 0} лендингов
+                                </small>
+                            </span>
+                            <PiArrowRight aria-hidden />
+                        </button>
+                    </div>
+                </>
+            )}
+            {workspace === 'communities' && !selectedCommunity && (
+                <>
+                    <div className={styles.assortmentHeading}>
+                        <div>
+                            <button
+                                type="button"
+                                className={styles.workspaceBack}
+                                onClick={() => setWorkspace('overview')}
+                            >
+                                <PiArrowLeft aria-hidden /> Все товары
+                            </button>
+                            <h3>Сообщества</h3>
+                            <p className={styles.muted}>
+                                Лендинги и товары, которые показываются в каждом из
+                                них.
+                            </p>
+                        </div>
+                    </div>
+                    <AssortmentFeedback
+                        loading={communities.loading}
+                        error={communities.error}
+                        empty={
+                            !communities.loading &&
+                            (communities.data ?? []).length === 0
                         }
-                    >
-                        <PiPlus aria-hidden /> Категория
-                    </button>
-                    <button onClick={() => setEditor(emptyProduct())}>
-                        <PiPlus aria-hidden /> Добавить товар
-                    </button>
-                </div>
-            </div>
-            <div className={styles.chipList} aria-label="Категории товаров">
-                {(categories.data ?? []).map((category) => (
-                    <button
-                        key={category.id}
-                        onClick={() => setCategoryEditor({ ...category })}
-                    >
-                        {category.name}
-                    </button>
-                ))}
-            </div>
-            <label className={styles.assortmentSearch}>
-                Поиск товара
-                <input
-                    value={search}
-                    placeholder="Название или slug"
-                    onChange={(event) => setSearch(event.target.value)}
-                />
-            </label>
+                    />
+                    <div className={styles.communityGrid}>
+                        {(communities.data ?? []).map((community) => {
+                            const image = safeImage(community.image_url);
+                            return (
+                                <button
+                                    type="button"
+                                    className={styles.communityCard}
+                                    key={community.id}
+                                    onClick={() => setCommunityId(community.id)}
+                                >
+                                    <span className={styles.communityMedia}>
+                                        {image ? (
+                                            // eslint-disable-next-line @next/next/no-img-element
+                                            <img src={image} alt="" loading="lazy" />
+                                        ) : (
+                                            <PiUsersThree aria-hidden />
+                                        )}
+                                    </span>
+                                    <span className={styles.communityBody}>
+                                        <span>
+                                            <small>{community.partner_name}</small>
+                                            <strong>{community.title}</strong>
+                                            <small>/{community.slug}</small>
+                                        </span>
+                                        <span>
+                                            {community.product_ids.length} товаров
+                                            <PiArrowRight aria-hidden />
+                                        </span>
+                                    </span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </>
+            )}
+            {(workspace === 'blanks' || selectedCommunity) && (
+                <>
+                    <div className={styles.assortmentHeading}>
+                        <div>
+                            <button
+                                type="button"
+                                className={styles.workspaceBack}
+                                onClick={() => {
+                                    setSearch('');
+                                    if (selectedCommunity) {
+                                        setCommunityId(null);
+                                    } else {
+                                        setWorkspace('overview');
+                                    }
+                                }}
+                            >
+                                <PiArrowLeft aria-hidden />
+                                {selectedCommunity ? 'Сообщества' : 'Все товары'}
+                            </button>
+                            <h3>
+                                {selectedCommunity?.title ??
+                                    'Garment-Buro бланки'}
+                            </h3>
+                            <p className={styles.muted}>
+                                {selectedCommunity
+                                    ? `${selectedCommunity.partner_name} · /${selectedCommunity.slug}`
+                                    : 'Основной каталог, цены, остатки и варианты товаров.'}
+                            </p>
+                        </div>
+                        {workspace === 'blanks' && (
+                            <div className={styles.headingActions}>
+                                <button
+                                    onClick={() =>
+                                        setCategoryEditor({
+                                            slug: '',
+                                            name: '',
+                                            description: null,
+                                            is_active: true,
+                                        })
+                                    }
+                                >
+                                    <PiPlus aria-hidden /> Категория каталога
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        setUploadStatus(idleFileUploadStatus);
+                                        setEditor(emptyProduct());
+                                    }}
+                                >
+                                    <PiPlus aria-hidden /> Добавить товар
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                    {workspace === 'blanks' && (
+                        <div
+                            className={styles.chipList}
+                            aria-label="Категории товаров"
+                        >
+                            {(categories.data ?? []).map((category) => (
+                                <button
+                                    key={category.id}
+                                    onClick={() =>
+                                        setCategoryEditor({ ...category })
+                                    }
+                                >
+                                    {category.name}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                    <label className={styles.assortmentSearch}>
+                        Поиск товара
+                        <input
+                            value={search}
+                            placeholder="Название или адрес"
+                            onChange={(event) => setSearch(event.target.value)}
+                        />
+                    </label>
+                </>
+            )}
             {formError && !editor && !categoryEditor && (
                 <p className={styles.error}>{formError}</p>
             )}
-            <AssortmentFeedback
-                loading={products.loading}
-                error={products.error}
-                empty={!products.loading && visibleProducts.length === 0}
-            />
-            <div className={styles.productGrid}>
+            {(workspace === 'blanks' || selectedCommunity) && (
+                <AssortmentFeedback
+                    loading={products.loading}
+                    error={products.error}
+                    empty={!products.loading && visibleProducts.length === 0}
+                />
+            )}
+            {(workspace === 'blanks' || selectedCommunity) && (
+                <div className={styles.productGrid}>
                 {visibleProducts.map((product) => {
                     const image = safeImage(product.image_url);
                     const sku = product.variants.find((variant) => variant.sku)?.sku;
+                    const productCommunities = (communities.data ?? [])
+                        .filter((community) =>
+                            community.product_ids.includes(product.id),
+                        )
+                        .map((community) => community.title);
                     return (
                         <article className={styles.productCard} key={product.id}>
                             <div className={styles.productMedia}>
@@ -388,6 +681,14 @@ export function AdminProducts() {
                                     <PiPackage aria-hidden />
                                     <span>{modelName(product.garment_model_id)}</span>
                                 </p>
+                                <p className={styles.productCommunity}>
+                                    <PiUsersThree aria-hidden />
+                                    <span>
+                                        {productCommunities.length
+                                            ? productCommunities.join(', ')
+                                            : 'Без сообщества'}
+                                    </span>
+                                </p>
                                 <dl className={styles.productFacts}>
                                     <div>
                                         <dt>Цена</dt>
@@ -406,7 +707,8 @@ export function AdminProducts() {
                         </article>
                     );
                 })}
-            </div>
+                </div>
+            )}
             {categoryEditor && (
                 <AssortmentDialog
                     title={categoryEditor.id ? 'Изменить категорию' : 'Новая категория'}
@@ -423,20 +725,27 @@ export function AdminProducts() {
                                         setCategoryEditor({
                                             ...categoryEditor,
                                             name: event.target.value,
+                                            ...(!categoryEditor.id
+                                                ? {
+                                                      slug: categorySlug(
+                                                          event.target.value,
+                                                      ),
+                                                  }
+                                                : {}),
                                         })
                                     }
                                 />
                             </label>
                             <label>
-                                Slug
+                                Адрес категории
                                 <input
-                                    required
                                     pattern="[a-z0-9][a-z0-9-]*"
                                     value={categoryEditor.slug}
+                                    placeholder="Заполнится по названию"
                                     onChange={(event) =>
                                         setCategoryEditor({
                                             ...categoryEditor,
-                                            slug: event.target.value.toLowerCase(),
+                                            slug: categorySlug(event.target.value),
                                         })
                                     }
                                 />
@@ -546,13 +855,8 @@ export function AdminProducts() {
                                                 garment_model_id: event.target.value
                                                     ? Number(event.target.value)
                                                     : null,
-                                                variantReferences:
-                                                    editor.variantReferences.map(
-                                                        (reference) => ({
-                                                            ...reference,
-                                                            garment_size_id: null,
-                                                        }),
-                                                    ),
+                                                variants: [],
+                                                variantReferences: [],
                                             })
                                         }
                                     >
@@ -618,7 +922,7 @@ export function AdminProducts() {
                                     <input
                                         type="number"
                                         min="0"
-                                        step="0.001"
+                                        step="0.01"
                                         value={editor.weight}
                                         onChange={(event) =>
                                             setEditor({
@@ -676,6 +980,11 @@ export function AdminProducts() {
                                                 const file = event.target.files?.[0];
                                                 if (!file) return;
                                                 setUploading(true);
+                                                setFormError('');
+                                                setUploadStatus({
+                                                    state: 'uploading',
+                                                    fileName: file.name,
+                                                });
                                                 try {
                                                     const media =
                                                         await uploadAssortmentMedia(
@@ -691,12 +1000,21 @@ export function AdminProducts() {
                                                               }
                                                             : current,
                                                     );
+                                                    setUploadStatus({
+                                                        state: 'success',
+                                                        fileName: file.name,
+                                                    });
                                                 } catch (reason) {
-                                                    setFormError(
+                                                    const message =
                                                         reason instanceof Error
                                                             ? reason.message
-                                                            : 'Не удалось загрузить изображение',
-                                                    );
+                                                            : 'Не удалось загрузить изображение';
+                                                    setFormError(message);
+                                                    setUploadStatus({
+                                                        state: 'error',
+                                                        fileName: file.name,
+                                                        message,
+                                                    });
                                                 } finally {
                                                     setUploading(false);
                                                 }
@@ -704,6 +1022,7 @@ export function AdminProducts() {
                                         />
                                         <small>JPEG, PNG или WebP</small>
                                     </label>
+                                    <FileUploadStatus value={uploadStatus} />
                                 </div>
                                 <label className={styles.checkField}>
                                     <input
@@ -722,197 +1041,156 @@ export function AdminProducts() {
                         </fieldset>
                         <fieldset className={styles.formSection}>
                             <legend>Варианты</legend>
-                            <div className={styles.sizeList}>
-                                {editor.variants.map((variant, index) => {
-                                    const reference =
-                                        editor.variantReferences[index];
-                                    const selectedModel = models.data?.items.find(
-                                        (model) =>
-                                            model.id === editor.garment_model_id,
-                                    );
-                                    return (
-                                        <article
-                                            className={styles.sizeEditor}
-                                            key={variant.id || index}
-                                        >
-                                            <div className={styles.assortmentCardTop}>
-                                                <h4>Вариант {index + 1}</h4>
-                                                <button
-                                                    type="button"
-                                                    className={styles.iconButton}
-                                                    onClick={() =>
-                                                        setEditor({
-                                                            ...editor,
-                                                            variants:
-                                                                editor.variants.filter(
-                                                                    (_, itemIndex) =>
-                                                                        itemIndex !==
-                                                                        index,
-                                                                ),
-                                                            variantReferences:
-                                                                editor.variantReferences.filter(
-                                                                    (_, itemIndex) =>
-                                                                        itemIndex !==
-                                                                        index,
-                                                                ),
-                                                        })
-                                                    }
-                                                    aria-label={`Удалить вариант ${index + 1}`}
-                                                >
-                                                    <PiTrash aria-hidden />
-                                                </button>
-                                            </div>
-                                            <div className={styles.formGrid}>
-                                                <label>
-                                                    Размер модели
-                                                    <select
-                                                        value={
-                                                            reference?.garment_size_id ??
-                                                            ''
-                                                        }
-                                                        onChange={(event) => {
-                                                            const size =
-                                                                selectedModel?.sizes.find(
-                                                                    (item) =>
-                                                                        item.id ===
-                                                                        Number(
-                                                                            event.target
-                                                                                .value,
-                                                                        ),
-                                                                );
-                                                            updateVariant(
-                                                                index,
-                                                                {
-                                                                    size:
-                                                                        size?.code ??
-                                                                        null,
-                                                                },
-                                                                {
-                                                                    garment_size_id:
-                                                                        size?.id ?? null,
-                                                                },
+                            {!selectedModel ? (
+                                <p className={styles.muted}>
+                                    Сначала выберите производственную модель.
+                                </p>
+                            ) : (
+                                <div className={styles.variantBuilder}>
+                                    <section>
+                                        <h4>Размеры</h4>
+                                        <div className={styles.variantChoiceGrid}>
+                                            {selectedModel.sizes.map((size) => {
+                                                const selected =
+                                                    size.id != null &&
+                                                    selectedSizeIds.includes(size.id);
+                                                return (
+                                                    <button
+                                                        type="button"
+                                                        key={size.id ?? size.code}
+                                                        data-selected={selected}
+                                                        aria-pressed={selected}
+                                                        onClick={() => {
+                                                            if (size.id == null) return;
+                                                            rebuildVariantMatrix(
+                                                                selected
+                                                                    ? selectedSizeIds.filter(
+                                                                          (id) =>
+                                                                              id !== size.id,
+                                                                      )
+                                                                    : [
+                                                                          ...selectedSizeIds,
+                                                                          size.id,
+                                                                      ],
+                                                                selectedFabricIds,
                                                             );
                                                         }}
                                                     >
-                                                        <option value="">
-                                                            Не назначен
-                                                        </option>
-                                                        {(
-                                                            selectedModel?.sizes ?? []
-                                                        ).map((size) => (
-                                                            <option
-                                                                key={size.id}
-                                                                value={size.id}
-                                                            >
-                                                                {size.code}
-                                                            </option>
-                                                        ))}
-                                                    </select>
-                                                </label>
-                                                <label>
-                                                    Ткань
-                                                    <select
-                                                        value={reference?.fabric_id ?? ''}
-                                                        onChange={(event) =>
-                                                            updateVariant(
-                                                                index,
-                                                                {},
-                                                                {
-                                                                    fabric_id: event.target
-                                                                        .value
-                                                                        ? Number(
-                                                                              event.target
-                                                                                  .value,
+                                                        <PiCheck aria-hidden />
+                                                        <strong>{size.code}</strong>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </section>
+                                    <section>
+                                        <h4>Ткани и цвета</h4>
+                                        <div className={styles.variantChoiceGrid}>
+                                            {(fabrics.data?.items ?? []).map(
+                                                (fabric) => {
+                                                    const selected =
+                                                        selectedFabricIds.includes(
+                                                            fabric.id,
+                                                        );
+                                                    return (
+                                                        <button
+                                                            type="button"
+                                                            key={fabric.id}
+                                                            data-selected={selected}
+                                                            aria-pressed={selected}
+                                                            onClick={() =>
+                                                                rebuildVariantMatrix(
+                                                                    selectedSizeIds,
+                                                                    selected
+                                                                        ? selectedFabricIds.filter(
+                                                                              (id) =>
+                                                                                  id !==
+                                                                                  fabric.id,
                                                                           )
-                                                                        : null,
-                                                                },
-                                                            )
-                                                        }
-                                                    >
-                                                        <option value="">
-                                                            Не назначена
-                                                        </option>
-                                                        {(fabrics.data?.items ?? []).map(
-                                                            (fabric) => (
-                                                                <option
-                                                                    key={fabric.id}
-                                                                    value={fabric.id}
-                                                                >
-                                                                    {fabric.name}
-                                                                </option>
-                                                            ),
-                                                        )}
-                                                    </select>
-                                                </label>
-                                                <label>
-                                                    Цвет
-                                                    <input
-                                                        value={variant.color ?? ''}
-                                                        onChange={(event) =>
-                                                            updateVariant(index, {
-                                                                color:
-                                                                    event.target.value ||
-                                                                    null,
-                                                            })
-                                                        }
-                                                    />
-                                                </label>
-                                                <label>
-                                                    Остаток
-                                                    <input
-                                                        type="number"
-                                                        min="0"
-                                                        value={variant.stock_quantity}
-                                                        onChange={(event) =>
-                                                            updateVariant(index, {
-                                                                stock_quantity: Number(
-                                                                    event.target.value,
-                                                                ),
-                                                            })
-                                                        }
-                                                    />
-                                                </label>
+                                                                        : [
+                                                                              ...selectedFabricIds,
+                                                                              fabric.id,
+                                                                          ],
+                                                                )
+                                                            }
+                                                        >
+                                                            <span
+                                                                className={
+                                                                    styles.variantColor
+                                                                }
+                                                                style={{
+                                                                    background:
+                                                                        fabric.color_hex ??
+                                                                        '#f2f0ef',
+                                                                }}
+                                                            />
+                                                            <PiCheck aria-hidden />
+                                                            <strong>
+                                                                {fabric.color_name ||
+                                                                    fabric.name}
+                                                            </strong>
+                                                            <small>{fabric.name}</small>
+                                                        </button>
+                                                    );
+                                                },
+                                            )}
+                                        </div>
+                                    </section>
+                                    {editor.variants.length > 0 && (
+                                        <section>
+                                            <div className={styles.variantSummaryHeading}>
+                                                <h4>Созданные варианты</h4>
+                                                <span>
+                                                    {editor.variants.length} шт.
+                                                </span>
                                             </div>
-                                        </article>
-                                    );
-                                })}
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() =>
-                                    setEditor({
-                                        ...editor,
-                                        variants: [
-                                            ...editor.variants,
-                                            {
-                                                id: 0,
-                                                size: null,
-                                                color: null,
-                                                color_hex: null,
-                                                stock_quantity: 0,
-                                                width_cm: null,
-                                                height_cm: null,
-                                                preview_image: null,
-                                                images: null,
-                                            },
-                                        ],
-                                        variantReferences: [
-                                            ...editor.variantReferences,
-                                            {
-                                                id: 0,
-                                                sku: null,
-                                                size: null,
-                                                garment_size_id: null,
-                                                fabric_id: null,
-                                                color: null,
-                                                stock_quantity: 0,
-                                            },
-                                        ],
-                                    })
-                                }
-                            >
-                                <PiPlus aria-hidden /> Добавить вариант
-                            </button>
+                                            <div className={styles.variantRows}>
+                                                {editor.variants.map(
+                                                    (variant, index) => (
+                                                        <article
+                                                            key={`${editor.variantReferences[index]?.garment_size_id}-${editor.variantReferences[index]?.fabric_id}`}
+                                                        >
+                                                            <div>
+                                                                <strong>
+                                                                    {variant.size ??
+                                                                        'Все размеры'}
+                                                                </strong>
+                                                                <small>
+                                                                    {variant.color ??
+                                                                        'Без ткани'}
+                                                                </small>
+                                                            </div>
+                                                            <label>
+                                                                Остаток
+                                                                <input
+                                                                    type="number"
+                                                                    min="0"
+                                                                    value={
+                                                                        variant.stock_quantity
+                                                                    }
+                                                                    onChange={(event) =>
+                                                                        updateVariant(
+                                                                            index,
+                                                                            {
+                                                                                stock_quantity:
+                                                                                    Number(
+                                                                                        event
+                                                                                            .target
+                                                                                            .value,
+                                                                                    ),
+                                                                            },
+                                                                        )
+                                                                    }
+                                                                />
+                                                            </label>
+                                                        </article>
+                                                    ),
+                                                )}
+                                            </div>
+                                        </section>
+                                    )}
+                                </div>
+                            )}
                         </fieldset>
                         {formError && <p className={styles.error}>{formError}</p>}
                         <div className={styles.editorActions}>

@@ -104,6 +104,37 @@ class CrmFabric(Base, IntegerIdMixin, TimestampMixin):
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
 
 
+class CrmGarmentModelCategory(Base, IntegerIdMixin, TimestampMixin):
+    __tablename__ = "crm_garment_model_categories"
+    __table_args__ = (
+        CheckConstraint(
+            "length(trim(code)) > 0",
+            name="crm_garment_model_category_code_nonempty",
+        ),
+        CheckConstraint(
+            "length(trim(name)) > 0",
+            name="crm_garment_model_category_name_nonempty",
+        ),
+        CheckConstraint(
+            "version > 0",
+            name="crm_garment_model_category_version_positive",
+        ),
+    )
+
+    code: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False, unique=True, index=True)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default="true",
+        index=True,
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+
+    models: Mapped[list[CrmGarmentModel]] = relationship(back_populates="category")
+
+
 class CrmGarmentModel(Base, IntegerIdMixin, TimestampMixin):
     __tablename__ = "crm_garment_models"
     __table_args__ = (
@@ -112,6 +143,10 @@ class CrmGarmentModel(Base, IntegerIdMixin, TimestampMixin):
         CheckConstraint(
             "base_height_cm IS NULL OR base_height_cm > 0",
             name="crm_garment_model_height_positive",
+        ),
+        CheckConstraint(
+            "fit_model_height_cm IS NULL OR fit_model_height_cm > 0",
+            name="crm_garment_model_fit_height_positive",
         ),
         CheckConstraint(
             "base_length_cm IS NULL OR base_length_cm > 0",
@@ -129,9 +164,19 @@ class CrmGarmentModel(Base, IntegerIdMixin, TimestampMixin):
     )
 
     code: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    category_id: Mapped[int | None] = mapped_column(
+        ForeignKey("crm_garment_model_categories.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Kept in the database for backwards compatibility with existing rows. New
+    # model editing uses a selected base size and never asks for a base height.
     base_height_cm: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    base_size_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    fit_model_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    fit_model_height_cm: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     base_length_cm: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     base_width_cm: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     base_weight_g: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
@@ -148,6 +193,8 @@ class CrmGarmentModel(Base, IntegerIdMixin, TimestampMixin):
         index=True,
     )
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+
+    category: Mapped[CrmGarmentModelCategory | None] = relationship(back_populates="models")
 
     sizes: Mapped[list[CrmGarmentSize]] = relationship(
         back_populates="garment_model",
@@ -244,6 +291,10 @@ class CrmGarmentSize(Base, IntegerIdMixin, TimestampMixin):
             name="crm_garment_size_sleeve_range_valid",
         ),
         CheckConstraint(
+            "allow_standard_sleeve OR allow_height_sleeve",
+            name="crm_garment_size_sleeve_option_required",
+        ),
+        CheckConstraint(
             "extra_width_price_per_cm IS NULL OR extra_width_price_per_cm >= 0",
             name="crm_garment_size_extra_width_price_nonnegative",
         ),
@@ -275,6 +326,18 @@ class CrmGarmentSize(Base, IntegerIdMixin, TimestampMixin):
     max_width_cm: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     min_sleeve_length_cm: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     max_sleeve_length_cm: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    allow_standard_sleeve: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default="true",
+    )
+    allow_height_sleeve: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default="true",
+    )
     extra_width_price_per_cm: Mapped[Decimal | None] = mapped_column(
         Numeric(12, 2),
         nullable=True,

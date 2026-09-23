@@ -1,7 +1,62 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import {
+    PiArrowClockwise,
+    PiCheckCircle,
+    PiFile,
+    PiWarningCircle,
+} from 'react-icons/pi';
 import styles from '../ProductionAdmin.module.css';
+
+export type FileUploadStatusValue = {
+    state: 'idle' | 'uploading' | 'success' | 'error';
+    fileName?: string;
+    message?: string;
+};
+
+export const idleFileUploadStatus: FileUploadStatusValue = { state: 'idle' };
+
+export function FileUploadStatus({
+    value,
+}: {
+    value: FileUploadStatusValue;
+}) {
+    const content = {
+        idle: {
+            icon: PiFile,
+            text: value.message ?? 'Файл не выбран',
+        },
+        uploading: {
+            icon: PiArrowClockwise,
+            text: value.fileName
+                ? `Загружаем ${value.fileName}`
+                : 'Загружаем файл',
+        },
+        success: {
+            icon: PiCheckCircle,
+            text: value.fileName
+                ? `${value.fileName} загружен`
+                : value.message ?? 'Файл загружен',
+        },
+        error: {
+            icon: PiWarningCircle,
+            text: value.message ?? 'Не удалось загрузить файл',
+        },
+    }[value.state];
+    const Icon = content.icon;
+    return (
+        <p
+            className={styles.uploadStatus}
+            data-state={value.state}
+            role={value.state === 'error' ? 'alert' : 'status'}
+            aria-live="polite"
+        >
+            <Icon aria-hidden />
+            <span>{content.text}</span>
+        </p>
+    );
+}
 
 export function AssortmentDialog({
     title,

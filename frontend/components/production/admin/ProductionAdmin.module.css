@@ -725,6 +725,165 @@
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
     gap: 16px;
 }
+.assortmentCategoryGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    margin: 0 0 16px;
+}
+.screen .assortmentCategoryGrid > button {
+    display: flex;
+    min-height: 88px;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 12px;
+    padding: 16px;
+    border-color: #e3e0e2;
+    background: #fff;
+    text-align: left;
+}
+.screen .assortmentCategoryGrid > button[data-selected='true'] {
+    border-color: #181818;
+    box-shadow: inset 0 0 0 1px #181818;
+}
+.assortmentCategoryGrid svg {
+    width: 28px;
+    height: 28px;
+    flex: 0 0 28px;
+}
+.assortmentCategoryGrid span {
+    display: grid;
+    min-width: 0;
+    gap: 3px;
+}
+.assortmentCategoryGrid strong,
+.assortmentCategoryGrid small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.assortmentCategoryGrid small {
+    color: #716b6e;
+}
+.catalogHub,
+.communityGrid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+}
+.screen .catalogHubCard {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    min-height: 148px;
+    align-items: center;
+    gap: 16px;
+    padding: 24px;
+    border-color: #e3e0e2;
+    background: #fff;
+    text-align: left;
+}
+.catalogHubCard > span:nth-child(2) {
+    display: grid;
+    min-width: 0;
+    gap: 6px;
+}
+.catalogHubCard strong {
+    font-size: 20px;
+    line-height: 26px;
+}
+.catalogHubCard small {
+    color: #716b6e;
+    font-size: 14px;
+}
+.catalogHubCard > svg {
+    width: 22px;
+    height: 22px;
+}
+.catalogHubIcon {
+    display: flex;
+    width: 56px;
+    height: 56px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 16px;
+    background: #f0ecef;
+    color: #513b63;
+}
+.catalogHubIcon svg {
+    width: 30px;
+    height: 30px;
+}
+.screen .workspaceBack {
+    width: fit-content;
+    min-height: 36px;
+    margin-bottom: 10px;
+    padding: 6px 10px;
+    border-color: transparent;
+    background: transparent;
+    color: #655f62;
+}
+.communityGrid {
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+}
+.screen .communityCard {
+    display: grid;
+    grid-template-columns: 112px minmax(0, 1fr);
+    min-height: 144px;
+    overflow: hidden;
+    padding: 0;
+    border-color: #e3e0e2;
+    background: #fff;
+    text-align: left;
+}
+.communityMedia {
+    display: flex;
+    min-height: 144px;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background: #eeebea;
+    color: #76647f;
+}
+.communityMedia img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.communityMedia svg {
+    width: 34px;
+    height: 34px;
+}
+.communityBody {
+    display: flex;
+    min-width: 0;
+    padding: 16px;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 12px;
+}
+.communityBody > span:first-child {
+    display: grid;
+    min-width: 0;
+    gap: 3px;
+}
+.communityBody strong,
+.communityBody small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.communityBody > span:last-child {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    color: #655f62;
+    font-size: 13px;
+}
+.communityBody > span:last-child svg {
+    width: 18px;
+    height: 18px;
+}
 .assortmentCard {
     min-width: 0;
     padding: 20px;
@@ -866,6 +1025,27 @@
     height: 16px;
 }
 .productModel span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.productCommunity {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 6px;
+    margin: -6px 0 12px;
+    color: #716b6e;
+    font-size: 12px;
+    line-height: 16px;
+}
+.productCommunity svg {
+    width: 15px;
+    height: 15px;
+    flex: 0 0 15px;
+}
+.productCommunity span {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1318,6 +1498,207 @@
     font-size: 14px;
     line-height: 20px;
 }
+.sizeChartPreview {
+    grid-column: 1 / -1;
+    margin: 0;
+    overflow: hidden;
+    border: 1px solid #e3e0e2;
+    border-radius: 12px;
+    background: #faf9f8;
+}
+.sizeChartPreview img {
+    display: block;
+    width: 100%;
+    max-height: 320px;
+    object-fit: contain;
+    background: #fff;
+}
+.sizeChartPreview figcaption {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    color: #484448;
+    font-size: 14px;
+}
+.sizeChartPreview figcaption > svg {
+    flex: 0 0 20px;
+}
+.screen .sizeChartPreview figcaption button {
+    min-height: 36px;
+    margin-left: auto;
+    padding: 6px 10px;
+}
+.lengthHeightRows {
+    display: grid;
+    gap: 12px;
+    margin-top: 12px;
+}
+.lengthHeightRows > div {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 20px minmax(0, 1fr);
+    align-items: end;
+    gap: 8px;
+}
+.lengthHeightRows > div > small {
+    grid-column: 1 / -1;
+    color: #656166;
+}
+.lengthHeightRows label {
+    gap: 4px;
+    font-size: 12px;
+}
+.lengthHeightRows label > span {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 6px;
+}
+.lengthHeightRows > div > svg {
+    width: 20px;
+    height: 20px;
+    margin-bottom: 14px;
+    color: #8a8589;
+}
+.squareChoiceGrid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 12px;
+}
+.screen .squareChoiceGrid button {
+    position: relative;
+    display: grid;
+    align-content: center;
+    min-width: 0;
+    min-height: 112px;
+    padding: 12px;
+    border-radius: 12px;
+    text-align: left;
+}
+.screen .squareChoiceGrid button > svg {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 18px;
+    height: 18px;
+    opacity: 0;
+}
+.screen .squareChoiceGrid button[data-selected='true'] {
+    border-color: #71528c;
+    background: #eee8f2;
+    box-shadow: inset 0 0 0 1px #71528c;
+}
+.screen .squareChoiceGrid button[data-selected='true'] > svg {
+    opacity: 1;
+}
+.squareChoiceGrid strong,
+.squareChoiceGrid small {
+    display: block;
+    overflow-wrap: anywhere;
+}
+.variantBuilder {
+    display: grid;
+    gap: 20px;
+}
+.variantBuilder section > h4,
+.variantSummaryHeading h4 {
+    margin: 0 0 10px;
+}
+.variantChoiceGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+    gap: 8px;
+}
+.screen .variantChoiceGrid button {
+    position: relative;
+    display: grid;
+    align-content: center;
+    justify-items: start;
+    min-width: 0;
+    min-height: 104px;
+    padding: 12px;
+    border-radius: 12px;
+    text-align: left;
+}
+.screen .variantChoiceGrid button[data-selected='true'] {
+    border-color: #71528c;
+    background: #eee8f2;
+    box-shadow: inset 0 0 0 1px #71528c;
+}
+.screen .variantChoiceGrid button > svg {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    opacity: 0;
+}
+.screen .variantChoiceGrid button[data-selected='true'] > svg {
+    opacity: 1;
+}
+.variantChoiceGrid strong,
+.variantChoiceGrid small {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.variantChoiceGrid small {
+    color: #656166;
+}
+.variantColor {
+    width: 28px;
+    height: 28px;
+    margin-bottom: 8px;
+    border: 1px solid rgb(24 24 24 / 14%);
+    border-radius: 8px;
+}
+.variantSummaryHeading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+.variantSummaryHeading > span {
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: #f2f0ef;
+    color: #656166;
+    font-size: 12px;
+}
+.variantRows {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+.variantRows article {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 96px;
+    align-items: end;
+    gap: 12px;
+    min-width: 0;
+    padding: 12px;
+    border: 1px solid #e3e0e2;
+    border-radius: 12px;
+    background: #fff;
+}
+.variantRows article strong,
+.variantRows article small {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.variantRows article small {
+    color: #656166;
+}
+.variantRows label {
+    gap: 4px;
+    font-size: 12px;
+}
+.squareChoiceGrid small {
+    margin-top: 4px;
+    color: #656166;
+}
 .relatedSection {
     margin-top: 32px;
     padding-top: 24px;
@@ -1387,6 +1768,11 @@
 }
 .clientDialog {
     width: min(100%, 880px);
+    height: min(760px, calc(100dvh - 48px));
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    overflow: hidden;
+    padding: 0;
 }
 .orderDetailsBody {
     display: grid;
@@ -1753,7 +2139,59 @@
 }
 .clientContactList {
     display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 8px;
+}
+.clientTabs {
+    display: flex;
+    gap: 8px;
+    min-width: 0;
+    padding: 12px 24px 0;
+    overflow-x: auto;
+    background: #faf9f8;
+    scrollbar-width: thin;
+}
+.screen .clientTabs > button {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 8px;
+    min-height: 40px;
+    padding: 8px 12px;
+    white-space: nowrap;
+}
+.screen .clientTabs > button[aria-selected='true'] {
+    border-color: #181818;
+    background: #181818;
+    color: #fff;
+}
+.clientTabs svg {
+    width: 20px;
+    height: 20px;
+    flex: 0 0 20px;
+}
+.clientTabs small {
+    display: grid;
+    min-width: 24px;
+    min-height: 24px;
+    padding: 2px 6px;
+    place-items: center;
+    border-radius: 9999px;
+    color: inherit;
+    background: rgb(113 82 140 / 12%);
+    font-variant-numeric: tabular-nums;
+}
+.clientTabs button[aria-selected='true'] small {
+    background: rgb(255 255 255 / 16%);
+}
+.clientTabContent {
+    min-height: 0;
+    padding: 16px 24px 24px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+.clientTabContent > .clientSection {
+    margin-top: 0;
 }
 .clientContactList p {
     gap: 12px;
@@ -1978,6 +2416,45 @@
 .screen .primaryButton:hover {
     background: #313131;
 }
+.uploadStatus {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 40px;
+    margin: 8px 0 0 !important;
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: #f2f0ef;
+    color: #656166;
+    font-size: 14px;
+    line-height: 20px;
+    overflow-wrap: anywhere;
+}
+.uploadStatus > svg {
+    width: 20px;
+    height: 20px;
+    flex: 0 0 20px;
+}
+.uploadStatus[data-state='uploading'] > svg {
+    animation: uploadStatusPulse 1.4s cubic-bezier(0.32, 0.72, 0, 1) infinite
+        alternate;
+}
+.uploadStatus[data-state='success'] {
+    background: #eaf5ee;
+    color: #2d7249;
+}
+.uploadStatus[data-state='error'] {
+    background: #fff0f1;
+    color: #962f39;
+}
+@keyframes uploadStatusPulse {
+    from {
+        opacity: 0.5;
+    }
+    to {
+        opacity: 1;
+    }
+}
 .accessCodeRow {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 48px;
@@ -2168,6 +2645,50 @@
     .assortmentSkeleton {
         grid-template-columns: 1fr;
     }
+    .assortmentCategoryGrid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+    }
+    .screen .assortmentCategoryGrid > button {
+        min-height: 72px;
+        gap: 8px;
+        padding: 12px;
+    }
+    .assortmentCategoryGrid svg {
+        width: 22px;
+        height: 22px;
+        flex-basis: 22px;
+    }
+    .catalogHub,
+    .communityGrid {
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+    .screen .catalogHubCard {
+        min-height: 104px;
+        gap: 12px;
+        padding: 16px;
+    }
+    .catalogHubIcon {
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+    }
+    .catalogHubIcon svg {
+        width: 26px;
+        height: 26px;
+    }
+    .catalogHubCard strong {
+        font-size: 17px;
+        line-height: 22px;
+    }
+    .screen .communityCard {
+        grid-template-columns: 92px minmax(0, 1fr);
+        min-height: 120px;
+    }
+    .communityMedia {
+        min-height: 120px;
+    }
     .assortmentCard {
         padding: 16px;
     }
@@ -2234,9 +2755,9 @@
     }
     .assortmentDialog {
         width: 100%;
-        height: calc(100dvh - max(16px, env(safe-area-inset-top)));
+        height: 100dvh;
         min-height: 0;
-        max-height: calc(100dvh - max(16px, env(safe-area-inset-top)));
+        max-height: 100dvh;
         padding: 0;
         border: 0;
         border-radius: 0;
@@ -2292,6 +2813,28 @@
     .sizePrimaryFields,
     .sizeRangeGrid {
         grid-template-columns: 1fr;
+    }
+    .sizeChartPreview img {
+        max-height: 220px;
+    }
+    .lengthHeightRows > div {
+        grid-template-columns: minmax(0, 1fr) 16px minmax(0, 1fr);
+    }
+    .squareChoiceGrid,
+    .variantRows {
+        grid-template-columns: 1fr;
+    }
+    .screen .squareChoiceGrid button {
+        min-height: 88px;
+    }
+    .variantChoiceGrid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .screen .variantChoiceGrid button {
+        min-height: 92px;
+    }
+    .variantRows article {
+        grid-template-columns: minmax(0, 1fr) 88px;
     }
     .fullField {
         grid-column: 1 / -1;
@@ -2593,6 +3136,11 @@
         align-items: flex-end;
         padding: max(16px, env(safe-area-inset-top)) 0 0;
     }
+    .modalBackdrop:has(.assortmentDialog) {
+        align-items: stretch;
+        padding: 0;
+        background: #faf9f8;
+    }
     .employeeEditor,
     .filtersDialog,
     .codeDialog,
@@ -2645,6 +3193,9 @@
         border-radius: 0;
         box-shadow: none;
     }
+    .clientDialog {
+        padding: 0;
+    }
     .orderDialog .dialogHeading,
     .payoutDialog .dialogHeading,
     .clientDialog .dialogHeading {
@@ -2653,6 +3204,17 @@
         padding: max(16px, env(safe-area-inset-top)) 16px 12px;
         border-bottom: 1px solid #e3e0e2;
         border-radius: 0;
+    }
+    .clientDialog .dialogHeading {
+        top: auto;
+        margin: 0;
+    }
+    .clientTabs {
+        gap: 8px;
+        padding: 8px 12px 0;
+    }
+    .clientTabContent {
+        padding: 12px 16px max(16px, env(safe-area-inset-bottom));
     }
     .orderOverview {
         grid-template-columns: 1fr;
@@ -2705,6 +3267,9 @@
     }
     .clientContactList p {
         padding: 8px;
+    }
+    .clientContactList {
+        grid-template-columns: 1fr;
     }
     .clientSection {
         margin-top: 16px;

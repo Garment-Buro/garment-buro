@@ -101,6 +101,9 @@ def test_assortment_models_patterns_materials_accessories_and_boxes(tmp_path: Pa
                 model_payload = CrmGarmentModelWrite(
                     code="TSHIRT_BASE",
                     name="T-shirt base",
+                    base_size_code="M",
+                    fit_model_name="Alex",
+                    fit_model_height_cm=Decimal("180"),
                     base_weight_g=Decimal("280"),
                     size_chart_media_object_id=size_chart.id,
                     sizes=[
@@ -114,6 +117,8 @@ def test_assortment_models_patterns_materials_accessories_and_boxes(tmp_path: Pa
                             max_height_cm=Decimal("184"),
                             min_sleeve_length_cm=Decimal("20"),
                             max_sleeve_length_cm=Decimal("26"),
+                            allow_standard_sleeve=True,
+                            allow_height_sleeve=False,
                         )
                     ],
                 )
@@ -131,7 +136,12 @@ def test_assortment_models_patterns_materials_accessories_and_boxes(tmp_path: Pa
                     actor_user_id=None,
                 )
                 assert model.size_chart_media_object_id == size_chart.id
+                assert model.base_size_code == "M"
+                assert model.fit_model_name == "Alex"
+                assert model.fit_model_height_cm == Decimal("180")
                 size = model.sizes[0]
+                assert size.allow_standard_sleeve is True
+                assert size.allow_height_sleeve is False
                 pattern_payload = CrmGarmentPatternWrite(
                     code="PAT-TSHIRT-M-001",
                     garment_model_id=model.id,

@@ -9,6 +9,7 @@ import {
     type Unit,
 } from '@/lib/production/types';
 import { productionApi } from '@/lib/api/production';
+import { compactDecimal } from '@/lib/production/numbers';
 import { useProductionAuthStore } from '@/store/productionAuthStore';
 import styles from './ProductionTerminal.module.css';
 
@@ -29,7 +30,10 @@ export function SpecificationForm({
                       unit.specification.tech_card_revision_id,
                   garment_size_id: unit.specification.garment_size_id,
                   route: unit.specification.route,
-                  components: unit.specification.components,
+                  components: unit.specification.components.map((component) => ({
+                      ...component,
+                      quantity: compactDecimal(component.quantity),
+                  })),
                   pattern_file_ids: unit.specification.pattern_file_ids,
                   print_file_ids: unit.specification.print_file_ids,
                   instructions: unit.specification.instructions,
@@ -227,8 +231,8 @@ export function SpecificationForm({
                                 <input
                                     required
                                     type="number"
-                                    min="0.001"
-                                    step="0.001"
+                                    min="0.1"
+                                    step="0.1"
                                     value={item.quantity}
                                     onChange={(event) =>
                                         component(index, {

@@ -10,6 +10,7 @@ from app.modules.catalog.models import Product
 from app.modules.crm.reference_models import (
     CrmFabric,
     CrmGarmentModel,
+    CrmGarmentModelCategory,
     CrmReferenceEvent,
     CrmTechCard,
     CrmTechCardRevision,
@@ -44,6 +45,32 @@ class CrmReferenceRepository:
             .where(CrmGarmentModel.id == garment_model_id)
             .options(selectinload(CrmGarmentModel.sizes))
             .with_for_update()
+        )
+
+    @staticmethod
+    async def list_garment_model_categories(
+        session: AsyncSession,
+    ) -> list[CrmGarmentModelCategory]:
+        return list(
+            await session.scalars(
+                select(CrmGarmentModelCategory).order_by(CrmGarmentModelCategory.id.asc())
+            )
+        )
+
+    @staticmethod
+    async def active_garment_model_category_exists(
+        session: AsyncSession,
+        *,
+        category_id: int,
+    ) -> bool:
+        return (
+            await session.scalar(
+                select(CrmGarmentModelCategory.id).where(
+                    CrmGarmentModelCategory.id == category_id,
+                    CrmGarmentModelCategory.is_active.is_(True),
+                )
+            )
+            is not None
         )
 
     async def public_ready_media_exists(

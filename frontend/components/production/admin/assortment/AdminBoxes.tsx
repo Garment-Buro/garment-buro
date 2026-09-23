@@ -3,10 +3,8 @@
 import { useState, type FormEvent } from 'react';
 import { PiLink, PiPencilSimple, PiPlus } from 'react-icons/pi';
 import { useAssortmentResource } from '@/hooks/production/useAssortmentResource';
-import {
-    saveAssortment,
-    uploadAssortmentMedia,
-} from '@/lib/api/productionAssortment';
+import { saveAssortment } from '@/lib/api/productionAssortment';
+import { compactDecimal } from '@/lib/production/numbers';
 import type {
     GarmentModel,
     PackagingBox,
@@ -43,7 +41,6 @@ export function AdminBoxes() {
     const [editor, setEditor] = useState<BoxForm | null>(null);
     const [ruleEditor, setRuleEditor] = useState<RuleForm | null>(null);
     const [saving, setSaving] = useState(false);
-    const [uploading, setUploading] = useState(false);
     const [formError, setFormError] = useState('');
     const boxName = (id: number) =>
         boxes.data?.find((box) => box.id === id)?.name ?? `№${id}`;
@@ -147,7 +144,7 @@ export function AdminBoxes() {
                         <PiLink aria-hidden /> Правило упаковки
                     </button>
                     <button
-                        onClick={() =>
+                        onClick={() => {
                             setEditor({
                                 code: '',
                                 name: '',
@@ -160,8 +157,8 @@ export function AdminBoxes() {
                                 minimum_stock_quantity: 0,
                                 photo_media_object_id: null,
                                 is_active: true,
-                            })
-                        }
+                            });
+                        }}
                     >
                         <PiPlus aria-hidden /> Добавить коробку
                     </button>
@@ -182,15 +179,30 @@ export function AdminBoxes() {
                             </div>
                             <button
                                 className={styles.iconButton}
-                                onClick={() => setEditor({ ...box })}
+                                onClick={() => {
+                                    setEditor({
+                                        ...box,
+                                        inner_length_cm: compactDecimal(
+                                            box.inner_length_cm,
+                                        ),
+                                        inner_width_cm: compactDecimal(
+                                            box.inner_width_cm,
+                                        ),
+                                        inner_height_cm: compactDecimal(
+                                            box.inner_height_cm,
+                                        ),
+                                        unit_cost: compactDecimal(box.unit_cost),
+                                    });
+                                }}
                                 aria-label={`Изменить коробку ${box.name}`}
                             >
                                 <PiPencilSimple aria-hidden />
                             </button>
                         </div>
                         <p>
-                            {box.inner_length_cm} × {box.inner_width_cm} ×{' '}
-                            {box.inner_height_cm} см
+                            {compactDecimal(box.inner_length_cm)} ×{' '}
+                            {compactDecimal(box.inner_width_cm)} ×{' '}
+                            {compactDecimal(box.inner_height_cm)} см
                         </p>
                         <dl className={styles.compactFacts}>
                             <div>
@@ -203,7 +215,7 @@ export function AdminBoxes() {
                             </div>
                             <div>
                                 <dt>Цена</dt>
-                                <dd>{box.unit_cost} ₽</dd>
+                                <dd>{compactDecimal(box.unit_cost)} ₽</dd>
                             </div>
                         </dl>
                     </article>
@@ -345,47 +357,6 @@ export function AdminBoxes() {
                                     }
                                 />
                             </label>
-                            <label className={styles.fullField}>
-                                Фото коробки
-                                <input
-                                    type="file"
-                                    accept="image/jpeg,image/png,image/webp"
-                                    disabled={uploading}
-                                    onChange={async (event) => {
-                                        const file = event.target.files?.[0];
-                                        if (!file) return;
-                                        setUploading(true);
-                                        try {
-                                            const media = await uploadAssortmentMedia(
-                                                file,
-                                                'public',
-                                            );
-                                            setEditor((current) =>
-                                                current
-                                                    ? {
-                                                          ...current,
-                                                          photo_media_object_id:
-                                                              media.id,
-                                                      }
-                                                    : current,
-                                            );
-                                        } catch (reason) {
-                                            setFormError(
-                                                reason instanceof Error
-                                                    ? reason.message
-                                                    : 'Не удалось загрузить фото',
-                                            );
-                                        } finally {
-                                            setUploading(false);
-                                        }
-                                    }}
-                                />
-                                <small>
-                                    {editor.photo_media_object_id
-                                        ? `Медиа №${editor.photo_media_object_id}`
-                                        : 'Фото не загружено'}
-                                </small>
-                            </label>
                             <label className={styles.checkField}>
                                 <input
                                     type="checkbox"
@@ -407,7 +378,7 @@ export function AdminBoxes() {
                             </button>
                             <button
                                 className={styles.primaryButton}
-                                disabled={saving || uploading}
+                                disabled={saving}
                             >
                                 Сохранить
                             </button>

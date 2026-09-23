@@ -4,6 +4,9 @@ from collections.abc import Awaitable
 from typing import Annotated, TypeVar
 
 from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
+from fastapi.responses import RedirectResponse
+from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.modules.catalog.mapper import CatalogResponseMapper
@@ -59,6 +62,7 @@ from app.modules.crm.reference_schemas import (
     CrmFabricReferenceRead,
     CrmFabricUpdate,
     CrmFabricWrite,
+    CrmGarmentModelCategoryRead,
     CrmGarmentModelReferenceRead,
     CrmGarmentModelUpdate,
     CrmGarmentModelWrite,
@@ -73,7 +77,9 @@ from app.modules.crm.reference_service import (
     CrmReferenceService,
     CrmReferenceVersionConflictError,
 )
+from app.modules.media.models import MediaObject, MediaStatus
 from app.modules.media.service import MediaService, UnsupportedMediaError
+from app.modules.partners.repository import PartnerRepository
 from app.modules.production.admin_router import Session
 from app.modules.production.admin_router import SystemAdmin as Admin
 from app.modules.production.assortment_media_service import (
@@ -83,6 +89,16 @@ from app.modules.production.assortment_media_service import (
 
 router = APIRouter(prefix="/admin/assortment", tags=["production-admin-assortment"])
 T = TypeVar("T")
+
+
+class ProductCommunityRead(BaseModel):
+    id: int
+    title: str
+    slug: str
+    image_url: str | None
+    status: str
+    partner_name: str
+    product_ids: list[int]
 
 
 def _writes_enabled(request: Request) -> None:
@@ -125,6 +141,11 @@ async def models(_admin: Admin, session: Session, active: bool | None = None):
         cursor=None,
         limit=100,
     )
+
+
+@router.get("/model-categories", response_model=list[CrmGarmentModelCategoryRead])
+async def model_categories(_admin: Admin, session: Session):
+    return await CrmReferenceService().repository.list_garment_model_categories(session)
 
 
 @router.post("/models", response_model=CrmGarmentModelReferenceRead, status_code=201)
@@ -699,6 +720,23 @@ async def product_categories(request: Request, _admin: Admin, session: Session):
     )
 
 
+@router.get("/product-communities", response_model=list[ProductCommunityRead])
+async def product_communities(_admin: Admin, session: Session):
+    landings = await PartnerRepository().list_all_landings(session)
+    return [
+        ProductCommunityRead(
+            id=landing.id,
+            title=landing.title,
+            slug=landing.slug,
+            image_url=landing.image_url,
+            status=landing.status,
+            partner_name=landing.partner.display_name,
+            product_ids=landing.product_ids,
+        )
+        for landing in landings
+    ]
+
+
 @router.post("/product-categories", response_model=ProductCategoryResponse, status_code=201)
 async def create_product_category(
     payload: ProductCategoryWrite,
@@ -757,6 +795,23 @@ async def upload_public_media(
     except UnsupportedMediaError as error:
         raise HTTPException(415, str(error)) from error
     return {"id": uploaded.media_id, "url": uploaded.public_url}
+
+
+@router.get("/media/public/{media_id}", include_in_schema=False)
+async def view_public_media(
+    media_id: int,
+    request: Request,
+    _admin: Admin,
+    session: Session,
+):
+    media = await session.scalar(select(MediaObject).where(MediaObject.id == media_id))
+    if media is None or not media.is_public or media.status != MediaStatus.READY.value:
+        raise HTTPException(404, "Изображение не найдено")
+    return RedirectResponse(
+        request.app.state.storage.public_url(media.object_key),
+        status_code=307,
+        headers={"Cache-Control": "private, max-age=300"},
+    )
 
 
 @router.post("/media/pattern", status_code=201)

@@ -42,6 +42,22 @@ const boxes = readFileSync(
     new URL('./assortment/AdminBoxes.tsx', import.meta.url),
     'utf8',
 );
+const accessories = readFileSync(
+    new URL('./assortment/AdminAccessories.tsx', import.meta.url),
+    'utf8',
+);
+const fabrics = readFileSync(
+    new URL('./assortment/AdminFabrics.tsx', import.meta.url),
+    'utf8',
+);
+const specification = readFileSync(
+    new URL('../SpecificationForm.tsx', import.meta.url),
+    'utf8',
+);
+const numberHelpers = readFileSync(
+    new URL('../../../lib/production/numbers.ts', import.meta.url),
+    'utf8',
+);
 
 test('admin exposes one product and warehouse workspace', () => {
     assert.match(terminal, /assortment: PiStorefront/);
@@ -75,7 +91,7 @@ test('assortment remains usable on phones', () => {
     );
     assert.match(
         css,
-        /\.assortmentDialog\s*\{[^}]*height:\s*calc\(100dvh - max\(16px, env\(safe-area-inset-top\)\)\)/s,
+        /\.assortmentDialog\s*\{[^}]*height:\s*100dvh/s,
     );
     assert.match(css, /\.measureGrid\s*\{[^}]*repeat\(2, minmax\(0, 1fr\)\)/s);
     assert.match(
@@ -106,7 +122,37 @@ test('model editor explains the flow and keeps one compact size editor open', ()
     assert.match(models, /className=\{styles\.sizeDetailCard\}/);
     assert.match(models, /<SizeRangeEditor/);
     assert.match(models, /step="2"/);
+    assert.match(models, /Базовый размер/);
+    assert.match(models, /Имя модели на фото/);
+    assert.match(models, /Рост модели на фото, см/);
+    assert.match(models, /Длина по росту/);
+    assert.match(models, /Стандартный/);
+    assert.match(models, /Под рост/);
+    assert.match(models, /className=\{styles\.sizeChartPreview\}/);
+    assert.doesNotMatch(models, /Базовый рост, см/);
     assert.doesNotMatch(models, /Сначала задайте общие параметры/);
+    assert.match(models, /model-categories/);
+    assert.match(models, /Категории моделей/);
+    for (const category of ['Майка', 'Худи', 'Штаны']) {
+        assert.match(
+            readFileSync(
+                new URL(
+                    '../../../../backend/migrations/versions/20260923_0050_garment_model_categories.py',
+                    import.meta.url,
+                ),
+                'utf8',
+            ),
+            new RegExp(category),
+        );
+    }
+});
+
+test('product variants use compact multi-select matrices', () => {
+    assert.match(products, /className=\{styles\.variantChoiceGrid\}/);
+    assert.match(products, /rebuildVariantMatrix/);
+    assert.match(products, /aria-pressed=\{selected\}/);
+    assert.match(products, /Созданные варианты/);
+    assert.doesNotMatch(products, /Добавить вариант/);
 });
 
 test('assortment dialog scrolls below an opaque fixed header', () => {
@@ -146,4 +192,43 @@ test('packaging rule explains capacity and selection order', () => {
     assert.match(boxes, /Максимум изделий этой модели/);
     assert.match(boxes, /0 — основная коробка, 1 и далее — запасные/);
     assert.match(boxes, /меньшее число означает более высокий приоритет/);
+    assert.doesNotMatch(boxes, /Фото коробки/);
+    assert.doesNotMatch(boxes, /type="file"/);
+});
+
+test('products open as blanks and community landing card workspaces', () => {
+    assert.match(products, /Garment-Buro бланки/);
+    assert.match(products, />Сообщества</);
+    assert.match(products, /product-communities/);
+    assert.match(products, /className=\{styles\.catalogHubCard\}/);
+    assert.match(products, /className=\{styles\.communityCard\}/);
+    assert.match(products, /categorySlug/);
+});
+
+test('decimal inputs do not require thousandths and stored values are compacted', () => {
+    const numericSources = [
+        models,
+        patterns,
+        products,
+        boxes,
+        accessories,
+        fabrics,
+        specification,
+    ].join('\n');
+    assert.doesNotMatch(numericSources, /(?:step|min)="0\.001"/);
+    assert.match(numberHelpers, /replace\(\/0\+\$\//);
+    for (const source of [models, patterns, boxes, accessories, fabrics, specification]) {
+        assert.match(source, /compactDecimal/);
+    }
+});
+
+test('every assortment file input exposes upload progress and outcome', () => {
+    for (const source of [models, patterns, products, accessories]) {
+        assert.match(source, /state: 'uploading'/);
+        assert.match(source, /state: 'success'/);
+        assert.match(source, /state: 'error'/);
+        assert.match(source, /<FileUploadStatus value=\{uploadStatus\} \/>/);
+    }
+    assert.match(dialog, /aria-live="polite"/);
+    assert.match(dialog, /role=\{value\.state === 'error' \? 'alert' : 'status'\}/);
 });
