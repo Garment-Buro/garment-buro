@@ -1,19 +1,31 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
-import { PiLink, PiPencilSimple, PiPlus } from 'react-icons/pi';
+import {
+    PiLink,
+    PiPencilSimple,
+    PiPlus,
+    PiUploadSimple,
+} from 'react-icons/pi';
 import { useAssortmentResource } from '@/hooks/production/useAssortmentResource';
 import {
     saveAssortment,
     uploadAssortmentMedia,
 } from '@/lib/api/productionAssortment';
+import { compactDecimal } from '@/lib/production/numbers';
 import type {
     GarmentModel,
     PackagingBox,
     PackagingRule,
     ReferencePage,
 } from '@/lib/production/assortmentTypes';
-import { AssortmentDialog, AssortmentFeedback } from './AssortmentDialog';
+import {
+    AssortmentDialog,
+    AssortmentFeedback,
+    FileUploadStatus,
+    idleFileUploadStatus,
+    type FileUploadStatusValue,
+} from './AssortmentDialog';
 import styles from '../ProductionAdmin.module.css';
 
 type BoxForm = Partial<PackagingBox> & {
@@ -44,6 +56,8 @@ export function AdminBoxes() {
     const [ruleEditor, setRuleEditor] = useState<RuleForm | null>(null);
     const [saving, setSaving] = useState(false);
     const [uploading, setUploading] = useState(false);
+    const [uploadStatus, setUploadStatus] =
+        useState<FileUploadStatusValue>(idleFileUploadStatus);
     const [formError, setFormError] = useState('');
     const boxName = (id: number) =>
         boxes.data?.find((box) => box.id === id)?.name ?? `№${id}`;
@@ -147,7 +161,8 @@ export function AdminBoxes() {
                         <PiLink aria-hidden /> Правило упаковки
                     </button>
                     <button
-                        onClick={() =>
+                        onClick={() => {
+                            setUploadStatus(idleFileUploadStatus);
                             setEditor({
                                 code: '',
                                 name: '',
@@ -160,8 +175,8 @@ export function AdminBoxes() {
                                 minimum_stock_quantity: 0,
                                 photo_media_object_id: null,
                                 is_active: true,
-                            })
-                        }
+                            });
+                        }}
                     >
                         <PiPlus aria-hidden /> Добавить коробку
                     </button>
@@ -182,15 +197,39 @@ export function AdminBoxes() {
                             </div>
                             <button
                                 className={styles.iconButton}
-                                onClick={() => setEditor({ ...box })}
+                                onClick={() => {
+                                    setUploadStatus(
+                                        box.photo_media_object_id
+                                            ? {
+                                                  state: 'success',
+                                                  message:
+                                                      'Фото коробки уже загружено',
+                                              }
+                                            : idleFileUploadStatus,
+                                    );
+                                    setEditor({
+                                        ...box,
+                                        inner_length_cm: compactDecimal(
+                                            box.inner_length_cm,
+                                        ),
+                                        inner_width_cm: compactDecimal(
+                                            box.inner_width_cm,
+                                        ),
+                                        inner_height_cm: compactDecimal(
+                                            box.inner_height_cm,
+                                        ),
+                                        unit_cost: compactDecimal(box.unit_cost),
+                                    });
+                                }}
                                 aria-label={`Изменить коробку ${box.name}`}
                             >
                                 <PiPencilSimple aria-hidden />
                             </button>
                         </div>
                         <p>
-                            {box.inner_length_cm} × {box.inner_width_cm} ×{' '}
-                            {box.inner_height_cm} см
+                            {compactDecimal(box.inner_length_cm)} ×{' '}
+                            {compactDecimal(box.inner_width_cm)} ×{' '}
+                            {compactDecimal(box.inner_height_cm)} см
                         </p>
                         <dl className={styles.compactFacts}>
                             <div>
@@ -203,7 +242,7 @@ export function AdminBoxes() {
                             </div>
                             <div>
                                 <dt>Цена</dt>
-                                <dd>{box.unit_cost} ₽</dd>
+                                <dd>{compactDecimal(box.unit_cost)} ₽</dd>
                             </div>
                         </dl>
                     </article>
@@ -345,9 +384,12 @@ export function AdminBoxes() {
                                     }
                                 />
                             </label>
-                            <label className={styles.fullField}>
-                                Фото коробки
-                                <input
+                            <div
+                                className={`${styles.fullField} ${styles.patternFileField}`}
+                            >
+                                <span>Фото коробки</span>
+                                <label className={styles.patternFilePicker}>
+                                    <input
                                     type="file"
                                     accept="image/jpeg,image/png,image/webp"
                                     disabled={uploading}
@@ -355,6 +397,11 @@ export function AdminBoxes() {
                                         const file = event.target.files?.[0];
                                         if (!file) return;
                                         setUploading(true);
+                                        setFormError('');
+                                        setUploadStatus({
+                                            state: 'uploading',
+                                            fileName: file.name,
+                                        });
                                         try {
                                             const media = await uploadAssortmentMedia(
                                                 file,
@@ -369,23 +416,31 @@ export function AdminBoxes() {
                                                       }
                                                     : current,
                                             );
+                                            setUploadStatus({
+                                                state: 'success',
+                                                fileName: file.name,
+                                            });
                                         } catch (reason) {
-                                            setFormError(
+                                            const message =
                                                 reason instanceof Error
                                                     ? reason.message
-                                                    : 'Не удалось загрузить фото',
-                                            );
+                                                    : 'Не удалось загрузить фото';
+                                            setFormError(message);
+                                            setUploadStatus({
+                                                state: 'error',
+                                                fileName: file.name,
+                                                message,
+                                            });
                                         } finally {
                                             setUploading(false);
                                         }
                                     }}
-                                />
-                                <small>
-                                    {editor.photo_media_object_id
-                                        ? `Медиа №${editor.photo_media_object_id}`
-                                        : 'Фото не загружено'}
-                                </small>
-                            </label>
+                                    />
+                                    <PiUploadSimple aria-hidden />
+                                    <span>JPEG, PNG или WebP</span>
+                                </label>
+                                <FileUploadStatus value={uploadStatus} />
+                            </div>
                             <label className={styles.checkField}>
                                 <input
                                     type="checkbox"

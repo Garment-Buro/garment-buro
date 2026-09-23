@@ -42,6 +42,22 @@ const boxes = readFileSync(
     new URL('./assortment/AdminBoxes.tsx', import.meta.url),
     'utf8',
 );
+const accessories = readFileSync(
+    new URL('./assortment/AdminAccessories.tsx', import.meta.url),
+    'utf8',
+);
+const fabrics = readFileSync(
+    new URL('./assortment/AdminFabrics.tsx', import.meta.url),
+    'utf8',
+);
+const specification = readFileSync(
+    new URL('../SpecificationForm.tsx', import.meta.url),
+    'utf8',
+);
+const numberHelpers = readFileSync(
+    new URL('../../../lib/production/numbers.ts', import.meta.url),
+    'utf8',
+);
 
 test('admin exposes one product and warehouse workspace', () => {
     assert.match(terminal, /assortment: PiStorefront/);
@@ -162,4 +178,32 @@ test('packaging rule explains capacity and selection order', () => {
     assert.match(boxes, /Максимум изделий этой модели/);
     assert.match(boxes, /0 — основная коробка, 1 и далее — запасные/);
     assert.match(boxes, /меньшее число означает более высокий приоритет/);
+});
+
+test('decimal inputs do not require thousandths and stored values are compacted', () => {
+    const numericSources = [
+        models,
+        patterns,
+        products,
+        boxes,
+        accessories,
+        fabrics,
+        specification,
+    ].join('\n');
+    assert.doesNotMatch(numericSources, /(?:step|min)="0\.001"/);
+    assert.match(numberHelpers, /replace\(\/0\+\$\//);
+    for (const source of [models, patterns, boxes, accessories, fabrics, specification]) {
+        assert.match(source, /compactDecimal/);
+    }
+});
+
+test('every assortment file input exposes upload progress and outcome', () => {
+    for (const source of [models, patterns, products, boxes, accessories]) {
+        assert.match(source, /state: 'uploading'/);
+        assert.match(source, /state: 'success'/);
+        assert.match(source, /state: 'error'/);
+        assert.match(source, /<FileUploadStatus value=\{uploadStatus\} \/>/);
+    }
+    assert.match(dialog, /aria-live="polite"/);
+    assert.match(dialog, /role=\{value\.state === 'error' \? 'alert' : 'status'\}/);
 });

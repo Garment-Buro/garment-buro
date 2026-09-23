@@ -1,12 +1,18 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
-import { PiLink, PiPencilSimple, PiPlus } from 'react-icons/pi';
+import {
+    PiLink,
+    PiPencilSimple,
+    PiPlus,
+    PiUploadSimple,
+} from 'react-icons/pi';
 import { useAssortmentResource } from '@/hooks/production/useAssortmentResource';
 import {
     saveAssortment,
     uploadAssortmentMedia,
 } from '@/lib/api/productionAssortment';
+import { compactDecimal } from '@/lib/production/numbers';
 import type {
     Accessory,
     AccessoryCategory,
@@ -14,7 +20,13 @@ import type {
     GarmentModel,
     ReferencePage,
 } from '@/lib/production/assortmentTypes';
-import { AssortmentDialog, AssortmentFeedback } from './AssortmentDialog';
+import {
+    AssortmentDialog,
+    AssortmentFeedback,
+    FileUploadStatus,
+    idleFileUploadStatus,
+    type FileUploadStatusValue,
+} from './AssortmentDialog';
 import styles from '../ProductionAdmin.module.css';
 
 type CategoryForm = Partial<AccessoryCategory> & {
@@ -55,6 +67,8 @@ export function AdminAccessories() {
         useState<RequirementForm | null>(null);
     const [saving, setSaving] = useState(false);
     const [uploading, setUploading] = useState(false);
+    const [uploadStatus, setUploadStatus] =
+        useState<FileUploadStatusValue>(idleFileUploadStatus);
     const [formError, setFormError] = useState('');
     const categoryName = (id: number) =>
         categories.data?.find((item) => item.id === id)?.name ?? `№${id}`;
@@ -185,7 +199,8 @@ export function AdminAccessories() {
                     </button>
                     <button
                         disabled={!categories.data?.length}
-                        onClick={() =>
+                        onClick={() => {
+                            setUploadStatus(idleFileUploadStatus);
                             setEditor({
                                 category_id: categories.data?.[0]?.id ?? 0,
                                 code: '',
@@ -195,8 +210,8 @@ export function AdminAccessories() {
                                 minimum_stock_quantity: 0,
                                 photo_media_object_id: null,
                                 is_active: true,
-                            })
-                        }
+                            });
+                        }}
                     >
                         <PiPlus aria-hidden /> Добавить фурнитуру
                     </button>
@@ -234,7 +249,21 @@ export function AdminAccessories() {
                             </div>
                             <button
                                 className={styles.iconButton}
-                                onClick={() => setEditor({ ...item })}
+                                onClick={() => {
+                                    setUploadStatus(
+                                        item.photo_media_object_id
+                                            ? {
+                                                  state: 'success',
+                                                  message:
+                                                      'Фото уже загружено',
+                                              }
+                                            : idleFileUploadStatus,
+                                    );
+                                    setEditor({
+                                        ...item,
+                                        unit_cost: compactDecimal(item.unit_cost),
+                                    });
+                                }}
                                 aria-label={`Изменить ${item.name}`}
                             >
                                 <PiPencilSimple aria-hidden />
@@ -251,7 +280,7 @@ export function AdminAccessories() {
                             </div>
                             <div>
                                 <dt>Цена</dt>
-                                <dd>{item.unit_cost} ₽</dd>
+                                <dd>{compactDecimal(item.unit_cost)} ₽</dd>
                             </div>
                         </dl>
                         <p className={styles.muted}>
@@ -285,13 +314,22 @@ export function AdminAccessories() {
                             <button
                                 key={item.id}
                                 className={styles.relationshipCard}
-                                onClick={() => setRequirementEditor({ ...item })}
+                                onClick={() =>
+                                    setRequirementEditor({
+                                        ...item,
+                                        quantity_per_unit: compactDecimal(
+                                            item.quantity_per_unit,
+                                        ),
+                                    })
+                                }
                             >
                                 <span>
                                     <strong>{accessoryName(item.accessory_id)}</strong>
                                     <small>{modelName(item.garment_model_id)}</small>
                                 </span>
-                                <span>{item.quantity_per_unit} шт.</span>
+                                <span>
+                                    {compactDecimal(item.quantity_per_unit)} шт.
+                                </span>
                             </button>
                         ))}
                     </div>
@@ -463,9 +501,12 @@ export function AdminAccessories() {
                                     }
                                 />
                             </label>
-                            <label className={styles.fullField}>
-                                Фото
-                                <input
+                            <div
+                                className={`${styles.fullField} ${styles.patternFileField}`}
+                            >
+                                <span>Фото</span>
+                                <label className={styles.patternFilePicker}>
+                                    <input
                                     type="file"
                                     accept="image/jpeg,image/png,image/webp"
                                     disabled={uploading}
@@ -473,6 +514,11 @@ export function AdminAccessories() {
                                         const file = event.target.files?.[0];
                                         if (!file) return;
                                         setUploading(true);
+                                        setFormError('');
+                                        setUploadStatus({
+                                            state: 'uploading',
+                                            fileName: file.name,
+                                        });
                                         try {
                                             const media = await uploadAssortmentMedia(
                                                 file,
@@ -487,23 +533,31 @@ export function AdminAccessories() {
                                                       }
                                                     : current,
                                             );
+                                            setUploadStatus({
+                                                state: 'success',
+                                                fileName: file.name,
+                                            });
                                         } catch (reason) {
-                                            setFormError(
+                                            const message =
                                                 reason instanceof Error
                                                     ? reason.message
-                                                    : 'Не удалось загрузить фото',
-                                            );
+                                                    : 'Не удалось загрузить фото';
+                                            setFormError(message);
+                                            setUploadStatus({
+                                                state: 'error',
+                                                fileName: file.name,
+                                                message,
+                                            });
                                         } finally {
                                             setUploading(false);
                                         }
                                     }}
-                                />
-                                <small>
-                                    {editor.photo_media_object_id
-                                        ? `Медиа №${editor.photo_media_object_id}`
-                                        : 'Фото не загружено'}
-                                </small>
-                            </label>
+                                    />
+                                    <PiUploadSimple aria-hidden />
+                                    <span>JPEG, PNG или WebP</span>
+                                </label>
+                                <FileUploadStatus value={uploadStatus} />
+                            </div>
                             <label className={styles.checkField}>
                                 <input
                                     type="checkbox"
@@ -585,8 +639,8 @@ export function AdminAccessories() {
                                 <input
                                     required
                                     type="number"
-                                    min="0.001"
-                                    step="0.001"
+                                    min="0.1"
+                                    step="0.1"
                                     value={requirementEditor.quantity_per_unit}
                                     onChange={(event) =>
                                         setRequirementEditor({

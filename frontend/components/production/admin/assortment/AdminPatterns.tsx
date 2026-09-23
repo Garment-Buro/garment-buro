@@ -13,13 +13,20 @@ import {
     saveAssortment,
     uploadAssortmentMedia,
 } from '@/lib/api/productionAssortment';
+import { compactDecimal } from '@/lib/production/numbers';
 import type {
     GarmentModel,
     Pattern,
     ReferencePage,
 } from '@/lib/production/assortmentTypes';
 import { AdminFilters } from '../AdminFilters';
-import { AssortmentDialog, AssortmentFeedback } from './AssortmentDialog';
+import {
+    AssortmentDialog,
+    AssortmentFeedback,
+    FileUploadStatus,
+    idleFileUploadStatus,
+    type FileUploadStatusValue,
+} from './AssortmentDialog';
 import styles from '../ProductionAdmin.module.css';
 
 type PatternForm = Omit<Pattern, 'id' | 'version' | 'grid_key' | 'name'> & {
@@ -137,6 +144,8 @@ export function AdminPatterns() {
     const [editor, setEditor] = useState<PatternForm | null>(null);
     const [saving, setSaving] = useState(false);
     const [uploading, setUploading] = useState(false);
+    const [uploadStatus, setUploadStatus] =
+        useState<FileUploadStatusValue>(idleFileUploadStatus);
     const [formError, setFormError] = useState('');
     const patterns = useMemo(
         () =>
@@ -217,7 +226,10 @@ export function AdminPatterns() {
                 </div>
                 <button
                     disabled={!models.length}
-                    onClick={() => setEditor(emptyPattern(models[0]))}
+                    onClick={() => {
+                        setUploadStatus(idleFileUploadStatus);
+                        setEditor(emptyPattern(models[0]));
+                    }}
                 >
                     <PiPlus aria-hidden /> Добавить лекало
                 </button>
@@ -278,7 +290,33 @@ export function AdminPatterns() {
                                 </div>
                                 <button
                                     className={styles.iconButton}
-                                    onClick={() => setEditor({ ...pattern })}
+                                    onClick={() => {
+                                        setUploadStatus({
+                                            state: 'success',
+                                            message: 'Файл лекала уже загружен',
+                                        });
+                                        setEditor({
+                                            ...pattern,
+                                            width_cm: compactDecimal(
+                                                pattern.width_cm,
+                                            ),
+                                            length_cm: compactDecimal(
+                                                pattern.length_cm,
+                                            ),
+                                            sleeve_length_cm:
+                                                pattern.sleeve_length_cm == null
+                                                    ? null
+                                                    : compactDecimal(
+                                                          pattern.sleeve_length_cm,
+                                                      ),
+                                            height_cm:
+                                                pattern.height_cm == null
+                                                    ? null
+                                                    : compactDecimal(
+                                                          pattern.height_cm,
+                                                      ),
+                                        });
+                                    }}
                                     aria-label={`Изменить лекало ${pattern.code}`}
                                 >
                                     <PiPencilSimple aria-hidden />
@@ -288,11 +326,11 @@ export function AdminPatterns() {
                             <dl className={styles.compactFacts}>
                                 <div>
                                     <dt>Ширина</dt>
-                                    <dd>{pattern.width_cm} см</dd>
+                                    <dd>{compactDecimal(pattern.width_cm)} см</dd>
                                 </div>
                                 <div>
                                     <dt>Длина</dt>
-                                    <dd>{pattern.length_cm} см</dd>
+                                    <dd>{compactDecimal(pattern.length_cm)} см</dd>
                                 </div>
                                 <div>
                                     <dt>Файл</dt>
@@ -517,6 +555,10 @@ export function AdminPatterns() {
                                         const file = event.target.files?.[0];
                                         if (!file) return;
                                         setUploading(true);
+                                        setUploadStatus({
+                                            state: 'uploading',
+                                            fileName: file.name,
+                                        });
                                         setFormError('');
                                         try {
                                             const uploaded =
@@ -536,12 +578,21 @@ export function AdminPatterns() {
                                                       }
                                                     : current,
                                             );
+                                            setUploadStatus({
+                                                state: 'success',
+                                                fileName: file.name,
+                                            });
                                         } catch (reason) {
-                                            setFormError(
+                                            const message =
                                                 reason instanceof Error
                                                     ? reason.message
-                                                    : 'Не удалось загрузить файл',
-                                            );
+                                                    : 'Не удалось загрузить файл';
+                                            setFormError(message);
+                                            setUploadStatus({
+                                                state: 'error',
+                                                fileName: file.name,
+                                                message,
+                                            });
                                         } finally {
                                             setUploading(false);
                                         }
@@ -555,6 +606,7 @@ export function AdminPatterns() {
                                             : 'PDF, JPEG, PNG или WebP')}
                                 </span>
                             </label>
+                            <FileUploadStatus value={uploadStatus} />
                         </div>
                         {formError && <p className={styles.error}>{formError}</p>}
                         <div className={styles.editorActions}>

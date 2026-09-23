@@ -10,6 +10,7 @@ import type {
     GarmentModel,
     ReferencePage,
 } from '@/lib/production/assortmentTypes';
+import { compactDecimal } from '@/lib/production/numbers';
 import { AssortmentDialog, AssortmentFeedback } from './AssortmentDialog';
 import styles from '../ProductionAdmin.module.css';
 
@@ -207,24 +208,56 @@ export function AdminFabrics() {
                                         <small>{fabric.code}</small>
                                     </td>
                                     <td data-label="Характеристики">
-                                        {fabric.color_name}, {fabric.width_cm} см
+                                        {fabric.color_name},{' '}
+                                        {compactDecimal(fabric.width_cm)} см
                                         <small>
                                             {fabric.material_type ?? 'Состав не указан'}
                                         </small>
                                     </td>
                                     <td data-label="Остаток">
-                                        {fabric.balance?.available_quantity ?? '0'} м
+                                        {compactDecimal(
+                                            fabric.balance?.available_quantity ?? '0',
+                                        )}{' '}
+                                        м
                                         <small>
-                                            Минимум {fabric.minimum_stock_meters} м
+                                            Минимум{' '}
+                                            {compactDecimal(
+                                                fabric.minimum_stock_meters,
+                                            )}{' '}
+                                            м
                                         </small>
                                     </td>
                                     <td data-label="Цена">
                                         {fabric.cost_per_meter
-                                            ? `${fabric.cost_per_meter} ₽/м`
+                                            ? `${compactDecimal(fabric.cost_per_meter)} ₽/м`
                                             : 'Не задана'}
                                     </td>
                                     <td data-label="Действие">
-                                        <button onClick={() => setEditor({ ...fabric })}>
+                                        <button
+                                            onClick={() =>
+                                                setEditor({
+                                                    ...fabric,
+                                                    density_gsm: fabric.density_gsm
+                                                        ? compactDecimal(
+                                                              fabric.density_gsm,
+                                                          )
+                                                        : null,
+                                                    width_cm: compactDecimal(
+                                                        fabric.width_cm,
+                                                    ),
+                                                    cost_per_meter:
+                                                        fabric.cost_per_meter
+                                                            ? compactDecimal(
+                                                                  fabric.cost_per_meter,
+                                                              )
+                                                            : null,
+                                                    minimum_stock_meters:
+                                                        compactDecimal(
+                                                            fabric.minimum_stock_meters,
+                                                        ),
+                                                })
+                                            }
+                                        >
                                             <PiPencilSimple aria-hidden /> Изменить
                                         </button>
                                     </td>
@@ -244,14 +277,25 @@ export function AdminFabrics() {
                         <button
                             key={item.id}
                             className={styles.relationshipCard}
-                            onClick={() => setRequirementEditor({ ...item })}
+                            onClick={() =>
+                                setRequirementEditor({
+                                    ...item,
+                                    meters_per_unit: compactDecimal(
+                                        item.meters_per_unit,
+                                    ),
+                                    waste_percent: compactDecimal(
+                                        item.waste_percent,
+                                    ),
+                                })
+                            }
                         >
                             <span>
                                 <strong>{modelName(item.garment_model_id)}</strong>
                                 <small>{fabricName(item.fabric_id)}</small>
                             </span>
                             <span>
-                                {item.meters_per_unit} м + {item.waste_percent}%
+                                {compactDecimal(item.meters_per_unit)} м +{' '}
+                                {compactDecimal(item.waste_percent)}%
                             </span>
                         </button>
                     ))}
@@ -377,8 +421,8 @@ export function AdminFabrics() {
                                 <input
                                     required
                                     type="number"
-                                    min="0.001"
-                                    step="0.001"
+                                min="0.1"
+                                step="0.1"
                                     value={requirementEditor.meters_per_unit}
                                     onChange={(event) =>
                                         setRequirementEditor({

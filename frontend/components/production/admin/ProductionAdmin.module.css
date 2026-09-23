@@ -2179,6 +2179,45 @@
 .screen .primaryButton:hover {
     background: #313131;
 }
+.uploadStatus {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 40px;
+    margin: 8px 0 0 !important;
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: #f2f0ef;
+    color: #656166;
+    font-size: 14px;
+    line-height: 20px;
+    overflow-wrap: anywhere;
+}
+.uploadStatus > svg {
+    width: 20px;
+    height: 20px;
+    flex: 0 0 20px;
+}
+.uploadStatus[data-state='uploading'] > svg {
+    animation: uploadStatusPulse 1.4s cubic-bezier(0.32, 0.72, 0, 1) infinite
+        alternate;
+}
+.uploadStatus[data-state='success'] {
+    background: #eaf5ee;
+    color: #2d7249;
+}
+.uploadStatus[data-state='error'] {
+    background: #fff0f1;
+    color: #962f39;
+}
+@keyframes uploadStatusPulse {
+    from {
+        opacity: 0.5;
+    }
+    to {
+        opacity: 1;
+    }
+}
 .accessCodeRow {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 48px;

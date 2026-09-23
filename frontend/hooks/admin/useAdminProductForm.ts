@@ -58,20 +58,24 @@ export const useAdminProductForm = () => {
             setField(field, await runCatalogWrite(token => uploadMediaFile(file, token)));
         } catch (error) {
             console.error(error);
+            throw error;
         }
     };
 
     const uploadFiles = async (event: ChangeEvent<HTMLInputElement>, field: MultiMediaField) => {
         const files = Array.from(event.target.files || []);
         const uploaded: string[] = [];
+        let uploadError: unknown = null;
         for (const file of files) {
             try {
                 uploaded.push(await runCatalogWrite(token => uploadMediaFile(file, token)));
             } catch (error) {
                 console.error(error);
+                uploadError ??= error;
             }
         }
         setField(field, [...form[field], ...uploaded]);
+        if (uploadError) throw uploadError;
     };
 
     const addVariant = () => setField('variants', [...form.variants, createEmptyProductVariant()]);

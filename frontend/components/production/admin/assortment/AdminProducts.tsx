@@ -24,7 +24,13 @@ import type {
     ReferencePage,
 } from '@/lib/production/assortmentTypes';
 import { safeImage } from '@/lib/production/workflow';
-import { AssortmentDialog, AssortmentFeedback } from './AssortmentDialog';
+import {
+    AssortmentDialog,
+    AssortmentFeedback,
+    FileUploadStatus,
+    idleFileUploadStatus,
+    type FileUploadStatusValue,
+} from './AssortmentDialog';
 import styles from '../ProductionAdmin.module.css';
 
 type ProductEditor = ProductDetail & {
@@ -98,6 +104,8 @@ export function AdminProducts() {
     const [loadingEditor, setLoadingEditor] = useState(false);
     const [saving, setSaving] = useState(false);
     const [uploading, setUploading] = useState(false);
+    const [uploadStatus, setUploadStatus] =
+        useState<FileUploadStatusValue>(idleFileUploadStatus);
     const [formError, setFormError] = useState('');
     const visibleProducts = useMemo(() => {
         const query = search.trim().toLocaleLowerCase('ru');
@@ -148,6 +156,14 @@ export function AdminProducts() {
                 garment_model_id: reference.garment_model_id,
                 variantReferences: reference.variants,
             });
+            setUploadStatus(
+                detail.image_left
+                    ? {
+                          state: 'success',
+                          message: 'Основное изображение уже загружено',
+                      }
+                    : idleFileUploadStatus,
+            );
         } catch (reason) {
             setFormError(
                 reason instanceof Error
@@ -383,7 +399,12 @@ export function AdminProducts() {
                     >
                         <PiPlus aria-hidden /> Категория
                     </button>
-                    <button onClick={() => setEditor(emptyProduct())}>
+                    <button
+                        onClick={() => {
+                            setUploadStatus(idleFileUploadStatus);
+                            setEditor(emptyProduct());
+                        }}
+                    >
                         <PiPlus aria-hidden /> Добавить товар
                     </button>
                 </div>
@@ -693,7 +714,7 @@ export function AdminProducts() {
                                     <input
                                         type="number"
                                         min="0"
-                                        step="0.001"
+                                        step="0.01"
                                         value={editor.weight}
                                         onChange={(event) =>
                                             setEditor({
@@ -751,6 +772,11 @@ export function AdminProducts() {
                                                 const file = event.target.files?.[0];
                                                 if (!file) return;
                                                 setUploading(true);
+                                                setFormError('');
+                                                setUploadStatus({
+                                                    state: 'uploading',
+                                                    fileName: file.name,
+                                                });
                                                 try {
                                                     const media =
                                                         await uploadAssortmentMedia(
@@ -766,12 +792,21 @@ export function AdminProducts() {
                                                               }
                                                             : current,
                                                     );
+                                                    setUploadStatus({
+                                                        state: 'success',
+                                                        fileName: file.name,
+                                                    });
                                                 } catch (reason) {
-                                                    setFormError(
+                                                    const message =
                                                         reason instanceof Error
                                                             ? reason.message
-                                                            : 'Не удалось загрузить изображение',
-                                                    );
+                                                            : 'Не удалось загрузить изображение';
+                                                    setFormError(message);
+                                                    setUploadStatus({
+                                                        state: 'error',
+                                                        fileName: file.name,
+                                                        message,
+                                                    });
                                                 } finally {
                                                     setUploading(false);
                                                 }
@@ -779,6 +814,7 @@ export function AdminProducts() {
                                         />
                                         <small>JPEG, PNG или WebP</small>
                                     </label>
+                                    <FileUploadStatus value={uploadStatus} />
                                 </div>
                                 <label className={styles.checkField}>
                                     <input

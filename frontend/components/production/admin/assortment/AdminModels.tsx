@@ -17,12 +17,19 @@ import {
     saveAssortment,
     uploadAssortmentMedia,
 } from '@/lib/api/productionAssortment';
+import { compactDecimal } from '@/lib/production/numbers';
 import type {
     GarmentModel,
     GarmentSize,
     ReferencePage,
 } from '@/lib/production/assortmentTypes';
-import { AssortmentDialog, AssortmentFeedback } from './AssortmentDialog';
+import {
+    AssortmentDialog,
+    AssortmentFeedback,
+    FileUploadStatus,
+    idleFileUploadStatus,
+    type FileUploadStatusValue,
+} from './AssortmentDialog';
 import styles from '../ProductionAdmin.module.css';
 
 const emptySize = (sortOrder: number): GarmentSize => ({
@@ -66,6 +73,25 @@ const emptyModel = (): ModelForm => ({
 
 const optionalNumber = (value: string | null | undefined) =>
     value == null || value === '' ? null : Number(value);
+
+const compactNullableDecimal = (value: string | null | undefined) =>
+    value == null ? null : compactDecimal(value);
+
+const compactSize = (size: GarmentSize): GarmentSize => ({
+    ...size,
+    base_price: compactDecimal(size.base_price),
+    min_height_cm: compactNullableDecimal(size.min_height_cm),
+    max_height_cm: compactNullableDecimal(size.max_height_cm),
+    min_length_cm: compactNullableDecimal(size.min_length_cm),
+    max_length_cm: compactNullableDecimal(size.max_length_cm),
+    min_width_cm: compactNullableDecimal(size.min_width_cm),
+    max_width_cm: compactNullableDecimal(size.max_width_cm),
+    min_sleeve_length_cm: compactNullableDecimal(size.min_sleeve_length_cm),
+    max_sleeve_length_cm: compactNullableDecimal(size.max_sleeve_length_cm),
+    extra_width_price_per_cm: compactNullableDecimal(
+        size.extra_width_price_per_cm,
+    ),
+});
 
 type SizeRangeField =
     | 'min_width_cm'
@@ -147,6 +173,8 @@ export function AdminModels() {
     const [saving, setSaving] = useState(false);
     const [formError, setFormError] = useState('');
     const [uploading, setUploading] = useState(false);
+    const [uploadStatus, setUploadStatus] =
+        useState<FileUploadStatusValue>(idleFileUploadStatus);
     const models = useMemo(() => {
         const query = search.trim().toLocaleLowerCase('ru');
         if (!query) return data?.items ?? [];
@@ -158,6 +186,14 @@ export function AdminModels() {
 
     const openEditor = (model?: GarmentModel) => {
         setActiveSizeIndex(0);
+        setUploadStatus(
+            model?.size_chart_media_object_id
+                ? {
+                      state: 'success',
+                      message: 'Таблица размеров уже загружена',
+                  }
+                : idleFileUploadStatus,
+        );
         setEditor(
             model
                 ? {
@@ -165,7 +201,15 @@ export function AdminModels() {
                       size_chart_url: model.size_chart_media_object_id
                           ? `/production/admin/assortment/media/public/${model.size_chart_media_object_id}`
                           : null,
-                      sizes: model.sizes.map((size) => ({ ...size })),
+                      fit_model_height_cm: compactNullableDecimal(
+                          model.fit_model_height_cm,
+                      ),
+                      base_length_cm: compactNullableDecimal(
+                          model.base_length_cm,
+                      ),
+                      base_width_cm: compactNullableDecimal(model.base_width_cm),
+                      base_weight_g: compactNullableDecimal(model.base_weight_g),
+                      sizes: model.sizes.map(compactSize),
                   }
                 : emptyModel(),
         );
@@ -508,6 +552,10 @@ export function AdminModels() {
                                                 const file = event.target.files?.[0];
                                                 if (!file) return;
                                                 setUploading(true);
+                                                setUploadStatus({
+                                                    state: 'uploading',
+                                                    fileName: file.name,
+                                                });
                                                 setFormError('');
                                                 try {
                                                     const uploaded =
@@ -527,12 +575,21 @@ export function AdminModels() {
                                                               }
                                                             : current,
                                                     );
+                                                    setUploadStatus({
+                                                        state: 'success',
+                                                        fileName: file.name,
+                                                    });
                                                 } catch (reason) {
-                                                    setFormError(
+                                                    const message =
                                                         reason instanceof Error
                                                             ? reason.message
-                                                            : 'Не удалось загрузить изображение',
-                                                    );
+                                                            : 'Не удалось загрузить изображение';
+                                                    setFormError(message);
+                                                    setUploadStatus({
+                                                        state: 'error',
+                                                        fileName: file.name,
+                                                        message,
+                                                    });
                                                 } finally {
                                                     setUploading(false);
                                                 }
@@ -545,6 +602,7 @@ export function AdminModels() {
                                                 : 'JPEG, PNG или WebP'}
                                         </span>
                                     </label>
+                                    <FileUploadStatus value={uploadStatus} />
                                 </div>
                                 {editor.size_chart_url && (
                                     <figure className={styles.sizeChartPreview}>
@@ -558,13 +616,16 @@ export function AdminModels() {
                                             Изображение добавлено
                                             <button
                                                 type="button"
-                                                onClick={() =>
+                                                onClick={() => {
                                                     setEditor({
                                                         ...editor,
                                                         size_chart_media_object_id: null,
                                                         size_chart_url: null,
-                                                    })
-                                                }
+                                                    });
+                                                    setUploadStatus(
+                                                        idleFileUploadStatus,
+                                                    );
+                                                }}
                                             >
                                                 Удалить
                                             </button>
