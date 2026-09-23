@@ -372,7 +372,7 @@
 }
 .meta {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 360px);
     gap: 8px;
 }
 .meta span {
@@ -425,11 +425,53 @@
     opacity: 1;
     cursor: default;
 }
+.itemToggle > svg:last-child {
+    transition: transform 700ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+.itemToggle[data-open='true'] > svg:last-child {
+    transform: rotate(180deg);
+}
 .itemToggle strong {
     display: block;
     font-size: 16px;
 }
 .itemToggle small {
+    margin-top: 4px;
+}
+.bagComment {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin-top: 8px;
+    padding: 8px;
+    border-radius: 8px;
+    background: var(--violet-wash);
+    color: var(--ink);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+.bagComment[data-empty='true'] {
+    background: var(--soft);
+    color: var(--muted);
+}
+.bagComment svg {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 16px;
+    color: var(--purple);
+}
+.bagComment strong,
+.bagComment p {
+    display: block;
+    margin: 0;
+}
+.bagComment p {
+    color: var(--ink);
+}
+.bagComment[data-empty='true'] p {
+    color: var(--muted);
+}
+.bagComment p + p {
     margin-top: 4px;
 }
 .thumb {
@@ -482,12 +524,15 @@
 }
 .itemBody[data-wide='true'] {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 260px;
+    grid-template-columns: minmax(320px, 0.8fr) minmax(420px, 1.2fr);
     gap: 16px;
     align-items: start;
 }
 .itemBody[data-wide='true'] > article {
     min-width: 0;
+}
+.itemBody[data-wide='true'] > article .statusGrid {
+    grid-template-columns: 1fr;
 }
 @media (max-width: 1100px) {
     .itemBody[data-wide='true'] {
@@ -627,6 +672,72 @@
 }
 .views[data-compact='true'] figure {
     border: 0;
+}
+.visualComparison {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    padding: 0 8px 8px;
+}
+.visualCard {
+    min-width: 0;
+    padding: 8px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--soft);
+}
+.visualCard > strong,
+.visualCard > small {
+    display: block;
+    text-align: left;
+}
+.visualCard > strong {
+    margin-bottom: 8px;
+    font-size: 14px;
+}
+.visualCard > small {
+    padding: 8px 0 0;
+    color: var(--muted);
+}
+.visualCard .constructorCanvas,
+.patternPreview {
+    aspect-ratio: 1;
+    border-radius: 8px;
+    background: #fff;
+}
+.patternPreview {
+    display: grid;
+    align-content: center;
+    justify-items: center;
+    gap: 8px;
+    padding: 16px;
+    color: var(--muted);
+    text-align: center;
+}
+.patternPreview svg {
+    width: 32px;
+    height: 32px;
+    color: var(--purple);
+}
+.patternActions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 0 8px 8px;
+}
+.patternActions button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+.patternActions svg {
+    width: 20px;
+    height: 20px;
+}
+.patternActions .error {
+    width: 100%;
+    margin: 0;
 }
 .scan {
     display: grid;
@@ -990,6 +1101,12 @@
     }
     .bagBody {
         padding: 12px;
+    }
+    .visualComparison {
+        grid-template-columns: 1fr;
+    }
+    .patternActions button {
+        width: 100%;
     }
     .flow .scan form {
         grid-template-columns: minmax(0, 1fr) auto;

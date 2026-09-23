@@ -1,7 +1,12 @@
 /* eslint-disable @next/next/no-img-element -- order snapshots and generated QR */
 'use client';
 import { useState } from 'react';
-import { PiCaretDown, PiPackage, PiPrinter } from 'react-icons/pi';
+import {
+    PiCaretDown,
+    PiChatCircleDots,
+    PiPackage,
+    PiPrinter,
+} from 'react-icons/pi';
 import {
     labels,
     stateLabels,
@@ -43,16 +48,48 @@ export function ProductionBag({
     printing: boolean;
     requestedUnit?: number | null;
 }) {
-    const [opened, setOpened] = useState<number | null>(requestedUnit ?? null);
+    const [opened, setOpened] = useState<number | null>(
+        requestedUnit ??
+            (project.units.length === 1 ? project.units[0]?.id : null),
+    );
     const blocked = orderBlocked(project);
-    const wide = station === 'tech' || station === 'dtf' || station === 'packing';
+    const wide =
+        station === 'tech' || station === 'dtf' || station === 'packing';
     const localStations = canAct(employee.stations, station) ? [station] : [];
     const qr = `/api/qr-code?surface=production&size=256&path=${encodeURIComponent(project.public_token ? `/production/label?token=${project.public_token}` : `/production?project=${project.project_id}`)}`;
+    const orderComments = project.units.flatMap((unit) => {
+        const raw = unit.source.customization?.comment;
+        const comment = typeof raw === 'string' ? raw.trim() : '';
+        return comment
+            ? [{ unitId: unit.id, title: unit.source.title, comment }]
+            : [];
+    });
     return (
         <div className={styles.bagBody}>
             <div className={styles.bagSummary}>
                 <div>
                     <h2>Мешок {project.customer}</h2>
+                    <div
+                        className={styles.bagComment}
+                        data-empty={!orderComments.length}
+                    >
+                        <PiChatCircleDots aria-hidden />
+                        <div>
+                            <strong>Комментарий к заказу</strong>
+                            {orderComments.length ? (
+                                orderComments.map((item) => (
+                                    <p key={item.unitId}>
+                                        {project.units_count > 1 && (
+                                            <b>{item.title}: </b>
+                                        )}
+                                        {item.comment}
+                                    </p>
+                                ))
+                            ) : (
+                                <p>Комментарий не оставлен</p>
+                            )}
+                        </div>
+                    </div>
                     {project.is_demo && (
                         <p>Тестовый заказ. Не производить и не отправлять.</p>
                     )}
@@ -71,33 +108,8 @@ export function ProductionBag({
                                 }
                             </strong>
                         </span>
-                        <span>
-                            Версия<strong>{project.version}</strong>
-                        </span>
-                        {project.state === 'inbox' && (
-                            <span>
-                                Технолог
-                                <strong>
-                                    {project.tech_approved
-                                        ? 'Подтвердил'
-                                        : 'Ожидается'}
-                                </strong>
-                            </span>
-                        )}
-                        {project.state === 'inbox' && (
-                            <span>
-                                DTF
-                                <strong>
-                                    {project.dtf_approved
-                                        ? 'Подтвердил'
-                                        : 'Ожидается'}
-                                </strong>
-                            </span>
-                        )}
                     </div>
-                    {(station === 'tech' ||
-                        station === 'dtf' ||
-                        station === 'cut') &&
+                    {(station === 'dtf' || station === 'cut') &&
                         canAct(employee.stations, station) && (
                             <button
                                 disabled={
@@ -111,28 +123,23 @@ export function ProductionBag({
                                             ? !project.units.some(
                                                   (u) => u.public_token,
                                               )
-                                            : station === 'dtf'
-                                              ? !project.units.some(
-                                                    (unit) =>
-                                                        unit.dtf_ready &&
-                                                        unit.public_token,
-                                                )
-                                              : !project.public_token))
+                                            : !project.units.some(
+                                                  (unit) =>
+                                                      unit.dtf_ready &&
+                                                      unit.public_token,
+                                              )))
                                 }
                                 onClick={print}
                             >
                                 <PiPrinter />
                                 {printing
                                     ? 'Готовим…'
-                                    : station === 'tech'
-                                      ? 'Печать QR мешка заказа'
-                                      : station === 'cut' || station === 'dtf'
-                                        ? 'Печать QR мешков изделий'
-                                        : 'Печать QR мешка'}
+                                    : 'Печать QR мешков изделий'}
                             </button>
                         )}
                 </div>
                 {wide &&
+                    station !== 'tech' &&
                     (project.flow_version !== 2 || project.public_token) && (
                         <div className={styles.qr}>
                             <img
@@ -158,10 +165,21 @@ export function ProductionBag({
                     участка.
                 </p>
             )}
+            {station === 'tech' && (
+                <BagActions
+                    key={`${project.project_id}-${station}`}
+                    project={project}
+                    stations={localStations}
+                    send={send}
+                    busy={busy || blocked}
+                    print={print}
+                    printing={printing}
+                />
+            )}
             {project.units.map((unit) => {
                 const stage = currentStage(unit);
                 const image = safeImage(unit.source.image);
-                const isOpen = wide || opened === unit.id;
+                const isOpen = opened === unit.id;
                 return (
                     <section
                         className={styles.item}
@@ -172,7 +190,7 @@ export function ProductionBag({
                             className={styles.itemToggle}
                             onClick={() => setOpened(isOpen ? null : unit.id)}
                             aria-expanded={isOpen}
-                            disabled={wide}
+                            data-open={isOpen}
                         >
                             <span className={styles.thumb}>
                                 {image ? (
@@ -220,34 +238,53 @@ export function ProductionBag({
                         {isOpen && (
                             <div className={styles.itemBody} data-wide={wide}>
                                 {wide ? (
-                                    <ProductionViews
-                                        unit={unit}
-                                        compact={station === 'dtf'}
-                                    />
+                                    <>
+                                        <ProductionUnit
+                                            key={`${unit.id}-${project.version}-${station}`}
+                                            unit={unit}
+                                            project={project}
+                                            station={station}
+                                            stations={localStations}
+                                            send={send}
+                                            busy={busy || blocked}
+                                        />
+                                        <ProductionViews
+                                            unit={unit}
+                                            compact={
+                                                station === 'tech' ||
+                                                station === 'dtf'
+                                            }
+                                            station={station}
+                                        />
+                                    </>
                                 ) : (
-                                    <ProductionTechCard unit={unit} />
+                                    <>
+                                        <ProductionTechCard unit={unit} />
+                                        <ProductionUnit
+                                            key={`${unit.id}-${project.version}-${station}`}
+                                            unit={unit}
+                                            project={project}
+                                            station={station}
+                                            stations={localStations}
+                                            send={send}
+                                            busy={busy || blocked}
+                                        />
+                                    </>
                                 )}
-                                <ProductionUnit
-                                    key={`${unit.id}-${project.version}-${station}`}
-                                    unit={unit}
-                                    project={project}
-                                    station={station}
-                                    stations={localStations}
-                                    send={send}
-                                    busy={busy || blocked}
-                                />
                             </div>
                         )}
                     </section>
                 );
             })}
-            {['tech', 'dtf', 'kit', 'packing', 'shipping'].includes(station) && (
+            {['dtf', 'kit', 'packing', 'shipping'].includes(station) && (
                 <BagActions
                     key={`${project.project_id}-${station}`}
                     project={project}
                     stations={localStations}
                     send={send}
                     busy={busy || blocked}
+                    print={print}
+                    printing={printing}
                 />
             )}
             {['tech', 'kit', 'packing'].includes(station) && (
