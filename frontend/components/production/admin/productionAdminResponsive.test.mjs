@@ -22,6 +22,10 @@ const clientDetails = readFileSync(
     new URL('./AdminClientDetails.tsx', import.meta.url),
     'utf8',
 );
+const createTicket = readFileSync(
+    new URL('../../support/CreateTicket.tsx', import.meta.url),
+    'utf8',
+);
 const payoutReview = readFileSync(
     new URL('./AdminPayoutReview.tsx', import.meta.url),
     'utf8',
@@ -121,9 +125,18 @@ test('orders and payouts expose sorting, client navigation and readable details'
     assert.match(clientDetails, /onTicket\(ticket\.id\)/);
     assert.match(clientDetails, /<CreateTicket/);
     assert.match(clientDetails, /customerUserId=\{client\.user_id \?\? undefined\}/);
+    assert.match(clientDetails, /role="tablist"/);
+    assert.match(clientDetails, /role="tabpanel"/);
+    assert.match(clientDetails, /orderOptions=\{data\.orders\.map/);
+    assert.match(clientDetails, /label: `Заказ №\$\{order\.id\}/);
+    assert.match(createTicket, /orderOptions\.map/);
+    assert.match(createTicket, /<select/);
+    assert.match(createTicket, /Без привязки к заказу/);
     assert.doesNotMatch(records, /CreateTicket/);
     assert.doesNotMatch(orderDetails, /CreateTicket/);
     assert.match(css, /\.clientProfileGrid/);
+    assert.match(css, /\.clientTabs/);
+    assert.match(css, /\.clientTabContent/);
     assert.match(
         css,
         /@media \(max-width: 720px\)[\s\S]*\.clientProfileGrid\s*\{[^}]*grid-template-columns:\s*1fr/s,

@@ -6,18 +6,24 @@ import styles from "./Tickets.module.css";
 export function CreateTicket({
   admin = false,
   customerUserId,
+  defaultOpen = false,
   embedded = false,
+  orderOptions,
   orderId,
+  showToggle = true,
   onCreated,
 }: {
   admin?: boolean;
   customerUserId?: number;
+  defaultOpen?: boolean;
   embedded?: boolean;
+  orderOptions?: { id: number; label: string }[];
   orderId?: number;
+  showToggle?: boolean;
   onCreated: (id: number) => void;
 }) {
   const request = useTicketRequest(admin ? "admin" : "customer");
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
   const [order, setOrder] = useState(orderId ? String(orderId) : "");
@@ -28,13 +34,15 @@ export function CreateTicket({
   const [error, setError] = useState("");
   return (
     <section className={styles.panel} data-embedded={embedded || undefined}>
-      <button type="button" aria-expanded={open} onClick={() => setOpen(!open)}>
-        {open
-          ? "Свернуть форму"
-          : admin
-            ? "Написать клиенту"
-            : "Создать обращение"}
-      </button>
+      {showToggle && (
+        <button type="button" aria-expanded={open} onClick={() => setOpen(!open)}>
+          {open
+            ? "Свернуть форму"
+            : admin
+              ? "Написать клиенту"
+              : "Создать обращение"}
+        </button>
+      )}
       {open && (
         <form
           className={styles.form}
@@ -86,14 +94,34 @@ export function CreateTicket({
           </label>
           <label>
             Номер заказа {admin ? "" : "(необязательно)"}
-            <input
-              type="number"
-              min={1}
-              step={1}
-              value={order}
-              disabled={busy || !!orderId}
-              onChange={(event) => setOrder(event.target.value)}
-            />
+            {orderOptions ? (
+              <select
+                value={order}
+                disabled={busy || !!orderId}
+                required={admin && !customerUserId}
+                onChange={(event) => setOrder(event.target.value)}
+              >
+                <option value="">
+                  {customerUserId
+                    ? "Без привязки к заказу"
+                    : "Выберите заказ"}
+                </option>
+                {orderOptions.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={order}
+                disabled={busy || !!orderId}
+                onChange={(event) => setOrder(event.target.value)}
+              />
+            )}
           </label>
           {admin && !orderId && !customerUserId && (
             <label>

@@ -1,5 +1,5 @@
 'use client';
-import { useEffect } from 'react';
+import { type KeyboardEvent as ReactKeyboardEvent, useEffect, useState } from 'react';
 import {
     PiChatCircle,
     PiCheckCircle,
@@ -7,6 +7,7 @@ import {
     PiMapPin,
     PiPackage,
     PiPhone,
+    PiPlusCircle,
     PiUserCircle,
     PiX,
 } from 'react-icons/pi';
@@ -22,6 +23,8 @@ import {
 } from '@/lib/production/adminTypes';
 import styles from './ProductionAdmin.module.css';
 
+type ClientTab = 'profile' | 'orders' | 'tickets' | 'create';
+
 export function AdminClientDetails({
     client,
     onOrder,
@@ -33,6 +36,7 @@ export function AdminClientDetails({
     onTicket: (id: number) => void;
     onClose: () => void;
 }) {
+    const [activeTab, setActiveTab] = useState<ClientTab>('profile');
     const { data, loading, error } = useAdminResource<AdminClientDetail>(
         `clients/detail?key=${encodeURIComponent(client.key)}`,
     );
@@ -43,6 +47,37 @@ export function AdminClientDetails({
         window.addEventListener('keydown', closeOnEscape);
         return () => window.removeEventListener('keydown', closeOnEscape);
     }, [onClose]);
+
+    const canCreateTicket = Boolean(data && client.user_id);
+    const tabs: {
+        id: ClientTab;
+        label: string;
+        count?: number;
+        icon: typeof PiUserCircle;
+    }[] = [
+        { id: 'profile', label: 'Данные', icon: PiUserCircle },
+        { id: 'orders', label: 'Заказы', count: data?.orders.length, icon: PiPackage },
+        {
+            id: 'tickets',
+            label: 'Обращения',
+            count: data?.tickets.length,
+            icon: PiChatCircle,
+        },
+        ...(canCreateTicket
+            ? [{ id: 'create' as const, label: 'Новый тикет', icon: PiPlusCircle }]
+            : []),
+    ];
+
+    const selectAdjacentTab = (
+        event: ReactKeyboardEvent<HTMLButtonElement>,
+        direction: -1 | 1,
+    ) => {
+        const currentIndex = tabs.findIndex((tab) => tab.id === activeTab);
+        const nextIndex = (currentIndex + direction + tabs.length) % tabs.length;
+        setActiveTab(tabs[nextIndex].id);
+        const buttons = event.currentTarget.parentElement?.querySelectorAll('button');
+        (buttons?.[nextIndex] as HTMLButtonElement | undefined)?.focus();
+    };
 
     return (
         <div
@@ -75,73 +110,113 @@ export function AdminClientDetails({
                         <PiX aria-hidden />
                     </button>
                 </div>
-                <div className={styles.clientContactList}>
-                    <p>
-                        <PiUserCircle aria-hidden />
-                        <span>
-                            <small>Тип клиента</small>
-                            <strong>
-                                {client.user_id
-                                    ? `Аккаунт №${client.user_id}`
-                                    : 'Гостевые заказы'}
-                            </strong>
-                        </span>
-                    </p>
-                    <p>
-                        <PiEnvelope aria-hidden />
-                        <span>
-                            <small>Почта</small>
-                            <strong>
-                                {data?.account?.email ||
-                                    data?.email ||
-                                    client.email ||
-                                    'Не указана'}
-                            </strong>
-                        </span>
-                    </p>
-                    <p>
-                        <PiPhone aria-hidden />
-                        <span>
-                            <small>Телефон</small>
-                            <strong>
-                                {data?.account?.phone ||
-                                    data?.phone ||
-                                    client.phone ||
-                                    'Не указан'}
-                            </strong>
-                        </span>
-                    </p>
+                <div
+                    className={styles.clientTabs}
+                    role="tablist"
+                    aria-label="Данные клиента"
+                >
+                    {tabs.map((tab) => {
+                        const Icon = tab.icon;
+                        return (
+                            <button
+                                type="button"
+                                role="tab"
+                                id={`client-tab-${tab.id}`}
+                                aria-controls={`client-panel-${tab.id}`}
+                                aria-selected={activeTab === tab.id}
+                                tabIndex={activeTab === tab.id ? 0 : -1}
+                                key={tab.id}
+                                onClick={() => setActiveTab(tab.id)}
+                                onKeyDown={(event) => {
+                                    if (event.key === 'ArrowLeft') {
+                                        event.preventDefault();
+                                        selectAdjacentTab(event, -1);
+                                    }
+                                    if (event.key === 'ArrowRight') {
+                                        event.preventDefault();
+                                        selectAdjacentTab(event, 1);
+                                    }
+                                }}
+                            >
+                                <Icon aria-hidden />
+                                <span>{tab.label}</span>
+                                {tab.count !== undefined && <small>{tab.count}</small>}
+                            </button>
+                        );
+                    })}
                 </div>
-                <dl className={styles.clientTotals}>
-                    <div>
-                        <dt>Заказов</dt>
-                        <dd>{client.orders_count}</dd>
-                    </div>
-                    <div>
-                        <dt>Сумма заказов</dt>
-                        <dd>{money(client.orders_total)}</dd>
-                    </div>
-                    <div>
-                        <dt>Оплачено</dt>
-                        <dd>{money(client.paid_orders_total)}</dd>
-                    </div>
-                </dl>
-                {loading && (
-                    <div className={styles.clientHistorySkeleton} role="status">
-                        <span />
-                        <span />
-                        <span className={styles.srOnly}>
-                            Загружаем историю клиента
-                        </span>
-                    </div>
-                )}
-                {error && (
-                    <p role="alert" className={styles.error}>
-                        {error}
-                    </p>
-                )}
-                {data && (
-                    <>
+                <div className={styles.clientTabContent}>
+                    {loading && (
+                        <div className={styles.clientHistorySkeleton} role="status">
+                            <span />
+                            <span />
+                            <span className={styles.srOnly}>
+                                Загружаем историю клиента
+                            </span>
+                        </div>
+                    )}
+                    {error && (
+                        <p role="alert" className={styles.error}>
+                            {error}
+                        </p>
+                    )}
+                    {data && activeTab === 'profile' && (
+                        <div
+                            role="tabpanel"
+                            id="client-panel-profile"
+                            aria-labelledby="client-tab-profile"
+                        >
+                            <div className={styles.clientContactList}>
+                                <p>
+                                    <PiUserCircle aria-hidden />
+                                    <span>
+                                        <small>Тип клиента</small>
+                                        <strong>
+                                            {client.user_id
+                                                ? `Аккаунт №${client.user_id}`
+                                                : 'Гостевые заказы'}
+                                        </strong>
+                                    </span>
+                                </p>
+                                <p>
+                                    <PiEnvelope aria-hidden />
+                                    <span>
+                                        <small>Почта</small>
+                                        <strong>
+                                            {data.account?.email ||
+                                                data.email ||
+                                                client.email ||
+                                                'Не указана'}
+                                        </strong>
+                                    </span>
+                                </p>
+                                <p>
+                                    <PiPhone aria-hidden />
+                                    <span>
+                                        <small>Телефон</small>
+                                        <strong>
+                                            {data.account?.phone ||
+                                                data.phone ||
+                                                client.phone ||
+                                                'Не указан'}
+                                        </strong>
+                                    </span>
+                                </p>
+                            </div>
+                            <dl className={styles.clientTotals}>
+                                <div>
+                                    <dt>Заказов</dt>
+                                    <dd>{client.orders_count}</dd>
+                                </div>
+                                <div>
+                                    <dt>Сумма заказов</dt>
+                                    <dd>{money(client.orders_total)}</dd>
+                                </div>
+                                <div>
+                                    <dt>Оплачено</dt>
+                                    <dd>{money(client.paid_orders_total)}</dd>
+                                </div>
+                            </dl>
                         <section className={styles.clientSection}>
                             <div className={styles.orderSectionHeading}>
                                 <PiUserCircle aria-hidden />
@@ -221,33 +296,21 @@ export function AdminClientDetails({
                                 </div>
                             </dl>
                         </section>
-
-                        {(client.user_id || data.orders[0]?.id) && (
-                            <section className={styles.clientSection}>
-                                <div className={styles.orderSectionHeading}>
-                                    <PiChatCircle aria-hidden />
-                                    <div>
-                                        <h3>Связаться с клиентом</h3>
-                                        <small>
-                                            Сообщение появится в личном кабинете
-                                        </small>
-                                    </div>
-                                </div>
-                                <CreateTicket
-                                    admin
-                                    embedded
-                                    customerUserId={client.user_id ?? undefined}
-                                    orderId={
-                                        client.user_id
-                                            ? undefined
-                                            : data.orders[0]?.id
-                                    }
-                                    onCreated={onTicket}
-                                />
-                            </section>
-                        )}
-
-                        <section className={styles.clientSection}>
+                            {data.recipient.city && (
+                                <p className={styles.clientLocation}>
+                                    <PiMapPin aria-hidden />
+                                    Последний город доставки: {data.recipient.city}
+                                </p>
+                            )}
+                        </div>
+                    )}
+                    {data && activeTab === 'orders' && (
+                        <section
+                            className={styles.clientSection}
+                            role="tabpanel"
+                            id="client-panel-orders"
+                            aria-labelledby="client-tab-orders"
+                        >
                             <div className={styles.orderSectionHeading}>
                                 <PiPackage aria-hidden />
                                 <div>
@@ -255,8 +318,9 @@ export function AdminClientDetails({
                                     <small>{data.orders.length} записей</small>
                                 </div>
                             </div>
-                            <div className={styles.clientHistoryList}>
-                                {data.orders.map((order) => (
+                            {data.orders.length ? (
+                                <div className={styles.clientHistoryList}>
+                                    {data.orders.map((order) => (
                                     <button
                                         type="button"
                                         key={order.id}
@@ -291,11 +355,23 @@ export function AdminClientDetails({
                                             </small>
                                         </span>
                                     </button>
-                                ))}
-                            </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className={styles.clientEmptyHistory}>
+                                    <PiPackage aria-hidden />
+                                    Заказов пока нет
+                                </p>
+                            )}
                         </section>
-
-                        <section className={styles.clientSection}>
+                    )}
+                    {data && activeTab === 'tickets' && (
+                        <section
+                            className={styles.clientSection}
+                            role="tabpanel"
+                            id="client-panel-tickets"
+                            aria-labelledby="client-tab-tickets"
+                        >
                             <div className={styles.orderSectionHeading}>
                                 <PiChatCircle aria-hidden />
                                 <div>
@@ -344,15 +420,38 @@ export function AdminClientDetails({
                                 </p>
                             )}
                         </section>
-
-                        {data.recipient.city && (
-                            <p className={styles.clientLocation}>
-                                <PiMapPin aria-hidden />
-                                Последний город доставки: {data.recipient.city}
-                            </p>
-                        )}
-                    </>
-                )}
+                    )}
+                    {data && activeTab === 'create' && canCreateTicket && (
+                        <section
+                            className={styles.clientSection}
+                            role="tabpanel"
+                            id="client-panel-create"
+                            aria-labelledby="client-tab-create"
+                        >
+                            <div className={styles.orderSectionHeading}>
+                                <PiPlusCircle aria-hidden />
+                                <div>
+                                    <h3>Новый тикет</h3>
+                                    <small>
+                                        Сообщение появится в личном кабинете клиента
+                                    </small>
+                                </div>
+                            </div>
+                            <CreateTicket
+                                admin
+                                defaultOpen
+                                embedded
+                                showToggle={false}
+                                customerUserId={client.user_id ?? undefined}
+                                orderOptions={data.orders.map((order) => ({
+                                    id: order.id,
+                                    label: `Заказ №${order.id} · ${date(order.created_at)} · ${money(order.total)}`,
+                                }))}
+                                onCreated={onTicket}
+                            />
+                        </section>
+                    )}
+                </div>
             </section>
         </div>
     );
