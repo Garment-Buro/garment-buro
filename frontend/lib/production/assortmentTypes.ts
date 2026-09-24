@@ -12,6 +12,8 @@ export interface GarmentSize {
     code: string;
     sort_order: number;
     base_price: string;
+    base_length_cm: string | null;
+    base_width_cm: string | null;
     min_height_cm: string | null;
     max_height_cm: string | null;
     min_length_cm: string | null;
@@ -37,8 +39,6 @@ export interface GarmentModel {
     base_size_code: string | null;
     fit_model_name: string | null;
     fit_model_height_cm: string | null;
-    base_length_cm: string | null;
-    base_width_cm: string | null;
     base_weight_g: string | null;
     size_chart_media_object_id: number | null;
     is_active: boolean;
@@ -75,7 +75,7 @@ export interface Fabric {
     color_hex: string | null;
     density_gsm: string | null;
     width_cm: string;
-    cost_per_meter: string | null;
+    cost_per_kg: string | null;
     minimum_stock_meters: string;
     currency: string;
     is_active: boolean;

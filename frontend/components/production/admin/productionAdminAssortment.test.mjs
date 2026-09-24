@@ -127,6 +127,10 @@ test('model editor explains the flow and keeps one compact size editor open', ()
     assert.match(models, /<SizeRangeEditor/);
     assert.match(models, /step="2"/);
     assert.match(models, /Базовый размер/);
+    assert.match(models, /Базовая ширина, см/);
+    assert.match(models, /Базовая длина, см/);
+    assert.match(models, /base_width_cm: optionalNumber\(size\.base_width_cm\)/);
+    assert.match(models, /base_length_cm: optionalNumber\(size\.base_length_cm\)/);
     assert.match(models, /Имя модели на фото/);
     assert.match(models, /Рост модели на фото, см/);
     assert.match(models, /Длина по росту/);
@@ -139,6 +143,8 @@ test('model editor explains the flow and keeps one compact size editor open', ()
     assert.match(models, /Категории моделей/);
     assert.match(models, /model-categories\/\$\{categoryEditor\.id\}/);
     assert.match(models, /Сохранить категорию/);
+    assert.doesNotMatch(models, /code: categoryEditor\.code/);
+    assert.doesNotMatch(models, /value=\{categoryEditor\.code\}/);
     assert.doesNotMatch(models, /min="0\.01"[\s\S]{0,80}step="2"/);
     for (const category of ['Майка', 'Худи', 'Штаны']) {
         assert.match(
@@ -152,6 +158,13 @@ test('model editor explains the flow and keeps one compact size editor open', ()
             new RegExp(category),
         );
     }
+});
+
+test('tech cards explain model ownership and never create a second draft', () => {
+    assert.match(techCards, /У каждой модели уже есть техкарта/);
+    assert.match(techCards, /Для изменений создайте новую версию/);
+    assert.match(techCards, /Сначала опубликуйте текущий черновик/);
+    assert.match(techCards, /!draft \?/);
 });
 
 test('every assortment list has search, popup filters, and sorting', () => {
@@ -168,6 +181,13 @@ test('every assortment list has search, popup filters, and sorting', () => {
         assert.match(source, /<AdminFilters/);
         assert.match(source, /key: 'sorting'/);
     }
+});
+
+test('fabric purchase price is stored and shown per kilogram', () => {
+    assert.match(types, /cost_per_kg: string \| null/);
+    assert.match(fabrics, /Цена за кг/);
+    assert.match(fabrics, /₽\/кг/);
+    assert.doesNotMatch(fabrics, /Цена за метр/);
 });
 
 test('product variants use compact multi-select matrices', () => {

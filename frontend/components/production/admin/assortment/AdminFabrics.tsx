@@ -28,7 +28,7 @@ const emptyFabric = (): FabricForm => ({
     color_hex: null,
     density_gsm: null,
     width_cm: '150',
-    cost_per_meter: null,
+    cost_per_kg: null,
     minimum_stock_meters: '0',
     currency: 'RUB',
     is_active: true,
@@ -90,8 +90,8 @@ export function AdminFabrics() {
                     Number(right.balance?.available_quantity ?? 0),
                 ],
                 price: [
-                    Number(left.cost_per_meter ?? 0),
-                    Number(right.cost_per_meter ?? 0),
+                    Number(left.cost_per_kg ?? 0),
+                    Number(right.cost_per_kg ?? 0),
                 ],
             };
             const [a, b] = values[field] ?? values.name;
@@ -118,8 +118,8 @@ export function AdminFabrics() {
                     density_gsm: editor.density_gsm
                         ? Number(editor.density_gsm)
                         : null,
-                    cost_per_meter: editor.cost_per_meter
-                        ? Number(editor.cost_per_meter)
+                    cost_per_kg: editor.cost_per_kg
+                        ? Number(editor.cost_per_kg)
                         : null,
                     minimum_stock_meters: Number(
                         editor.minimum_stock_meters || 0,
@@ -317,8 +317,8 @@ export function AdminFabrics() {
                                         </small>
                                     </td>
                                     <td data-label="Цена">
-                                        {fabric.cost_per_meter
-                                            ? `${compactDecimal(fabric.cost_per_meter)} ₽/м`
+                                        {fabric.cost_per_kg
+                                            ? `${compactDecimal(fabric.cost_per_kg)} ₽/кг`
                                             : 'Не задана'}
                                     </td>
                                     <td data-label="Действие">
@@ -334,10 +334,10 @@ export function AdminFabrics() {
                                                     width_cm: compactDecimal(
                                                         fabric.width_cm,
                                                     ),
-                                                    cost_per_meter:
-                                                        fabric.cost_per_meter
+                                                    cost_per_kg:
+                                                        fabric.cost_per_kg
                                                             ? compactDecimal(
-                                                                  fabric.cost_per_meter,
+                                                                  fabric.cost_per_kg,
                                                               )
                                                             : null,
                                                     minimum_stock_meters:
@@ -406,7 +406,7 @@ export function AdminFabrics() {
                                     ['color_hex', 'HEX цвета', 'text'],
                                     ['width_cm', 'Ширина, см', 'number'],
                                     ['density_gsm', 'Плотность, г/м²', 'number'],
-                                    ['cost_per_meter', 'Цена за метр', 'number'],
+                                    ['cost_per_kg', 'Цена за кг', 'number'],
                                     [
                                         'minimum_stock_meters',
                                         'Минимальный остаток, м',

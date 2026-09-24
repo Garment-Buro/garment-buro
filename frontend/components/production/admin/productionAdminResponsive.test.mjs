@@ -95,6 +95,7 @@ test('overview cards navigate, show weekly changes and use icon refresh actions'
     assert.match(statistics, /onNavigate\(metric\.section\)/);
     assert.match(statistics, /data\.week_change\.orders_count/);
     assert.match(statistics, /data\.week_change\.paid_orders_total/);
+    assert.doesNotMatch(statistics, /data\.week_change\.employees_count/);
     assert.match(statistics, /за 7 дней/);
     assert.match(statistics, /PiArrowClockwise/);
     assert.match(records, /PiArrowClockwise/);

@@ -66,7 +66,7 @@ def _fabric_payload(*, name: str = "Italian wool") -> CrmFabricWrite:
         color_hex="#1a1a1a",
         density_gsm=Decimal("285.50"),
         width_cm=Decimal("150.00"),
-        cost_per_meter=Decimal("2450.00"),
+        cost_per_kg=Decimal("5720.00"),
     )
 
 
@@ -76,6 +76,8 @@ def _model_payload(*, include_small: bool = True) -> CrmGarmentModelWrite:
             code="M",
             sort_order=20,
             base_price=Decimal("12000.00"),
+            base_length_cm=Decimal("100.00"),
+            base_width_cm=Decimal("45.00"),
             min_height_cm=Decimal("165.00"),
             max_height_cm=Decimal("180.00"),
         )
@@ -87,6 +89,8 @@ def _model_payload(*, include_small: bool = True) -> CrmGarmentModelWrite:
                 code="S",
                 sort_order=10,
                 base_price=Decimal("11500.00"),
+                base_length_cm=Decimal("96.00"),
+                base_width_cm=Decimal("42.00"),
                 min_height_cm=Decimal("155.00"),
                 max_height_cm=Decimal("170.00"),
             ),
@@ -95,9 +99,7 @@ def _model_payload(*, include_small: bool = True) -> CrmGarmentModelWrite:
         code="dress_base_01",
         name="Base dress",
         description="Internal pattern",
-        base_height_cm=Decimal("120.00"),
-        base_length_cm=Decimal("100.00"),
-        base_width_cm=Decimal("45.00"),
+        base_size_code="M",
         base_weight_g=Decimal("650.00"),
         sizes=sizes,
     )
@@ -138,6 +140,13 @@ def test_crm_reference_schemas_normalize_and_reject_ambiguous_ordering() -> None
             code="S",
             min_height_cm=Decimal("180"),
             max_height_cm=Decimal("160"),
+        )
+    with pytest.raises(ValidationError, match="base width is above"):
+        CrmGarmentSizeWrite(
+            code="S",
+            base_width_cm=Decimal("50"),
+            min_width_cm=Decimal("40"),
+            max_width_cm=Decimal("48"),
         )
     with pytest.raises(ValidationError, match="sort orders must be unique"):
         CrmGarmentModelWrite(
@@ -204,6 +213,8 @@ def test_fabrics_are_versioned_without_mutable_stock_counters(tmp_path: Path) ->
                 assert fabric is not None
                 assert fabric.code == "FAB_WOOL_001"
                 assert fabric.name == "Updated wool"
+                assert fabric.cost_per_kg == Decimal("5720.00")
+                assert fabric.cost_per_meter == Decimal("2449.59")
                 assert "stock_meters" not in CrmFabric.__table__.c
                 assert "reserved_meters" not in CrmFabric.__table__.c
                 assert [(event.action, event.entity_version) for event in events] == [
