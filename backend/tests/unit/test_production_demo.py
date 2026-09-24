@@ -20,6 +20,7 @@ from app.modules.payments.service import PaymentService, PaymentStateError
 from app.modules.production.admin_reads import ProductionAdminReads
 from app.modules.production.auth_models import ProductionEmployee
 from app.modules.production.auth_service import PREFIXES
+from app.modules.production.demo.employees import ensure_employees
 from app.modules.production.demo_access import require_demo_resource
 from app.modules.production.models import ProductionDemoEmployee
 from app.modules.production.read_service import ProductionReadService
@@ -200,7 +201,6 @@ def test_demo_seed_is_idempotent_private_and_has_each_workstation(tmp_path):
 
 
 def test_demo_codes_cannot_read_files_or_mutate_real_orders(tmp_path):
-    from app.modules.production.demo.employees import ensure_employees
     from tests.unit.test_production_terminal import setup
 
     async def scenario():
@@ -229,5 +229,47 @@ def test_demo_codes_cannot_read_files_or_mutate_real_orders(tmp_path):
                     )
                 queue = await ProductionReadService().queue(session, demo_only=True)
                 assert queue["items"] == []
+
+    asyncio.run(scenario())
+
+
+def test_demo_seed_uses_employees_adopted_by_admin_without_recreating_demo_markers(tmp_path):
+    async def scenario():
+        settings = _settings(tmp_path / "adopted-demo.db").model_copy(
+            update={"identity_otp_pepper": SecretStr("adopted-demo-pepper")}
+        )
+        db = DatabaseManager(settings)
+        await db.startup()
+        try:
+            async with db.engine.begin() as connection:
+                await connection.run_sync(Base.metadata.create_all)
+            files = CrmFileService(MinioStorage(settings, client=FakeMinioClient()))
+            secret = tmp_path / "private" / "adopted-demo.json"
+            people = await ensure_employees(db, secret)
+            async with db.session() as session:
+                markers = list(await session.scalars(select(ProductionDemoEmployee)))
+                for marker in markers:
+                    session.add(
+                        ProductionEmployee(
+                            user_id=marker.user_id,
+                            primary_station=marker.station,
+                        )
+                    )
+                    await session.delete(marker)
+                await session.commit()
+
+            rows = await provision(db, files, secret, _webp())
+
+            assert len(rows) == 13
+            assert all(value["code"] is None for value in json.loads(secret.read_text()).values())
+            async with db.session() as session:
+                assert await session.scalar(select(func.count(ProductionDemoEmployee.id))) == 0
+                assert await session.scalar(select(func.count(ProductionEmployee.id))) == 11
+                assert len((await ProductionReadService().queue(session))["items"]) == 13
+                assert {row["user_id"] for row in people.values()} == set(
+                    await session.scalars(select(ProductionEmployee.user_id))
+                )
+        finally:
+            await db.shutdown()
 
     asyncio.run(scenario())

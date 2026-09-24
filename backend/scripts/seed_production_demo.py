@@ -22,6 +22,7 @@ async def provision(database, files, credentials_file, image):
         credentials_file,
         preserve_unexported_existing=True,
     )
+    station_actors = {station: row["user_id"] for station, row in employees.items()}
     actor = employees["tech"]["user_id"]
     async with database.session() as session:
         products, size, card = await ensure_references(session, actor)
@@ -31,7 +32,18 @@ async def provision(database, files, credentials_file, image):
             order, project, unit, _ = await ensure_order(
                 session, station, label, products[0], actor
             )
-        await prepare_scenario(database, files, project, [unit], station, actor, size, card, image)
+        await prepare_scenario(
+            database,
+            files,
+            project,
+            [unit],
+            station,
+            actor,
+            size,
+            card,
+            image,
+            station_actors,
+        )
         orders.append(
             {
                 "station": station,
@@ -53,7 +65,18 @@ async def provision(database, files, credentials_file, image):
                 product_ids=product_ids,
                 actor=actor,
             )
-        await prepare_scenario(database, files, project, units, station, actor, size, card, image)
+        await prepare_scenario(
+            database,
+            files,
+            project,
+            units,
+            station,
+            actor,
+            size,
+            card,
+            image,
+            station_actors,
+        )
         orders.append(
             {
                 "station": station,

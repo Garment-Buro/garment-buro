@@ -5,7 +5,7 @@ from sqlalchemy import select
 
 from app.modules.identity.models import RoleName, SecurityAuditEvent, User, UserRole
 from app.modules.identity.repository import IdentityRepository
-from app.modules.production.auth_models import ProductionCredential
+from app.modules.production.auth_models import ProductionCredential, ProductionEmployee
 from app.modules.production.auth_service import code_digest, issue_code
 from app.modules.production.models import ProductionDemoEmployee
 
@@ -39,27 +39,35 @@ async def ensure_employees(database, credentials_file, *, preserve_unexported_ex
             marker = await session.scalar(
                 select(ProductionDemoEmployee).where(ProductionDemoEmployee.station == station)
             )
+            adopted = False
             if marker:
                 user = await session.get(User, marker.user_id)
             else:
-                if await session.scalar(select(User.id).where(User.email_normalized == email)):
-                    raise ValueError(
-                        "Demo email occupied by an unmarked account; refusing takeover"
+                user = await session.scalar(select(User).where(User.email_normalized == email))
+                if user is not None:
+                    employee = await session.scalar(
+                        select(ProductionEmployee).where(ProductionEmployee.user_id == user.id)
                     )
-                user = User(email=email, email_normalized=email, first_name=f"Демо · {label}")
-                session.add(user)
-                await session.flush()
-                session.add(ProductionDemoEmployee(user_id=user.id, station=station))
-                role = await repo.get_role(session, RoleName(f"production_{station}"))
-                session.add(UserRole(user_id=user.id, role_id=role.id))
-                session.add(
-                    SecurityAuditEvent(
-                        event_type="production.demo_employee_created",
-                        subject_user_id=user.id,
-                        details={"station": station},
+                    if employee is None:
+                        raise ValueError(
+                            "Demo email occupied by an unmarked account; refusing takeover"
+                        )
+                    adopted = True
+                else:
+                    user = User(email=email, email_normalized=email, first_name=f"Демо · {label}")
+                    session.add(user)
+                    await session.flush()
+                    session.add(ProductionDemoEmployee(user_id=user.id, station=station))
+                    role = await repo.get_role(session, RoleName(f"production_{station}"))
+                    session.add(UserRole(user_id=user.id, role_id=role.id))
+                    session.add(
+                        SecurityAuditEvent(
+                            event_type="production.demo_employee_created",
+                            subject_user_id=user.id,
+                            details={"station": station},
+                        )
                     )
-                )
-                await session.flush()
+                    await session.flush()
             credential = await session.scalar(
                 select(ProductionCredential).where(
                     ProductionCredential.user_id == user.id, ProductionCredential.active.is_(True)
@@ -67,9 +75,14 @@ async def ensure_employees(database, credentials_file, *, preserve_unexported_ex
             )
             if credential:
                 code = saved.get(station, {}).get("code", "")
-                if credential.station != station or (
-                    code and credential.code_digest != code_digest(code, pepper)
-                ):
+                if credential.station != station:
+                    raise ValueError("Existing employee code belongs to another station")
+                if adopted:
+                    # The administrator deliberately converted this former demo account into a
+                    # regular managed employee. Keep its current code untouched and never export
+                    # a possibly stale plaintext code from the old private demo file.
+                    code = None
+                elif code and credential.code_digest != code_digest(code, pepper):
                     raise ValueError(
                         "Existing demo code missing from private file; no rotation performed"
                     )
@@ -82,7 +95,7 @@ async def ensure_employees(database, credentials_file, *, preserve_unexported_ex
                     # recovered. Keep that access intact and continue provisioning orders.
                     code = None
             else:
-                if marker:
+                if marker or adopted:
                     raise ValueError("Demo employee was revoked; do not silently re-enable access")
                 code = await issue_code(session, user_id=user.id, station=station, pepper=pepper)
             result[station] = {"user_id": user.id, "name": label, "code": code}
