@@ -16,12 +16,13 @@ NEW_VALUES = (
 
 
 def _replace(values: str) -> None:
-    with op.batch_alter_table("crm_reference_events") as batch:
-        batch.drop_constraint(CONSTRAINT, type_="check")
-        batch.create_check_constraint(
-            "crm_reference_event_entity_type_valid",
-            f"entity_type IN ({values})",
-        )
+    constraint = op.f(CONSTRAINT)
+    op.drop_constraint(constraint, "crm_reference_events", type_="check")
+    op.create_check_constraint(
+        constraint,
+        "crm_reference_events",
+        f"entity_type IN ({values})",
+    )
 
 
 def upgrade() -> None:
