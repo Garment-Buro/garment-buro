@@ -102,11 +102,17 @@ def test_assortment_models_patterns_materials_accessories_and_boxes(tmp_path: Pa
                 model_category = await references.create_garment_model_category(
                     session,
                     payload=CrmGarmentModelCategoryWrite(
-                        code="TSHIRT",
                         name="T-shirts",
                     ),
                     actor_user_id=None,
                 )
+                similar_category = await references.create_garment_model_category(
+                    session,
+                    payload=CrmGarmentModelCategoryWrite(name="T shirts"),
+                    actor_user_id=None,
+                )
+                assert model_category.code == "T_SHIRTS"
+                assert similar_category.code == "T_SHIRTS_2"
                 model_payload = CrmGarmentModelWrite(
                     category_id=model_category.id,
                     code="TSHIRT_BASE",
@@ -119,6 +125,8 @@ def test_assortment_models_patterns_materials_accessories_and_boxes(tmp_path: Pa
                     sizes=[
                         CrmGarmentSizeWrite(
                             code="M",
+                            base_width_cm=Decimal("47"),
+                            base_length_cm=Decimal("71"),
                             min_width_cm=Decimal("44"),
                             max_width_cm=Decimal("50"),
                             min_length_cm=Decimal("68"),
@@ -150,7 +158,11 @@ def test_assortment_models_patterns_materials_accessories_and_boxes(tmp_path: Pa
                 assert model.base_size_code == "M"
                 assert model.fit_model_name == "Alex"
                 assert model.fit_model_height_cm == Decimal("180")
+                assert model.base_width_cm == Decimal("47")
+                assert model.base_length_cm == Decimal("71")
                 size = model.sizes[0]
+                assert size.base_width_cm == Decimal("47")
+                assert size.base_length_cm == Decimal("71")
                 assert size.allow_standard_sleeve is True
                 assert size.allow_height_sleeve is False
                 updated_category = await references.update_garment_model_category(
@@ -158,13 +170,13 @@ def test_assortment_models_patterns_materials_accessories_and_boxes(tmp_path: Pa
                     category_id=model_category.id,
                     expected_version=1,
                     payload=CrmGarmentModelCategoryWrite(
-                        code="TSHIRT",
                         name="Футболки",
                         is_active=False,
                     ),
                     actor_user_id=None,
                 )
                 assert updated_category.name == "Футболки"
+                assert updated_category.code == "T_SHIRTS"
                 assert updated_category.is_active is False
                 assert updated_category.version == 2
                 pattern_payload = CrmGarmentPatternWrite(

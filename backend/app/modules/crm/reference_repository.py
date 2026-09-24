@@ -85,6 +85,20 @@ class CrmReferenceRepository:
             is not None
         )
 
+    @staticmethod
+    async def garment_model_category_codes_starting_with(
+        session: AsyncSession,
+        *,
+        prefix: str,
+    ) -> set[str]:
+        return set(
+            await session.scalars(
+                select(CrmGarmentModelCategory.code).where(
+                    CrmGarmentModelCategory.code.startswith(prefix)
+                )
+            )
+        )
+
     async def public_ready_media_exists(
         self,
         session: AsyncSession,

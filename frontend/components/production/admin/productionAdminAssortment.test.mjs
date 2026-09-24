@@ -127,6 +127,10 @@ test('model editor explains the flow and keeps one compact size editor open', ()
     assert.match(models, /<SizeRangeEditor/);
     assert.match(models, /step="2"/);
     assert.match(models, /Базовый размер/);
+    assert.match(models, /Базовая ширина, см/);
+    assert.match(models, /Базовая длина, см/);
+    assert.match(models, /base_width_cm: optionalNumber\(size\.base_width_cm\)/);
+    assert.match(models, /base_length_cm: optionalNumber\(size\.base_length_cm\)/);
     assert.match(models, /Имя модели на фото/);
     assert.match(models, /Рост модели на фото, см/);
     assert.match(models, /Длина по росту/);
@@ -139,6 +143,8 @@ test('model editor explains the flow and keeps one compact size editor open', ()
     assert.match(models, /Категории моделей/);
     assert.match(models, /model-categories\/\$\{categoryEditor\.id\}/);
     assert.match(models, /Сохранить категорию/);
+    assert.doesNotMatch(models, /code: categoryEditor\.code/);
+    assert.doesNotMatch(models, /value=\{categoryEditor\.code\}/);
     assert.doesNotMatch(models, /min="0\.01"[\s\S]{0,80}step="2"/);
     for (const category of ['Майка', 'Худи', 'Штаны']) {
         assert.match(

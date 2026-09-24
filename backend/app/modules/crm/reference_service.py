@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from datetime import datetime, timezone
 from decimal import Decimal
 
@@ -44,6 +45,45 @@ class CrmReferenceVersionConflictError(RuntimeError):
     pass
 
 
+_CYRILLIC_TRANSLITERATION = str.maketrans(
+    {
+        "А": "A",
+        "Б": "B",
+        "В": "V",
+        "Г": "G",
+        "Д": "D",
+        "Е": "E",
+        "Ё": "E",
+        "Ж": "ZH",
+        "З": "Z",
+        "И": "I",
+        "Й": "Y",
+        "К": "K",
+        "Л": "L",
+        "М": "M",
+        "Н": "N",
+        "О": "O",
+        "П": "P",
+        "Р": "R",
+        "С": "S",
+        "Т": "T",
+        "У": "U",
+        "Ф": "F",
+        "Х": "H",
+        "Ц": "TS",
+        "Ч": "CH",
+        "Ш": "SH",
+        "Щ": "SCH",
+        "Ъ": "",
+        "Ы": "Y",
+        "Ь": "",
+        "Э": "E",
+        "Ю": "YU",
+        "Я": "YA",
+    }
+)
+
+
 class CrmReferenceService:
     def __init__(self, repository: CrmReferenceRepository | None = None) -> None:
         self.repository = repository or CrmReferenceRepository()
@@ -56,7 +96,10 @@ class CrmReferenceService:
         actor_user_id: int | None,
         now: datetime | None = None,
     ) -> CrmGarmentModelCategory:
-        category = CrmGarmentModelCategory(version=1)
+        category = CrmGarmentModelCategory(
+            code=await self._next_garment_model_category_code(session, payload.name),
+            version=1,
+        )
         self._apply_garment_model_category(category, payload)
         await self.repository.add(session, category)
         await self._audit(
@@ -66,7 +109,7 @@ class CrmReferenceService:
             entity_version=category.version,
             action=CrmReferenceAction.CREATED,
             actor_user_id=actor_user_id,
-            snapshot=payload.model_dump(mode="json"),
+            snapshot=self._garment_model_category_snapshot(category),
             details={},
             now=now,
         )
@@ -98,7 +141,7 @@ class CrmReferenceService:
             entity_version=category.version,
             action=CrmReferenceAction.UPDATED,
             actor_user_id=actor_user_id,
-            snapshot=payload.model_dump(mode="json"),
+            snapshot=self._garment_model_category_snapshot(category),
             details={},
             now=now,
         )
@@ -171,6 +214,7 @@ class CrmReferenceService:
         garment_model = CrmGarmentModel(version=1)
         self._apply_garment_model(garment_model, payload)
         garment_model.sizes.extend(self._new_size(size) for size in payload.sizes)
+        self._sync_legacy_base_dimensions(garment_model)
         await self.repository.add(session, garment_model)
         await self._audit(
             session,
@@ -220,6 +264,8 @@ class CrmReferenceService:
             if code not in requested_codes and size.is_active:
                 size.is_active = False
                 size.version += 1
+
+        self._sync_legacy_base_dimensions(garment_model)
 
         garment_model.version += 1
         await session.flush()
@@ -519,7 +565,6 @@ class CrmReferenceService:
         category: CrmGarmentModelCategory,
         payload: CrmGarmentModelCategoryWrite,
     ) -> None:
-        category.code = payload.code
         category.name = payload.name
         category.is_active = payload.is_active
 
@@ -566,6 +611,8 @@ class CrmReferenceService:
         size.code = payload.code
         size.sort_order = payload.sort_order
         size.base_price = payload.base_price
+        size.base_length_cm = payload.base_length_cm
+        size.base_width_cm = payload.base_width_cm
         size.min_height_cm = payload.min_height_cm
         size.max_height_cm = payload.max_height_cm
         size.min_length_cm = payload.min_length_cm
@@ -578,6 +625,51 @@ class CrmReferenceService:
         size.allow_height_sleeve = payload.allow_height_sleeve
         size.extra_width_price_per_cm = payload.extra_width_price_per_cm
         size.currency = payload.currency
+
+    @staticmethod
+    def _sync_legacy_base_dimensions(garment_model: CrmGarmentModel) -> None:
+        base_size = next(
+            (
+                size
+                for size in garment_model.sizes
+                if size.is_active and size.code == garment_model.base_size_code
+            ),
+            None,
+        )
+        garment_model.base_length_cm = base_size.base_length_cm if base_size else None
+        garment_model.base_width_cm = base_size.base_width_cm if base_size else None
+
+    async def _next_garment_model_category_code(
+        self,
+        session: AsyncSession,
+        name: str,
+    ) -> str:
+        transliterated = name.upper().translate(_CYRILLIC_TRANSLITERATION)
+        base = re.sub(r"[^A-Z0-9]+", "_", transliterated).strip("_") or "CATEGORY"
+        base = base[:64].rstrip("_")
+        existing = await self.repository.garment_model_category_codes_starting_with(
+            session,
+            prefix=base,
+        )
+        if base not in existing:
+            return base
+        suffix = 2
+        while True:
+            suffix_text = f"_{suffix}"
+            candidate = f"{base[: 64 - len(suffix_text)].rstrip('_')}{suffix_text}"
+            if candidate not in existing:
+                return candidate
+            suffix += 1
+
+    @staticmethod
+    def _garment_model_category_snapshot(
+        category: CrmGarmentModelCategory,
+    ) -> dict[str, object]:
+        return {
+            "code": category.code,
+            "name": category.name,
+            "is_active": category.is_active,
+        }
 
     @staticmethod
     def _new_revision(

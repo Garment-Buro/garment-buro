@@ -39,6 +39,8 @@ const emptySize = (sortOrder: number): GarmentSize => ({
     code: '',
     sort_order: sortOrder,
     base_price: '0',
+    base_length_cm: null,
+    base_width_cm: null,
     min_height_cm: null,
     max_height_cm: null,
     min_length_cm: null,
@@ -62,7 +64,6 @@ type ModelEditor = ModelForm & { size_chart_url?: string | null };
 type CategoryEditor = {
     id?: number;
     version?: number;
-    code: string;
     name: string;
     is_active: boolean;
 };
@@ -75,8 +76,6 @@ const emptyModel = (categoryId: number | null): ModelForm => ({
     base_size_code: null,
     fit_model_name: null,
     fit_model_height_cm: null,
-    base_length_cm: null,
-    base_width_cm: null,
     base_weight_g: null,
     size_chart_media_object_id: null,
     is_active: true,
@@ -92,6 +91,8 @@ const compactNullableDecimal = (value: string | null | undefined) =>
 const compactSize = (size: GarmentSize): GarmentSize => ({
     ...size,
     base_price: compactDecimal(size.base_price),
+    base_length_cm: compactNullableDecimal(size.base_length_cm),
+    base_width_cm: compactNullableDecimal(size.base_width_cm),
     min_height_cm: compactNullableDecimal(size.min_height_cm),
     max_height_cm: compactNullableDecimal(size.max_height_cm),
     min_length_cm: compactNullableDecimal(size.min_length_cm),
@@ -165,6 +166,10 @@ function SizeRangeEditor({
 }
 
 const sizeSummary = (size: GarmentSize) => {
+    const base =
+        size.base_width_cm && size.base_length_cm
+            ? `База ${Number(size.base_width_cm)} × ${Number(size.base_length_cm)} см`
+            : 'База не задана';
     const width =
         size.min_width_cm && size.max_width_cm
             ? `${Number(size.min_width_cm)}–${Number(size.max_width_cm)} см`
@@ -173,7 +178,7 @@ const sizeSummary = (size: GarmentSize) => {
         size.min_length_cm && size.max_length_cm
             ? `${Number(size.min_length_cm)}–${Number(size.max_length_cm)} см`
             : 'Длина не задана';
-    return `${width} · ${length}`;
+    return `${base} · ${width} · ${length}`;
 };
 
 export function AdminModels() {
@@ -251,10 +256,6 @@ export function AdminModels() {
                       fit_model_height_cm: compactNullableDecimal(
                           model.fit_model_height_cm,
                       ),
-                      base_length_cm: compactNullableDecimal(
-                          model.base_length_cm,
-                      ),
-                      base_width_cm: compactNullableDecimal(model.base_width_cm),
                       base_weight_g: compactNullableDecimal(model.base_weight_g),
                       sizes: model.sizes.map(compactSize),
                   }
@@ -291,8 +292,6 @@ export function AdminModels() {
             base_size_code: editor.base_size_code,
             fit_model_name: editor.fit_model_name,
             fit_model_height_cm: optionalNumber(editor.fit_model_height_cm),
-            base_length_cm: optionalNumber(editor.base_length_cm),
-            base_width_cm: optionalNumber(editor.base_width_cm),
             base_weight_g: optionalNumber(editor.base_weight_g),
             size_chart_media_object_id: editor.size_chart_media_object_id,
             is_active: editor.is_active,
@@ -300,6 +299,8 @@ export function AdminModels() {
                 code: size.code,
                 sort_order: index,
                 base_price: Number(size.base_price || 0),
+                base_length_cm: optionalNumber(size.base_length_cm),
+                base_width_cm: optionalNumber(size.base_width_cm),
                 min_height_cm: optionalNumber(size.min_height_cm),
                 max_height_cm: optionalNumber(size.max_height_cm),
                 min_length_cm: optionalNumber(size.min_length_cm),
@@ -352,7 +353,6 @@ export function AdminModels() {
                     : 'model-categories',
                 categoryEditor.id ? 'PUT' : 'POST',
                 {
-                    code: categoryEditor.code,
                     name: categoryEditor.name,
                     is_active: categoryEditor.is_active,
                     ...(categoryEditor.id
@@ -387,7 +387,6 @@ export function AdminModels() {
                     <button
                         onClick={() =>
                             setCategoryEditor({
-                                code: '',
                                 name: '',
                                 is_active: true,
                             })
@@ -443,7 +442,12 @@ export function AdminModels() {
                                     aria-label={`Изменить категорию ${category.name}`}
                                     title="Изменить категорию"
                                     onClick={() =>
-                                        setCategoryEditor({ ...category })
+                                        setCategoryEditor({
+                                            id: category.id,
+                                            version: category.version,
+                                            name: category.name,
+                                            is_active: category.is_active,
+                                        })
                                     }
                                 >
                                     <PiPencilSimple aria-hidden />
@@ -715,8 +719,6 @@ export function AdminModels() {
                                 {(
                                     [
                                         ['base_weight_g', 'Вес, г'],
-                                        ['base_width_cm', 'Базовая ширина, см'],
-                                        ['base_length_cm', 'Базовая длина, см'],
                                     ] as const
                                 ).map(([field, label]) => (
                                     <label key={field}>
@@ -1002,6 +1004,44 @@ export function AdminModels() {
                                                 }
                                             />
                                         </label>
+                                        <label>
+                                            Базовая ширина, см
+                                            <input
+                                                required
+                                                type="number"
+                                                min="0.1"
+                                                step="0.1"
+                                                inputMode="decimal"
+                                                value={activeSize.base_width_cm ?? ''}
+                                                placeholder="60"
+                                                onChange={(event) =>
+                                                    updateSize(
+                                                        activeSizeIndex,
+                                                        'base_width_cm',
+                                                        event.target.value,
+                                                    )
+                                                }
+                                            />
+                                        </label>
+                                        <label>
+                                            Базовая длина, см
+                                            <input
+                                                required
+                                                type="number"
+                                                min="0.1"
+                                                step="0.1"
+                                                inputMode="decimal"
+                                                value={activeSize.base_length_cm ?? ''}
+                                                placeholder="72"
+                                                onChange={(event) =>
+                                                    updateSize(
+                                                        activeSizeIndex,
+                                                        'base_length_cm',
+                                                        event.target.value,
+                                                    )
+                                                }
+                                            />
+                                        </label>
                                     </div>
                                     <div className={styles.sizeRangeGrid}>
                                         <SizeRangeEditor
@@ -1239,21 +1279,6 @@ export function AdminModels() {
                                         setCategoryEditor({
                                             ...categoryEditor,
                                             name: event.target.value,
-                                        })
-                                    }
-                                />
-                            </label>
-                            <label>
-                                Код
-                                <input
-                                    required
-                                    maxLength={64}
-                                    value={categoryEditor.code}
-                                    placeholder="HOODIE"
-                                    onChange={(event) =>
-                                        setCategoryEditor({
-                                            ...categoryEditor,
-                                            code: event.target.value.toUpperCase(),
                                         })
                                     }
                                 />

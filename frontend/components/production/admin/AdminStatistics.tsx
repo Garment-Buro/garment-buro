@@ -86,7 +86,7 @@ export function AdminStatistics({
                             {
                                 label: 'Сотрудники',
                                 value: data.employees_count,
-                                change: data.week_change.employees_count,
+                                change: null,
                                 icon: PiUsers,
                                 section: 'employees' as const,
                                 width: 'wide',
@@ -139,14 +139,15 @@ export function AdminStatistics({
                             },
                         ].map((metric) => {
                             const Icon = metric.icon;
+                            const change = metric.change ?? 0;
                             const tone = trend(
-                                metric.change,
+                                change,
                                 metric.inverse ?? false,
                             );
                             const TrendIcon =
-                                metric.change > 0
+                                change > 0
                                     ? PiTrendUp
-                                    : metric.change < 0
+                                    : change < 0
                                       ? PiTrendDown
                                       : PiMinus;
                             return (
@@ -169,15 +170,17 @@ export function AdminStatistics({
                                         {metric.label}
                                     </span>
                                     <strong>{metric.value}</strong>
-                                    <span
-                                        className={styles.metricTrend}
-                                        data-tone={tone}
-                                    >
-                                        <TrendIcon aria-hidden />
-                                        {metric.changeLabel ??
-                                            signedCount(metric.change)}{' '}
-                                        за 7 дней
-                                    </span>
+                                    {metric.change !== null && (
+                                        <span
+                                            className={styles.metricTrend}
+                                            data-tone={tone}
+                                        >
+                                            <TrendIcon aria-hidden />
+                                            {metric.changeLabel ??
+                                                signedCount(metric.change)}{' '}
+                                            за 7 дней
+                                        </span>
+                                    )}
                                 </button>
                             );
                         })}

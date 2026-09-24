@@ -243,6 +243,14 @@ class CrmGarmentSize(Base, IntegerIdMixin, TimestampMixin):
         CheckConstraint("sort_order >= 0", name="crm_garment_size_sort_nonnegative"),
         CheckConstraint("base_price >= 0", name="crm_garment_size_price_nonnegative"),
         CheckConstraint(
+            "base_length_cm IS NULL OR base_length_cm > 0",
+            name="crm_garment_size_base_length_positive",
+        ),
+        CheckConstraint(
+            "base_width_cm IS NULL OR base_width_cm > 0",
+            name="crm_garment_size_base_width_positive",
+        ),
+        CheckConstraint(
             "min_height_cm IS NULL OR min_height_cm > 0",
             name="crm_garment_size_min_height_positive",
         ),
@@ -319,6 +327,8 @@ class CrmGarmentSize(Base, IntegerIdMixin, TimestampMixin):
         default=0,
         server_default="0",
     )
+    base_length_cm: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    base_width_cm: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     min_height_cm: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     max_height_cm: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     min_length_cm: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)

@@ -76,6 +76,8 @@ class CrmGarmentSizeWrite(BaseModel):
     code: str = Field(min_length=1, max_length=32)
     sort_order: int = Field(default=0, ge=0)
     base_price: Decimal = Field(default=Decimal("0"), ge=0, max_digits=12, decimal_places=2)
+    base_length_cm: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)
+    base_width_cm: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)
     min_height_cm: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)
     max_height_cm: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)
     min_length_cm: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)
@@ -116,6 +118,14 @@ class CrmGarmentSizeWrite(BaseModel):
         ):
             if minimum is not None and maximum is not None and minimum > maximum:
                 raise ValueError(f"Garment size {label} range is inverted")
+        for base, minimum, maximum, label in (
+            (self.base_length_cm, self.min_length_cm, self.max_length_cm, "length"),
+            (self.base_width_cm, self.min_width_cm, self.max_width_cm, "width"),
+        ):
+            if base is not None and minimum is not None and base < minimum:
+                raise ValueError(f"Garment size base {label} is below the allowed range")
+            if base is not None and maximum is not None and base > maximum:
+                raise ValueError(f"Garment size base {label} is above the allowed range")
         if not self.allow_standard_sleeve and not self.allow_height_sleeve:
             raise ValueError("At least one sleeve option must be enabled")
         return self
@@ -287,17 +297,8 @@ class CrmGarmentModelCategoryRead(BaseModel):
 
 
 class CrmGarmentModelCategoryWrite(BaseModel):
-    code: str = Field(min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=120)
     is_active: bool = True
-
-    @field_validator("code")
-    @classmethod
-    def normalize_code(cls, value: str) -> str:
-        normalized = value.strip().upper()
-        if not REFERENCE_CODE_PATTERN.fullmatch(normalized):
-            raise ValueError("Garment model category code contains unsupported characters")
-        return normalized
 
     @field_validator("name")
     @classmethod
