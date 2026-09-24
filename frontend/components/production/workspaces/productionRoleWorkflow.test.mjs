@@ -34,6 +34,7 @@ test('bag history, order comments and cutting data follow role rules', () => {
     const actions = read('../BagActions.tsx');
     const journal = read('./ProductionJournal.tsx');
     const unit = read('../ProductionUnit.tsx');
+    const printSheet = read('../PrintSheet.tsx');
     const cutting = read('../ProductionCuttingBrief.tsx');
     const views = read('./ProductionViews.tsx');
 
@@ -43,7 +44,7 @@ test('bag history, order comments and cutting data follow role rules', () => {
     assert.match(bag, /orderComments\.map/);
     assert.doesNotMatch(bag, /Версия<strong>/);
     assert.doesNotMatch(bag, /Печать QR мешка заказа/);
-    assert.match(bag, /station !== 'tech'/);
+    assert.match(bag, /<strong>QR мешка заказа<\/strong>/);
     assert.match(bag, /const isOpen = opened === unit\.id/);
     assert.doesNotMatch(bag, /disabled=\{wide\}/);
     assert.match(actions, /Ждём подтверждение технолога/);
@@ -57,6 +58,13 @@ test('bag history, order comments and cutting data follow role rules', () => {
     assert.match(views, /Макет заказчика/);
     assert.match(views, /Наложение на лекало/);
     assert.match(views, /Открыть оригинал лекала/);
+    assert.match(views, /productionApi\.download\(token, id, station, true\)/);
+    assert.match(views, /data-tech=\{station === 'tech'\}/);
+    assert.match(bag, /station === 'dtf'/);
+    assert.match(unit, /<strong>QR изделия готов<\/strong>/);
+    assert.match(unit, /Распечатать QR изделия/);
+    assert.match(printSheet, /target === 'bag'/);
+    assert.match(printSheet, /target === 'units' \|\| unit\.id === target/);
     assert.match(unit, /station === 'cut'/);
     for (const label of [
         'Код лекала',

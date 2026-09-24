@@ -11,7 +11,7 @@ from app.db.session import DatabaseManager
 from app.integrations.minio import MinioStorage
 from app.modules.crm.file_service import CrmFileService
 from app.modules.production.demo.employees import STATIONS, ensure_employees
-from app.modules.production.demo.orders import ensure_order
+from app.modules.production.demo.orders import ensure_multi_item_order, ensure_order
 from app.modules.production.demo.references import ensure_references
 from app.modules.production.demo.scenarios import prepare_scenario
 
@@ -24,13 +24,44 @@ async def provision(database, files, credentials_file, image):
     )
     actor = employees["tech"]["user_id"]
     async with database.session() as session:
-        product, size, card = await ensure_references(session, actor)
+        products, size, card = await ensure_references(session, actor)
     orders = []
     for station, label in STATIONS.items():
         async with database.session() as session:
-            order, project, unit, _ = await ensure_order(session, station, label, product, actor)
-        await prepare_scenario(database, files, project, unit, station, actor, size, card, image)
-        orders.append({"station": station, "order_id": order, "project_id": project})
+            order, project, unit, _ = await ensure_order(
+                session, station, label, products[0], actor
+            )
+        await prepare_scenario(database, files, project, [unit], station, actor, size, card, image)
+        orders.append(
+            {
+                "station": station,
+                "order_id": order,
+                "project_id": project,
+                "units_count": 1,
+            }
+        )
+    for scenario_key, station, label, product_ids in (
+        ("tech-three-products", "tech", "Технолог · 3 товара", products),
+        ("packing-two-products", "packing", "Упаковка · 2 товара", products[:2]),
+    ):
+        async with database.session() as session:
+            order, project, units, _ = await ensure_multi_item_order(
+                session,
+                scenario_key=scenario_key,
+                station=station,
+                label=label,
+                product_ids=product_ids,
+                actor=actor,
+            )
+        await prepare_scenario(database, files, project, units, station, actor, size, card, image)
+        orders.append(
+            {
+                "station": station,
+                "order_id": order,
+                "project_id": project,
+                "units_count": len(units),
+            }
+        )
     return orders
 
 

@@ -26,6 +26,7 @@ import { ProductionUnit } from '../ProductionUnit';
 import { ProductionViews } from './ProductionViews';
 import { ProductionJournal } from './ProductionJournal';
 import { ProductionTechCard } from './ProductionTechCard';
+import type { PrintTarget } from '../PrintSheet';
 import { thingsCount } from '@/lib/production/workspaces';
 import styles from './ProductionFlow.module.css';
 
@@ -44,7 +45,7 @@ export function ProductionBag({
     station: Station;
     busy: boolean;
     send: SendCommand;
-    print: () => void;
+    print: (target: PrintTarget) => void;
     printing: boolean;
     requestedUnit?: number | null;
 }) {
@@ -129,7 +130,7 @@ export function ProductionBag({
                                                       unit.public_token,
                                               )))
                                 }
-                                onClick={print}
+                                onClick={() => print('units')}
                             >
                                 <PiPrinter />
                                 {printing
@@ -139,7 +140,6 @@ export function ProductionBag({
                         )}
                 </div>
                 {wide &&
-                    station !== 'tech' &&
                     (project.flow_version !== 2 || project.public_token) && (
                         <div className={styles.qr}>
                             <img
@@ -148,7 +148,7 @@ export function ProductionBag({
                                 width={112}
                                 height={112}
                             />
-                            <strong>QR заказа</strong>
+                            <strong>QR мешка заказа</strong>
                             <small>Мешок №{project.order_id}</small>
                         </div>
                     )}
@@ -172,7 +172,7 @@ export function ProductionBag({
                     stations={localStations}
                     send={send}
                     busy={busy || blocked}
-                    print={print}
+                    print={() => print('bag')}
                     printing={printing}
                 />
             )}
@@ -247,11 +247,11 @@ export function ProductionBag({
                                             stations={localStations}
                                             send={send}
                                             busy={busy || blocked}
+                                            print={print}
                                         />
                                         <ProductionViews
                                             unit={unit}
                                             compact={
-                                                station === 'tech' ||
                                                 station === 'dtf'
                                             }
                                             station={station}
@@ -283,7 +283,7 @@ export function ProductionBag({
                     stations={localStations}
                     send={send}
                     busy={busy || blocked}
-                    print={print}
+                    print={() => print('bag')}
                     printing={printing}
                 />
             )}

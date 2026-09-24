@@ -275,7 +275,12 @@ async def upload(
 
 @router.get("/files/{attachment_id}/download")
 async def download(
-    attachment_id: int, request: Request, auth: Auth, session: Session, station: str | None = None
+    attachment_id: int,
+    request: Request,
+    auth: Auth,
+    session: Session,
+    station: str | None = None,
+    inline: bool = False,
 ):
     auth = (auth[0], active_roles(auth, station))
     attachment = await session.get(CrmFileAttachment, attachment_id)
@@ -310,7 +315,10 @@ async def download(
             raise HTTPException(403, "Файл не закреплён для вашего участка")
     try:
         return await file_service(request).get_download(
-            session, attachment_id=attachment_id, actor_user_id=auth[0].id
+            session,
+            attachment_id=attachment_id,
+            actor_user_id=auth[0].id,
+            inline=inline,
         )
     except CrmFileNotFoundError as error:
         raise HTTPException(404, str(error)) from error

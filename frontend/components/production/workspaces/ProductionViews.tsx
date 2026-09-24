@@ -1,6 +1,6 @@
 /* eslint-disable @next/next/no-img-element -- immutable order snapshot */
 import { useState } from 'react';
-import { PiDownloadSimple, PiStack } from 'react-icons/pi';
+import { PiArrowSquareOut, PiStack } from 'react-icons/pi';
 import { productionApi } from '@/lib/api/production';
 import type { Station, Unit } from '@/lib/production/types';
 import { safeImage } from '@/lib/production/workflow';
@@ -190,7 +190,7 @@ export function ProductionViews({
         setFileError('');
         try {
             const file = await run((token) =>
-                productionApi.download(token, id, station),
+                productionApi.download(token, id, station, true),
             );
             const link = document.createElement('a');
             link.href = file.url;
@@ -206,22 +206,28 @@ export function ProductionViews({
         }
     };
     return (
-        <div className={styles.views} data-compact={compact}>
-            <div
-                className={styles.viewTabs}
-                role="group"
-                aria-label="Стороны изделия"
-            >
-                {sides.map(([key, title]) => (
-                    <button
-                        key={key}
-                        aria-pressed={view === key}
-                        onClick={() => setView(key)}
-                    >
-                        {title}
-                    </button>
-                ))}
-            </div>
+        <div
+            className={styles.views}
+            data-compact={compact}
+            data-tech={station === 'tech'}
+        >
+            {station !== 'tech' && (
+                <div
+                    className={styles.viewTabs}
+                    role="group"
+                    aria-label="Стороны изделия"
+                >
+                    {sides.map(([key, title]) => (
+                        <button
+                            key={key}
+                            aria-pressed={view === key}
+                            onClick={() => setView(key)}
+                        >
+                            {title}
+                        </button>
+                    ))}
+                </div>
+            )}
             <div className={styles.viewGrid}>
                 {sides.map(([key, title]) => {
                     const src = safeImage(images[key]);
@@ -282,9 +288,7 @@ export function ProductionViews({
                                                         )
                                                     }
                                                 >
-                                                    <PiDownloadSimple
-                                                        aria-hidden
-                                                    />
+                                                    <PiArrowSquareOut aria-hidden />
                                                     {openingFile === file.id
                                                         ? 'Открываем…'
                                                         : patternFiles.length ===

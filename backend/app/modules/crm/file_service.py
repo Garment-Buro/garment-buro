@@ -225,6 +225,7 @@ class CrmFileService:
         *,
         attachment_id: int,
         actor_user_id: int,
+        inline: bool = False,
         now: datetime | None = None,
     ) -> CrmFileDownload:
         self._require_actor(actor_user_id)
@@ -239,10 +240,17 @@ class CrmFileService:
             raise CrmFileNotFoundError("CRM file storage evidence is invalid")
         filename = media.original_filename or "download"
         try:
-            url = await self.storage.presigned_crm_get_url(
-                media.object_key,
-                filename=filename,
-            )
+            if inline:
+                url = await self.storage.presigned_crm_preview_url(
+                    media.object_key,
+                    filename=filename,
+                    content_type=media.content_type,
+                )
+            else:
+                url = await self.storage.presigned_crm_get_url(
+                    media.object_key,
+                    filename=filename,
+                )
         except Exception as error:
             raise CrmFileStorageError("Private CRM storage is unavailable") from error
         occurred_at = ensure_utc(now or datetime.now(timezone.utc))

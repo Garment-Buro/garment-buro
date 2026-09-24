@@ -40,12 +40,21 @@ def test_dual_approval_is_invalidated_and_requires_tech_and_dtf(tmp_path):
             people = await workers(db)
             await execute(db, service, "plan", unit_id=1, specification=spec)
             await execute(db, service, "confirm_documents", unit_id=1)
+            async with db.session() as session:
+                work = await session.scalar(select(ProductionWorkItem))
+                first_unit_token = work.public_token
+                assert first_unit_token and len(first_unit_token) == 43
             await execute(db, service, "approve_order")
             await execute(db, service, "plan", unit_id=1, specification=spec)
             async with db.session() as session:
                 bag = await session.scalar(select(ProductionBag))
                 assert bag.tech_approved_at is None and bag.public_token is None
+                work = await session.scalar(select(ProductionWorkItem))
+                assert work.public_token is None
             await execute(db, service, "confirm_documents", unit_id=1)
+            async with db.session() as session:
+                work = await session.scalar(select(ProductionWorkItem))
+                assert work.public_token and work.public_token != first_unit_token
             await execute(db, service, "approve_order")
             await execute(db, service, "approve_order", actor=people["dtf"])
             async with db.session() as session:
@@ -75,6 +84,15 @@ def test_independent_units_qr_dtf_workshop_and_packing(tmp_path):
             )
             for unit in (1, 2):
                 await execute(db, service, "confirm_documents", unit_id=unit)
+            async with db.session() as session:
+                work = list(
+                    await session.scalars(
+                        select(ProductionWorkItem).order_by(ProductionWorkItem.unit_id)
+                    )
+                )
+                assert all(item.documents_confirmed for item in work)
+                assert all(item.public_token and len(item.public_token) == 43 for item in work)
+                assert work[0].public_token != work[1].public_token
             with pytest.raises(ProductionConflict, match="технолога и DTF"):
                 await execute(db, service, "release")
             await execute(db, service, "approve_order")
@@ -89,12 +107,7 @@ def test_independent_units_qr_dtf_workshop_and_packing(tmp_path):
                 await execute(
                     db, service, "issue_unit_label", unit_id=1
                 )  # Technologist is not a cutter.
-            with pytest.raises(ProductionConflict, match="QR"):
-                await execute(
-                    db, service, "complete_stage", actor=2, unit_id=1, stage="cut", note="Ready"
-                )
             for unit in (1, 2):
-                await execute(db, service, "issue_unit_label", actor=2, unit_id=unit)
                 await execute(
                     db,
                     service,
