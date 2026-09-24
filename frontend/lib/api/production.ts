@@ -63,9 +63,17 @@ export const productionApi = {
             body,
         });
     },
-    download: (token: string, id: number, station?: string) =>
+    download: (
+        token: string,
+        id: number,
+        station?: string,
+        inline = false,
+    ) =>
         requestJson<{ url: string; filename: string }>(
-            `/production/files/${id}/download${station ? `?station=${station}` : ''}`,
+            `/production/files/${id}/download?${new URLSearchParams({
+                ...(station ? { station } : {}),
+                ...(inline ? { inline: 'true' } : {}),
+            })}`,
             { headers: headers(token), cache: 'no-store' },
         ),
     cdekWaybill: async (token: string, id: number) => {

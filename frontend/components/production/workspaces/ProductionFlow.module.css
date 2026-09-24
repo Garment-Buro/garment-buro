@@ -673,6 +673,21 @@
 .views[data-compact='true'] figure {
     border: 0;
 }
+.views[data-tech='true'] .viewGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    border: 0;
+    border-radius: 0;
+    overflow: visible;
+}
+.views[data-tech='true'] .viewGrid figure {
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    overflow: hidden;
+}
+.views[data-tech='true'] .viewGrid figure + figure {
+    border-left: 1px solid var(--line);
+}
 .visualComparison {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -738,6 +753,11 @@
 .patternActions .error {
     width: 100%;
     margin: 0;
+}
+@media (max-width: 760px) {
+    .views[data-tech='true'] .viewGrid {
+        grid-template-columns: 1fr;
+    }
 }
 .scan {
     display: grid;

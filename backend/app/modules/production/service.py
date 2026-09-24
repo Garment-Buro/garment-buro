@@ -276,6 +276,8 @@ class ProductionService:
         )
         work.specification_id = spec.id
         work.documents_confirmed = False
+        if bag.flow_version == 2:
+            work.public_token = None
         work.component_checks = {}
         self._invalidate_order_approvals(bag)
 
@@ -315,6 +317,8 @@ class ProductionService:
             require_station(stations, "tech")
             self._state(bag, "inbox")
             item.documents_confirmed = True
+            if bag.flow_version == 2 and item.public_token is None:
+                item.public_token = secrets.token_urlsafe(32)
         elif action == "release":
             require_station(stations, "tech")
             self._state(bag, "inbox")

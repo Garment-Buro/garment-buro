@@ -18,23 +18,29 @@ from app.modules.crm.reference_service import CrmReferenceService
 
 
 async def ensure_references(session, actor):
-    product = await session.scalar(
-        select(Product).where(Product.slug == "production-demo-hoodie-v1")
+    product_specs = (
+        ("production-demo-hoodie-v1", "ТЕСТ · Худи для обучения", "navy"),
+        ("production-demo-sweatshirt-v1", "ТЕСТ · Свитшот для обучения", "graphite"),
+        ("production-demo-tshirt-v1", "ТЕСТ · Футболка для обучения", "white"),
     )
-    if product is None:
-        product = Product(
-            title="ТЕСТ · Худи для обучения",
-            slug="production-demo-hoodie-v1",
-            price=0,
-            is_active=False,
-            is_demo=True,
-            sizes=["M"],
-            colors=["navy"],
-        )
-        session.add(product)
-        await session.flush()
-    if product.is_active or not product.is_demo:
-        raise ValueError("Demo catalog product must remain hidden and explicitly marked")
+    products = []
+    for slug, title, color in product_specs:
+        product = await session.scalar(select(Product).where(Product.slug == slug))
+        if product is None:
+            product = Product(
+                title=title,
+                slug=slug,
+                price=0,
+                is_active=False,
+                is_demo=True,
+                sizes=["M"],
+                colors=[color],
+            )
+            session.add(product)
+            await session.flush()
+        if product.is_active or not product.is_demo:
+            raise ValueError("Demo catalog product must remain hidden and explicitly marked")
+        products.append(product)
     service = CrmReferenceService()
     model = await session.scalar(
         select(CrmGarmentModel).where(CrmGarmentModel.code == "DEMO_HOODIE_V1")
@@ -48,9 +54,6 @@ async def ensure_references(session, actor):
                 name="ТЕСТ · Учебное худи",
                 sizes=[CrmGarmentSizeWrite(code="M")],
             ),
-        )
-        await service.link_catalog_product(
-            session, garment_model_id=model.id, catalog_product_id=product.id, actor_user_id=actor
         )
         card = await service.create_tech_card(
             session,
@@ -75,6 +78,16 @@ async def ensure_references(session, actor):
         await service.publish_tech_card_revision(
             session, tech_card_id=card.id, revision_number=1, actor_user_id=actor
         )
+    for product in products:
+        if product.garment_model_id is None:
+            await service.link_catalog_product(
+                session,
+                garment_model_id=model.id,
+                catalog_product_id=product.id,
+                actor_user_id=actor,
+            )
+        elif product.garment_model_id != model.id:
+            raise ValueError("Demo catalog product is linked to another garment model")
     size = await session.scalar(
         select(CrmGarmentSize).where(CrmGarmentSize.garment_model_id == model.id)
     )
@@ -86,4 +99,4 @@ async def ensure_references(session, actor):
     if size is None or revision is None:
         raise ValueError("Demo reference is incomplete; do not overwrite operator changes")
     await session.commit()
-    return product.id, size.id, revision.id
+    return [product.id for product in products], size.id, revision.id

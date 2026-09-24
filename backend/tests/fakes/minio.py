@@ -17,6 +17,7 @@ class FakeMinioClient:
         self.bucket_policy = bucket_policy
         self.uploads: list[dict[str, object]] = []
         self.removed: list[tuple[str, str]] = []
+        self.presigns: list[dict[str, object]] = []
 
     def bucket_exists(self, bucket_name: str) -> bool:
         return self.bucket_available and bucket_name in {
@@ -67,5 +68,12 @@ class FakeMinioClient:
         expires: timedelta,
         response_headers: dict[str, str] | None = None,
     ) -> str:
+        self.presigns.append(
+            {
+                "bucket_name": bucket_name,
+                "object_name": object_name,
+                "response_headers": response_headers,
+            }
+        )
         suffix = "&download=1" if response_headers else ""
         return f"https://signed.test/{bucket_name}/{object_name}?ttl={expires.seconds}{suffix}"

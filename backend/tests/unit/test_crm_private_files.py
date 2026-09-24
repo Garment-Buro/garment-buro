@@ -144,7 +144,18 @@ def test_crm_file_uses_private_bucket_and_only_signed_download(tmp_path: Path) -
                     actor_user_id=1,
                     now=NOW,
                 )
-                access_event = await session.scalar(select(CrmFileAccessEvent))
+                preview = await service.get_download(
+                    session,
+                    attachment_id=1,
+                    actor_user_id=1,
+                    inline=True,
+                    now=NOW,
+                )
+                access_events = list(
+                    await session.scalars(
+                        select(CrmFileAccessEvent).order_by(CrmFileAccessEvent.id)
+                    )
+                )
                 assert media is not None and attachment is not None
                 assert media.bucket_name == settings.minio_crm_bucket
                 assert not media.is_public
@@ -154,13 +165,16 @@ def test_crm_file_uses_private_bucket_and_only_signed_download(tmp_path: Path) -
                 assert download.filename == "private-pattern.webp"
                 assert download.url.startswith("https://cdn.test/garment-buro-test-crm-private/")
                 assert download.url.endswith("&download=1")
+                assert preview.url.endswith("&download=1")
                 assert "signed.test" not in download.url
-                assert access_event is not None
+                assert len(access_events) == 2
+                access_event = access_events[0]
                 assert access_event.attachment_id == attachment.id
                 assert access_event.actor_user_id == 1
                 assert access_event.event_type == "download_url_issued"
                 assert ensure_utc(access_event.occurred_at) == NOW
                 assert ensure_utc(access_event.expires_at) > ensure_utc(access_event.occurred_at)
+                assert access_events[1].event_type == "download_url_issued"
         finally:
             await database.shutdown()
 

@@ -204,6 +204,31 @@ class MinioStorage:
         )
         return self._externalize_presigned_url(signed_url)
 
+    async def presigned_crm_preview_url(
+        self,
+        object_key: str,
+        *,
+        filename: str,
+        content_type: str,
+    ) -> str:
+        self._validate_object_key(object_key)
+        encoded_filename = quote(filename or "preview", safe="")
+        signed_url = await to_thread.run_sync(
+            partial(
+                self.client.presigned_get_object,
+                bucket_name=self.settings.minio_crm_bucket,
+                object_name=object_key,
+                expires=timedelta(seconds=self.settings.minio_presigned_expire_seconds),
+                response_headers={
+                    "response-content-disposition": (
+                        f"inline; filename*=UTF-8''{encoded_filename}"
+                    ),
+                    "response-content-type": content_type,
+                },
+            )
+        )
+        return self._externalize_presigned_url(signed_url)
+
     async def private_crm_object_exists(self, object_key: str) -> bool:
         self._validate_object_key(object_key)
         try:

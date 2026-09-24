@@ -48,7 +48,8 @@ def test_demo_seed_is_idempotent_private_and_has_each_workstation(tmp_path):
             secret = tmp_path / "private" / "demo.json"
             rows = await provision(db, files, secret, _webp())
             codes = json.loads(secret.read_text())
-            assert len(rows) == len(codes) == 11
+            assert len(rows) == 13
+            assert len(codes) == 11
             assert secret.stat().st_mode & 0o777 == 0o600
             assert len({row["code"] for row in codes.values()}) == 11
             assert all(len(row["code"]) == 6 for row in codes.values())
@@ -104,7 +105,7 @@ def test_demo_seed_is_idempotent_private_and_has_each_workstation(tmp_path):
                 )
                 await session.flush()
                 regular_queue = await ProductionReadService().queue(session)
-                assert len(regular_queue["items"]) == 11
+                assert len(regular_queue["items"]) == 13
                 await require_demo_resource(
                     session,
                     real_employee.id,
@@ -115,7 +116,9 @@ def test_demo_seed_is_idempotent_private_and_has_each_workstation(tmp_path):
                 )
                 assert legacy_rows == []
                 queue = await ProductionReadService().queue(session, demo_only=True)
-                assert len(queue["items"]) == 11
+                assert len(queue["items"]) == 13
+                multi_rows = [row for row in rows if row["units_count"] > 1]
+                assert sorted(row["units_count"] for row in multi_rows) == [2, 3]
                 by_id = {row["project_id"]: row for row in queue["items"]}
                 for row in rows:
                     item = by_id[row["project_id"]]
@@ -133,9 +136,18 @@ def test_demo_seed_is_idempotent_private_and_has_each_workstation(tmp_path):
                         "packing",
                         "workshop",
                     }:
-                        assert item["stage_counts"][row["station"]] == 1
+                        assert item["stage_counts"][row["station"]] == row["units_count"]
                     if row["station"] == "dtf":
                         assert item["stage_counts"]["waiting_dtf"] == 1 and item["dtf_pending"] == 1
+                for row in multi_rows:
+                    detail = await ProductionReadService().detail(
+                        session, project_id=row["project_id"], stations=["tech"]
+                    )
+                    assert len(detail["units"]) == row["units_count"]
+                    assert (
+                        len({unit["source"]["title"] for unit in detail["units"]})
+                        == row["units_count"]
+                    )
                 order = await session.get(Order, rows[0]["order_id"])
                 with pytest.raises(PaymentStateError, match="Demo orders"):
                     PaymentService._validate_payable_order(order)

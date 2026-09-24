@@ -26,7 +26,7 @@ import {
 import { ProductionCycle } from './ProductionCycle';
 import { BagScanner } from './BagScanner';
 import { ProductionBag } from './ProductionBag';
-import { PrintSheet } from '../PrintSheet';
+import { PrintSheet, type PrintTarget } from '../PrintSheet';
 import { ProductionMark, TerminalState } from './ProductionUi';
 import styles from './ProductionFlow.module.css';
 import legacy from '../ProductionTerminal.module.css';
@@ -40,13 +40,18 @@ export function ProductionWorkspace() {
     const [pocket, setPocket] = useState<QueuePocket>('work');
     const [query, setQuery] = useState('');
     const [printing, setPrinting] = useState(false);
+    const [printTarget, setPrintTarget] = useState<PrintTarget | null>(null);
     const [printError, setPrintError] = useState('');
     const { employee, project, busy, loading, queue } = terminal;
     const station = chosen ?? employee?.stations[0] ?? 'tech';
-    const print = async () => {
+    const print = async (target: PrintTarget) => {
         setPrinting(true);
+        setPrintTarget(target);
         setPrintError('');
         try {
+            await new Promise<void>((resolve) =>
+                requestAnimationFrame(() => resolve()),
+            );
             const images = Array.from(
                 document.querySelectorAll<HTMLImageElement>(
                     '[data-production-qr]',
@@ -61,6 +66,7 @@ export function ProductionWorkspace() {
             );
         } finally {
             setPrinting(false);
+            setPrintTarget(null);
         }
     };
     const choose = (next: Station) => {
@@ -154,7 +160,7 @@ export function ProductionWorkspace() {
                 station={station}
                 busy={busy || loading || printing}
                 send={terminal.send}
-                print={() => void print()}
+                print={(target) => void print(target)}
                 printing={printing}
                 requestedUnit={terminal.focusedUnit}
             />
@@ -399,19 +405,11 @@ export function ProductionWorkspace() {
                     )}
                 </main>
             </div>
-            {project &&
-                employee &&
-                (employee.stations.includes('tech') ||
-                    employee.stations.includes('dtf') ||
-                    employee.stations.includes('cut')) && (
+            {project && employee && printTarget !== null && (
                     <PrintSheet
                         project={project}
                         onlyReadyDtf={station === 'dtf'}
-                        unitSheets={
-                            project.flow_version === 2
-                                ? station === 'cut' || station === 'dtf'
-                                : station === 'tech'
-                        }
+                        target={printTarget}
                     />
                 )}
         </>

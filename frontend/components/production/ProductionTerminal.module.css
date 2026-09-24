@@ -598,6 +598,55 @@
     color: #76520f;
     font-size: 14px;
 }
+.unitQrCard {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 112px;
+    gap: 12px;
+    align-items: center;
+    margin: 12px 0;
+    padding: 12px;
+    border: 1px solid #c9dfcf;
+    border-radius: 16px;
+    background: #edf6e9;
+}
+.unitQrCard > div {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.unitQrCard > div svg {
+    width: 28px;
+    height: 28px;
+    flex: 0 0 28px;
+    color: #3c6730;
+}
+.unitQrCard strong,
+.unitQrCard small {
+    display: block;
+}
+.unitQrCard img {
+    grid-row: span 2;
+    width: 112px;
+    height: 112px;
+    border-radius: 10px;
+    background: white;
+}
+.unitQrCard button {
+    width: fit-content;
+}
+@media (max-width: 560px) {
+    .unitQrCard {
+        grid-template-columns: minmax(0, 1fr) 88px;
+    }
+    .unitQrCard img {
+        width: 88px;
+        height: 88px;
+    }
+    .unitQrCard button {
+        grid-column: 1 / -1;
+        width: 100%;
+    }
+}
 .issueForm {
     margin: 12px 0 0 !important;
     padding: 16px;

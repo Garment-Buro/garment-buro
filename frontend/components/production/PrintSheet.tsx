@@ -1,13 +1,14 @@
 import type { Project } from '@/lib/production/types';
 import { labels } from '@/lib/production/types';
 import styles from './ProductionTerminal.module.css';
+export type PrintTarget = 'bag' | 'units' | number;
 export function PrintSheet({
     project,
-    unitSheets,
+    target,
     onlyReadyDtf = false,
 }: {
     project: Project;
-    unitSheets: boolean;
+    target: PrintTarget;
     onlyReadyDtf?: boolean;
 }) {
     const qr = (unit?: number) => {
@@ -18,8 +19,8 @@ export function PrintSheet({
     };
     return (
         <div className={styles.printSheets} aria-hidden="true">
-            {(project.flow_version !== 2 ||
-                (project.public_token && !unitSheets)) && (
+            {target === 'bag' &&
+                (project.flow_version !== 2 || project.public_token) && (
                 <section>
                     <h1>GARMENT BURO · МЕШОК</h1>
                     <h2>Заказ №{project.order_id}</h2>
@@ -49,10 +50,11 @@ export function PrintSheet({
                     </ul>
                 </section>
             )}
-            {unitSheets &&
+            {target !== 'bag' &&
                 project.units
                     .filter(
                         (unit) =>
+                            (target === 'units' || unit.id === target) &&
                             (project.flow_version !== 2 || unit.public_token) &&
                             (!onlyReadyDtf ||
                                 (unit.requires_dtf && unit.dtf_ready)),

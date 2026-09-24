@@ -113,7 +113,7 @@ async def apply_unit_flow(
             item.dtf_inserted = True
         else:
             if not item.public_token:
-                raise ProductionConflict("Закройщик должен выпустить QR мешка изделия")
+                raise ProductionConflict("QR изделия должен быть выпущен после проверки техкарты")
             if not all(item.component_checks.get(c["key"]) for c in spec["components"]):
                 raise ProductionConflict("Не все комплектующие вложены в мешок изделия")
             if spec["print_file_ids"] and not item.dtf_inserted:

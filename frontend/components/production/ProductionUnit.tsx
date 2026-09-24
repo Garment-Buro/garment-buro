@@ -1,5 +1,7 @@
+/* eslint-disable @next/next/no-img-element -- generated production QR */
 'use client';
 import { useState } from 'react';
+import { PiPrinter, PiQrCode } from 'react-icons/pi';
 import {
     labels,
     type Project,
@@ -15,6 +17,7 @@ import { OrderEvidence } from './OrderEvidence';
 import { UnitHandoff } from './UnitHandoff';
 import { ProductionCuttingBrief } from './ProductionCuttingBrief';
 import styles from './ProductionTerminal.module.css';
+import type { PrintTarget } from './PrintSheet';
 
 export function ProductionUnit({
     unit,
@@ -23,6 +26,7 @@ export function ProductionUnit({
     station,
     send,
     busy,
+    print,
 }: {
     unit: Unit;
     project: Project;
@@ -30,6 +34,7 @@ export function ProductionUnit({
     station: Station;
     send: SendCommand;
     busy: boolean;
+    print?: (target: PrintTarget) => void;
 }) {
     const run = useProductionAuthStore((state) => state.runAuthenticated);
     const [quality, setQuality] = useState<number[]>([]);
@@ -43,6 +48,9 @@ export function ProductionUnit({
                 : currentStage(unit),
         spec = unit.specification,
         tech = stations.includes('tech');
+    const unitQr = unit.public_token
+        ? `/api/qr-code?surface=production&size=256&path=${encodeURIComponent(`/production/label?token=${unit.public_token}`)}`
+        : null;
     const download = async (id: number) => {
         setDownloading(true);
         setError('');
@@ -331,6 +339,36 @@ export function ProductionUnit({
                                 </button>
                             )}
                     </div>
+                    {tech && unit.documents_confirmed && unitQr && (
+                        <section className={styles.unitQrCard}>
+                            <div>
+                                <PiQrCode aria-hidden />
+                                <span>
+                                    <strong>QR изделия готов</strong>
+                                    <small>
+                                        Вещь №{unit.id} · заказ №
+                                        {project.order_id}
+                                    </small>
+                                </span>
+                            </div>
+                            <img
+                                src={unitQr}
+                                alt={`QR изделия ${unit.id}`}
+                                width={112}
+                                height={112}
+                            />
+                            {print && (
+                                <button
+                                    type="button"
+                                    disabled={busy}
+                                    onClick={() => print(unit.id)}
+                                >
+                                    <PiPrinter aria-hidden />
+                                    Распечатать QR изделия
+                                </button>
+                            )}
+                        </section>
+                    )}
                     {project.state === 'workshop' &&
                         stage &&
                         (project.flow_version !== 2 || unit.lane === stage) &&
