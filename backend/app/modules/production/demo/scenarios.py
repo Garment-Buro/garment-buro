@@ -2,13 +2,13 @@ from sqlalchemy import select
 
 from app.modules.crm.file_models import CrmFileRole
 from app.modules.identity.models import SecurityAuditEvent
-from app.modules.production.models import ProductionBag, ProductionDemoEmployee
+from app.modules.production.models import ProductionBag
 from app.modules.production.schemas import ProductionCommand
 from app.modules.production.service import ProductionService
 
 
 async def prepare_scenario(
-    database, files, project_id, unit_ids, station, actor, size, card, image
+    database, files, project_id, unit_ids, station, actor, size, card, image, station_actors
 ):
     marker = f"production.demo_ready.{project_id}"
     unit_ids = [unit_ids] if isinstance(unit_ids, int) else list(unit_ids)
@@ -171,11 +171,7 @@ async def prepare_scenario(
                 "complete_workshop": "workshop",
                 "pack_bag": "packing",
             }.get(payload["action"], payload.get("stage"))
-            command_actor = await session.scalar(
-                select(ProductionDemoEmployee.user_id).where(
-                    ProductionDemoEmployee.station == action_station
-                )
-            )
+            command_actor = station_actors[action_station]
             await service.execute(
                 session,
                 project_id=project_id,
