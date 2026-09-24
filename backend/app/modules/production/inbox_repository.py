@@ -1,4 +1,4 @@
-from sqlalchemy import String, cast, or_, select
+from sqlalchemy import String, case, cast, func, or_, select
 
 from app.modules.production.inbox_models import AdminInboxItem, TicketMessage
 
@@ -37,6 +37,8 @@ class AdminInboxRepository:
         q: str,
         status: str,
         priority: str,
+        sort: str,
+        direction: str,
         limit: int,
         offset: int,
     ):
@@ -48,9 +50,35 @@ class AdminInboxRepository:
             statement = statement.where(AdminInboxItem.status == status)
         if priority:
             statement = statement.where(AdminInboxItem.priority == priority)
+        fields = {
+            "created_at": AdminInboxItem.created_at,
+            "updated_at": AdminInboxItem.updated_at,
+            "priority": case(
+                (AdminInboxItem.priority == "critical", 4),
+                (AdminInboxItem.priority == "high", 3),
+                (AdminInboxItem.priority == "normal", 2),
+                else_=1,
+            ),
+            "status": case(
+                (AdminInboxItem.status == "new", 1),
+                (AdminInboxItem.status == "in_progress", 2),
+                (AdminInboxItem.status == "resolved", 3),
+                else_=4,
+            ),
+            "reporter": func.lower(
+                func.coalesce(
+                    AdminInboxItem.reporter_name,
+                    AdminInboxItem.reporter_email,
+                    AdminInboxItem.reporter_phone,
+                    "",
+                )
+            ),
+        }
+        ordered = fields[sort].asc() if direction == "asc" else fields[sort].desc()
+        tie_breaker = AdminInboxItem.id.asc() if direction == "asc" else AdminInboxItem.id.desc()
         return list(
             await session.scalars(
-                statement.order_by(AdminInboxItem.id.desc()).offset(offset).limit(limit + 1)
+                statement.order_by(ordered, tie_breaker).offset(offset).limit(limit + 1)
             )
         )
 

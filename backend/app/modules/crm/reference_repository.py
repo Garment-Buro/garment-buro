@@ -57,6 +57,18 @@ class CrmReferenceRepository:
             )
         )
 
+    async def get_garment_model_category_for_update(
+        self,
+        session: AsyncSession,
+        *,
+        category_id: int,
+    ) -> CrmGarmentModelCategory | None:
+        return await session.scalar(
+            select(CrmGarmentModelCategory)
+            .where(CrmGarmentModelCategory.id == category_id)
+            .with_for_update()
+        )
+
     @staticmethod
     async def active_garment_model_category_exists(
         session: AsyncSession,

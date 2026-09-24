@@ -36,6 +36,7 @@ class CrmTechCardRevisionStatus(str, Enum):
 
 class CrmReferenceEntityType(str, Enum):
     FABRIC = "fabric"
+    GARMENT_MODEL_CATEGORY = "garment_model_category"
     GARMENT_MODEL = "garment_model"
     CATALOG_PRODUCT_LINK = "catalog_product_link"
     TECH_CARD = "tech_card"
@@ -570,7 +571,8 @@ class CrmReferenceEvent(Base, IntegerIdMixin):
             name="uq_crm_reference_event_identity",
         ),
         CheckConstraint(
-            "entity_type IN ('fabric', 'garment_model', 'catalog_product_link', "
+            "entity_type IN ('fabric', 'garment_model_category', 'garment_model', "
+            "'catalog_product_link', "
             "'tech_card', 'tech_card_revision')",
             name="crm_reference_event_entity_type_valid",
         ),

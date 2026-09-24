@@ -286,6 +286,29 @@ class CrmGarmentModelCategoryRead(BaseModel):
     version: int
 
 
+class CrmGarmentModelCategoryWrite(BaseModel):
+    code: str = Field(min_length=1, max_length=64)
+    name: str = Field(min_length=1, max_length=120)
+    is_active: bool = True
+
+    @field_validator("code")
+    @classmethod
+    def normalize_code(cls, value: str) -> str:
+        normalized = value.strip().upper()
+        if not REFERENCE_CODE_PATTERN.fullmatch(normalized):
+            raise ValueError("Garment model category code contains unsupported characters")
+        return normalized
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        return _strip_required(value)
+
+
+class CrmGarmentModelCategoryUpdate(CrmGarmentModelCategoryWrite):
+    expected_version: int = Field(gt=0)
+
+
 class CrmGarmentModelReferenceRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

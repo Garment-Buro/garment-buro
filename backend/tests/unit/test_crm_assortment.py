@@ -28,6 +28,7 @@ from app.modules.crm.assortment_service import (
 )
 from app.modules.crm.reference_schemas import (
     CrmFabricWrite,
+    CrmGarmentModelCategoryWrite,
     CrmGarmentModelWrite,
     CrmGarmentSizeWrite,
 )
@@ -98,7 +99,16 @@ def test_assortment_models_patterns_materials_accessories_and_boxes(tmp_path: Pa
                     ),
                     actor_user_id=None,
                 )
+                model_category = await references.create_garment_model_category(
+                    session,
+                    payload=CrmGarmentModelCategoryWrite(
+                        code="TSHIRT",
+                        name="T-shirts",
+                    ),
+                    actor_user_id=None,
+                )
                 model_payload = CrmGarmentModelWrite(
+                    category_id=model_category.id,
                     code="TSHIRT_BASE",
                     name="T-shirt base",
                     base_size_code="M",
@@ -136,12 +146,27 @@ def test_assortment_models_patterns_materials_accessories_and_boxes(tmp_path: Pa
                     actor_user_id=None,
                 )
                 assert model.size_chart_media_object_id == size_chart.id
+                assert model.category_id == model_category.id
                 assert model.base_size_code == "M"
                 assert model.fit_model_name == "Alex"
                 assert model.fit_model_height_cm == Decimal("180")
                 size = model.sizes[0]
                 assert size.allow_standard_sleeve is True
                 assert size.allow_height_sleeve is False
+                updated_category = await references.update_garment_model_category(
+                    session,
+                    category_id=model_category.id,
+                    expected_version=1,
+                    payload=CrmGarmentModelCategoryWrite(
+                        code="TSHIRT",
+                        name="Футболки",
+                        is_active=False,
+                    ),
+                    actor_user_id=None,
+                )
+                assert updated_category.name == "Футболки"
+                assert updated_category.is_active is False
+                assert updated_category.version == 2
                 pattern_payload = CrmGarmentPatternWrite(
                     code="PAT-TSHIRT-M-001",
                     garment_model_id=model.id,

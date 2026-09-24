@@ -49,7 +49,10 @@ const filters: Record<Section, string[]> = {
     problems: ['new', 'in_progress', 'resolved', 'closed'],
     support: ['new', 'in_progress', 'resolved', 'closed'],
 };
-const sortingOptions = {
+const sortingOptions: Record<
+    Section,
+    readonly (readonly [string, string])[]
+> = {
     orders: [
         ['created_at:desc', 'Сначала новые'],
         ['created_at:asc', 'Сначала старые'],
@@ -69,7 +72,40 @@ const sortingOptions = {
         ['partner:desc', 'Партнёр: Я–А'],
         ['status:asc', 'По статусу'],
     ],
-} as const;
+    employees: [
+        ['created_at:desc', 'Сначала новые'],
+        ['created_at:asc', 'Сначала старые'],
+        ['name:asc', 'Сотрудник: А–Я'],
+        ['name:desc', 'Сотрудник: Я–А'],
+        ['station:asc', 'По роли'],
+        ['status:asc', 'По доступу'],
+    ],
+    clients: [
+        ['last_order_at:desc', 'Недавно заказывали'],
+        ['last_order_at:asc', 'Давно заказывали'],
+        ['orders_count:desc', 'Больше заказов'],
+        ['orders_total:desc', 'Больше сумма заказов'],
+        ['paid_orders_total:desc', 'Больше оплачено'],
+        ['client:asc', 'Клиент: А–Я'],
+        ['client:desc', 'Клиент: Я–А'],
+    ],
+    problems: [
+        ['created_at:desc', 'Сначала новые'],
+        ['created_at:asc', 'Сначала старые'],
+        ['updated_at:desc', 'Недавно обновлённые'],
+        ['priority:desc', 'По приоритету'],
+        ['status:asc', 'По статусу'],
+        ['reporter:asc', 'Автор: А–Я'],
+    ],
+    support: [
+        ['created_at:desc', 'Сначала новые'],
+        ['created_at:asc', 'Сначала старые'],
+        ['updated_at:desc', 'Недавно обновлённые'],
+        ['priority:desc', 'По приоритету'],
+        ['status:asc', 'По статусу'],
+        ['reporter:asc', 'Пользователь: А–Я'],
+    ],
+};
 const availabilityOptions = [
     ['', 'Любое состояние'],
     ['available', 'Работает'],
@@ -91,6 +127,11 @@ const priorityOptions = [
     ['normal', 'Обычный'],
     ['low', 'Низкий'],
 ] as const;
+const clientKindOptions = [
+    ['', 'Все клиенты'],
+    ['registered', 'С аккаунтом'],
+    ['guest', 'Без аккаунта'],
+] as const;
 
 export function AdminRecords({
     section,
@@ -107,7 +148,10 @@ export function AdminRecords({
     const [priority, setPriority] = useState('');
     const [availability, setAvailability] = useState('');
     const [station, setStation] = useState('');
-    const [sorting, setSorting] = useState('created_at:desc');
+    const defaultSorting =
+        section === 'clients' ? 'last_order_at:desc' : 'created_at:desc';
+    const [sorting, setSorting] = useState(defaultSorting);
+    const [clientKind, setClientKind] = useState('');
     const [offset, setOffset] = useState(0);
     const [orderId, setOrderId] = useState<number | null>(null);
     const [payout, setPayout] = useState<AdminPayout | null>(null);
@@ -134,11 +178,10 @@ export function AdminRecords({
         params.set('availability', availability);
         params.set('station', station);
     }
-    if (section === 'orders' || section === 'payouts') {
-        const [sort, direction] = sorting.split(':');
-        params.set('sort', sort);
-        params.set('direction', direction);
-    }
+    if (section === 'clients') params.set('kind', clientKind);
+    const [sort, direction] = sorting.split(':');
+    params.set('sort', sort);
+    params.set('direction', direction);
     const { data, loading, error, reload } = useAdminResource<Page<RecordRow>>(
         `${section}?${params}`,
         30_000,
@@ -185,26 +228,33 @@ export function AdminRecords({
             options: priorityOptions,
         });
     }
-    if (section === 'orders' || section === 'payouts') {
+    if (section === 'clients') {
         filterGroups.push({
-            key: 'sorting',
-            label: 'Сортировка',
-            options: sortingOptions[section],
+            key: 'clientKind',
+            label: 'Тип клиента',
+            options: clientKindOptions,
         });
     }
+    filterGroups.push({
+        key: 'sorting',
+        label: 'Сортировка',
+        options: sortingOptions[section],
+    });
     const filterValues = {
         status,
         priority,
         availability,
         station,
         sorting,
+        clientKind,
     };
     const filterDefaults = {
         status: '',
         priority: '',
         availability: '',
         station: '',
-        sorting: 'created_at:desc',
+        sorting: defaultSorting,
+        clientKind: '',
     };
     return (
         <section aria-busy={loading}>
@@ -270,6 +320,7 @@ export function AdminRecords({
                             setAvailability(next.availability);
                             setStation(next.station);
                             setSorting(next.sorting);
+                            setClientKind(next.clientKind);
                             setOffset(0);
                             setPayout(null);
                             setOrderId(null);

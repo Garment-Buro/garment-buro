@@ -29,6 +29,7 @@ import type {
     ReferencePage,
 } from '@/lib/production/assortmentTypes';
 import { safeImage } from '@/lib/production/workflow';
+import { AdminFilters } from '../AdminFilters';
 import {
     AssortmentDialog,
     AssortmentFeedback,
@@ -125,6 +126,10 @@ export function AdminProducts() {
     const models = useAssortmentResource<ReferencePage<GarmentModel>>('models');
     const fabrics = useAssortmentResource<ReferencePage<Fabric>>('fabrics');
     const [search, setSearch] = useState('');
+    const [categoryFilter, setCategoryFilter] = useState('');
+    const [activityFilter, setActivityFilter] = useState('');
+    const [stockFilter, setStockFilter] = useState('');
+    const [sorting, setSorting] = useState('title:asc');
     const [workspace, setWorkspace] = useState<
         'overview' | 'blanks' | 'communities'
     >('overview');
@@ -148,14 +153,48 @@ export function AdminProducts() {
         const rows = (products.data ?? []).filter(
             (product) => !allowedIds || allowedIds.has(product.id),
         );
-        return query
+        const filtered = (query
             ? rows.filter((product) =>
                   `${product.title} ${product.slug ?? ''}`
                       .toLocaleLowerCase('ru')
                       .includes(query),
               )
-            : rows;
-    }, [products.data, search, selectedCommunity]);
+            : rows
+        ).filter(
+            (product) =>
+                (!categoryFilter ||
+                    product.category_id === Number(categoryFilter)) &&
+                (!activityFilter ||
+                    product.is_active === (activityFilter === 'active')) &&
+                (!stockFilter ||
+                    (stockFilter === 'available'
+                        ? product.stock_quantity > 0
+                        : product.stock_quantity <= 0)),
+        );
+        const [field, direction] = sorting.split(':');
+        return [...filtered].sort((left, right) => {
+            const values: Record<string, [string | number, string | number]> = {
+                title: [left.title, right.title],
+                price: [Number(left.price), Number(right.price)],
+                stock: [left.stock_quantity, right.stock_quantity],
+                variants: [left.variants.length, right.variants.length],
+            };
+            const [a, b] = values[field] ?? values.title;
+            const result =
+                typeof a === 'number' && typeof b === 'number'
+                    ? a - b
+                    : String(a).localeCompare(String(b), 'ru');
+            return direction === 'desc' ? -result : result;
+        });
+    }, [
+        activityFilter,
+        categoryFilter,
+        products.data,
+        search,
+        selectedCommunity,
+        sorting,
+        stockFilter,
+    ]);
     const categoryName = (id: number | null) =>
         categories.data?.find((category) => category.id === id)?.name ??
         'Без категории';
@@ -601,14 +640,85 @@ export function AdminProducts() {
                             ))}
                         </div>
                     )}
-                    <label className={styles.assortmentSearch}>
-                        Поиск товара
-                        <input
-                            value={search}
-                            placeholder="Название или адрес"
-                            onChange={(event) => setSearch(event.target.value)}
+                    <div className={styles.assortmentFilters}>
+                        <label className={styles.assortmentSearch}>
+                            Поиск товара
+                            <input
+                                type="search"
+                                value={search}
+                                placeholder="Название или адрес"
+                                onChange={(event) =>
+                                    setSearch(event.target.value)
+                                }
+                            />
+                        </label>
+                        <AdminFilters
+                            groups={[
+                                {
+                                    key: 'category',
+                                    label: 'Категория',
+                                    options: [
+                                        ['', 'Все категории'],
+                                        ...(categories.data ?? []).map(
+                                            (category) =>
+                                                [
+                                                    String(category.id),
+                                                    category.name,
+                                                ] as const,
+                                        ),
+                                    ],
+                                },
+                                {
+                                    key: 'activity',
+                                    label: 'Видимость',
+                                    options: [
+                                        ['', 'Все товары'],
+                                        ['active', 'В продаже'],
+                                        ['hidden', 'Скрытые'],
+                                    ],
+                                },
+                                {
+                                    key: 'stock',
+                                    label: 'Остаток',
+                                    options: [
+                                        ['', 'Любой остаток'],
+                                        ['available', 'Есть в наличии'],
+                                        ['empty', 'Нет в наличии'],
+                                    ],
+                                },
+                                {
+                                    key: 'sorting',
+                                    label: 'Сортировка',
+                                    options: [
+                                        ['title:asc', 'Название: А–Я'],
+                                        ['title:desc', 'Название: Я–А'],
+                                        ['price:asc', 'Сначала дешевле'],
+                                        ['price:desc', 'Сначала дороже'],
+                                        ['stock:desc', 'Больше остаток'],
+                                        ['variants:desc', 'Больше вариантов'],
+                                    ],
+                                },
+                            ]}
+                            values={{
+                                category: categoryFilter,
+                                activity: activityFilter,
+                                stock: stockFilter,
+                                sorting,
+                            }}
+                            defaults={{
+                                category: '',
+                                activity: '',
+                                stock: '',
+                                sorting: 'title:asc',
+                            }}
+                            onApply={(values) => {
+                                setCategoryFilter(values.category);
+                                setActivityFilter(values.activity);
+                                setStockFilter(values.stock);
+                                setSorting(values.sorting);
+                            }}
                         />
-                    </label>
+                    </div>
                 </>
             )}
             {formError && !editor && !categoryEditor && (

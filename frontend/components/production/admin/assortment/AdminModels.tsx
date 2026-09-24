@@ -25,6 +25,7 @@ import type {
     GarmentSize,
     ReferencePage,
 } from '@/lib/production/assortmentTypes';
+import { AdminFilters } from '../AdminFilters';
 import {
     AssortmentDialog,
     AssortmentFeedback,
@@ -57,6 +58,14 @@ type ModelForm = Omit<
 > & { id?: number; version?: number };
 
 type ModelEditor = ModelForm & { size_chart_url?: string | null };
+
+type CategoryEditor = {
+    id?: number;
+    version?: number;
+    code: string;
+    name: string;
+    is_active: boolean;
+};
 
 const emptyModel = (categoryId: number | null): ModelForm => ({
     category_id: categoryId,
@@ -128,7 +137,7 @@ function SizeRangeEditor({
                     <span>От</span>
                     <input
                         type="number"
-                        min="0.01"
+                        min="0"
                         step="2"
                         inputMode="decimal"
                         value={size[minimum] ?? ''}
@@ -141,7 +150,7 @@ function SizeRangeEditor({
                     <span>До</span>
                     <input
                         type="number"
-                        min="0.01"
+                        min="0"
                         step="2"
                         inputMode="decimal"
                         value={size[maximum] ?? ''}
@@ -174,7 +183,11 @@ export function AdminModels() {
         useAssortmentResource<GarmentModelCategory[]>('model-categories');
     const [search, setSearch] = useState('');
     const [categoryFilter, setCategoryFilter] = useState<number | null>(null);
+    const [activityFilter, setActivityFilter] = useState('');
+    const [sorting, setSorting] = useState('name:asc');
     const [editor, setEditor] = useState<ModelEditor | null>(null);
+    const [categoryEditor, setCategoryEditor] =
+        useState<CategoryEditor | null>(null);
     const [activeSizeIndex, setActiveSizeIndex] = useState(0);
     const [saving, setSaving] = useState(false);
     const [formError, setFormError] = useState('');
@@ -183,16 +196,36 @@ export function AdminModels() {
         useState<FileUploadStatusValue>(idleFileUploadStatus);
     const models = useMemo(() => {
         const query = search.trim().toLocaleLowerCase('ru');
-        return (data?.items ?? []).filter(
+        const filtered = (data?.items ?? []).filter(
             (model) =>
                 (categoryFilter == null ||
                     model.category_id === categoryFilter) &&
+                (!activityFilter ||
+                    model.is_active === (activityFilter === 'active')) &&
                 (!query ||
                     `${model.name} ${model.code}`
                         .toLocaleLowerCase('ru')
                         .includes(query)),
         );
-    }, [categoryFilter, data, search]);
+        const [field, direction] = sorting.split(':');
+        return [...filtered].sort((left, right) => {
+            const values: Record<string, [string | number, string | number]> = {
+                name: [left.name, right.name],
+                code: [left.code, right.code],
+                sizes: [left.sizes.length, right.sizes.length],
+                products: [
+                    left.catalog_product_ids.length,
+                    right.catalog_product_ids.length,
+                ],
+            };
+            const [a, b] = values[field] ?? values.name;
+            const result =
+                typeof a === 'number' && typeof b === 'number'
+                    ? a - b
+                    : String(a).localeCompare(String(b), 'ru');
+            return direction === 'desc' ? -result : result;
+        });
+    }, [activityFilter, categoryFilter, data, search, sorting]);
     const activeSize = editor?.sizes[activeSizeIndex] ?? null;
     const categoryName = (categoryId: number | null) =>
         categories.data?.find((category) => category.id === categoryId)?.name ??
@@ -307,6 +340,40 @@ export function AdminModels() {
         }
     };
 
+    const submitCategory = async (event: FormEvent) => {
+        event.preventDefault();
+        if (!categoryEditor) return;
+        setSaving(true);
+        setFormError('');
+        try {
+            await saveAssortment(
+                categoryEditor.id
+                    ? `model-categories/${categoryEditor.id}`
+                    : 'model-categories',
+                categoryEditor.id ? 'PUT' : 'POST',
+                {
+                    code: categoryEditor.code,
+                    name: categoryEditor.name,
+                    is_active: categoryEditor.is_active,
+                    ...(categoryEditor.id
+                        ? { expected_version: categoryEditor.version }
+                        : {}),
+                },
+            );
+            setCategoryEditor(null);
+            categories.reload();
+            reload();
+        } catch (reason) {
+            setFormError(
+                reason instanceof Error
+                    ? reason.message
+                    : 'Не удалось сохранить категорию',
+            );
+        } finally {
+            setSaving(false);
+        }
+    };
+
     return (
         <section aria-busy={loading || categories.loading}>
             <div className={styles.assortmentHeading}>
@@ -316,49 +383,135 @@ export function AdminModels() {
                         Размеры, диапазоны мерок, вес и таблица размеров для сайта.
                     </p>
                 </div>
-                <button onClick={() => openEditor()}>
-                    <PiPlus aria-hidden /> Добавить модель
-                </button>
+                <div className={styles.headingActions}>
+                    <button
+                        onClick={() =>
+                            setCategoryEditor({
+                                code: '',
+                                name: '',
+                                is_active: true,
+                            })
+                        }
+                    >
+                        <PiPlus aria-hidden /> Категория
+                    </button>
+                    <button onClick={() => openEditor()}>
+                        <PiPlus aria-hidden /> Добавить модель
+                    </button>
+                </div>
             </div>
             <div
                 className={styles.assortmentCategoryGrid}
                 aria-label="Категории моделей"
             >
-                {(categories.data ?? [])
-                    .filter((category) => category.is_active)
-                    .map((category) => {
+                {(categories.data ?? []).map((category) => {
                         const count = (data?.items ?? []).filter(
                             (model) => model.category_id === category.id,
                         ).length;
                         return (
-                            <button
-                                type="button"
+                            <article
                                 key={category.id}
                                 data-selected={categoryFilter === category.id}
-                                aria-pressed={categoryFilter === category.id}
-                                onClick={() =>
-                                    setCategoryFilter((current) =>
-                                        current === category.id ? null : category.id,
-                                    )
-                                }
+                                data-active={category.is_active}
                             >
-                                <PiTShirt aria-hidden />
-                                <span>
-                                    <strong>{category.name}</strong>
-                                    <small>{count} моделей</small>
-                                </span>
-                            </button>
+                                <button
+                                    type="button"
+                                    className={styles.assortmentCategorySelect}
+                                    aria-pressed={categoryFilter === category.id}
+                                    onClick={() =>
+                                        setCategoryFilter((current) =>
+                                            current === category.id
+                                                ? null
+                                                : category.id,
+                                        )
+                                    }
+                                >
+                                    <PiTShirt aria-hidden />
+                                    <span>
+                                        <strong>{category.name}</strong>
+                                        <small>
+                                            {count} моделей ·{' '}
+                                            {category.is_active
+                                                ? 'активна'
+                                                : 'скрыта'}
+                                        </small>
+                                    </span>
+                                </button>
+                                <button
+                                    type="button"
+                                    className={styles.iconButton}
+                                    aria-label={`Изменить категорию ${category.name}`}
+                                    title="Изменить категорию"
+                                    onClick={() =>
+                                        setCategoryEditor({ ...category })
+                                    }
+                                >
+                                    <PiPencilSimple aria-hidden />
+                                </button>
+                            </article>
                         );
                     })}
             </div>
-            <label className={styles.assortmentSearch}>
-                Поиск модели
-                <input
-                    value={search}
-                    placeholder="Название или код"
-                    onChange={(event) => setSearch(event.target.value)}
+            <div className={styles.assortmentFilters}>
+                <label className={styles.assortmentSearch}>
+                    Поиск модели
+                    <input
+                        value={search}
+                        placeholder="Название или код"
+                        onChange={(event) => setSearch(event.target.value)}
+                    />
+                </label>
+                <AdminFilters
+                    groups={[
+                        {
+                            key: 'category',
+                            label: 'Категория',
+                            options: [
+                                ['', 'Все категории'],
+                                ...(categories.data ?? []).map(
+                                    (category) =>
+                                        [String(category.id), category.name] as const,
+                                ),
+                            ],
+                        },
+                        {
+                            key: 'activity',
+                            label: 'Видимость',
+                            options: [
+                                ['', 'Все модели'],
+                                ['active', 'Активные'],
+                                ['hidden', 'Скрытые'],
+                            ],
+                        },
+                        {
+                            key: 'sorting',
+                            label: 'Сортировка',
+                            options: [
+                                ['name:asc', 'Название: А–Я'],
+                                ['name:desc', 'Название: Я–А'],
+                                ['code:asc', 'По коду'],
+                                ['sizes:desc', 'Больше размеров'],
+                                ['products:desc', 'Больше товаров'],
+                            ],
+                        },
+                    ]}
+                    values={{
+                        category: categoryFilter ? String(categoryFilter) : '',
+                        activity: activityFilter,
+                        sorting,
+                    }}
+                    defaults={{
+                        category: '',
+                        activity: '',
+                        sorting: 'name:asc',
+                    }}
+                    onApply={(values) => {
+                        setCategoryFilter(Number(values.category) || null);
+                        setActivityFilter(values.activity);
+                        setSorting(values.sorting);
+                    }}
                 />
-            </label>
+            </div>
             <AssortmentFeedback
                 loading={loading || categories.loading}
                 error={error || categories.error}
@@ -890,7 +1043,7 @@ export function AdminModels() {
                                                                 <span>
                                                                     <input
                                                                         type="number"
-                                                                        min="0.01"
+                                                                        min="0"
                                                                         step="2"
                                                                         value={
                                                                             activeSize[
@@ -914,7 +1067,7 @@ export function AdminModels() {
                                                                 <span>
                                                                     <input
                                                                         type="number"
-                                                                        min="0.01"
+                                                                        min="0"
                                                                         step="1"
                                                                         value={
                                                                             activeSize[
@@ -1018,6 +1171,111 @@ export function AdminModels() {
                                 disabled={saving || uploading}
                             >
                                 {saving ? 'Сохраняем…' : 'Сохранить модель'}
+                            </button>
+                        </div>
+                    </form>
+                </AssortmentDialog>
+            )}
+            {categoryEditor && (
+                <AssortmentDialog
+                    title={
+                        categoryEditor.id
+                            ? 'Изменить категорию'
+                            : 'Новая категория моделей'
+                    }
+                    headerActions={
+                        <details className={styles.patternStatusMenu}>
+                            <summary>
+                                <span
+                                    className={styles.patternStatusDot}
+                                    data-active={categoryEditor.is_active}
+                                />
+                                {categoryEditor.is_active ? 'Активна' : 'Скрыта'}
+                                <PiCaretDown aria-hidden />
+                            </summary>
+                            <div role="menu">
+                                {([
+                                    [true, 'Активна'],
+                                    [false, 'Скрыта'],
+                                ] as const).map(([active, label]) => (
+                                    <button
+                                        type="button"
+                                        role="menuitemradio"
+                                        aria-checked={
+                                            categoryEditor.is_active === active
+                                        }
+                                        key={String(active)}
+                                        onClick={(event) => {
+                                            setCategoryEditor({
+                                                ...categoryEditor,
+                                                is_active: active,
+                                            });
+                                            event.currentTarget
+                                                .closest('details')
+                                                ?.removeAttribute('open');
+                                        }}
+                                    >
+                                        <span>{label}</span>
+                                        {categoryEditor.is_active === active && (
+                                            <PiCheck aria-hidden />
+                                        )}
+                                    </button>
+                                ))}
+                            </div>
+                        </details>
+                    }
+                    onClose={() => setCategoryEditor(null)}
+                >
+                    <form onSubmit={submitCategory}>
+                        <div className={styles.formGrid}>
+                            <label>
+                                Название
+                                <input
+                                    required
+                                    maxLength={120}
+                                    value={categoryEditor.name}
+                                    placeholder="Худи"
+                                    onChange={(event) =>
+                                        setCategoryEditor({
+                                            ...categoryEditor,
+                                            name: event.target.value,
+                                        })
+                                    }
+                                />
+                            </label>
+                            <label>
+                                Код
+                                <input
+                                    required
+                                    maxLength={64}
+                                    value={categoryEditor.code}
+                                    placeholder="HOODIE"
+                                    onChange={(event) =>
+                                        setCategoryEditor({
+                                            ...categoryEditor,
+                                            code: event.target.value.toUpperCase(),
+                                        })
+                                    }
+                                />
+                            </label>
+                        </div>
+                        {formError && (
+                            <p className={styles.error} role="alert">
+                                {formError}
+                            </p>
+                        )}
+                        <div className={styles.editorActions}>
+                            <button
+                                type="button"
+                                onClick={() => setCategoryEditor(null)}
+                            >
+                                Отмена
+                            </button>
+                            <button
+                                className={styles.primaryButton}
+                                disabled={saving}
+                            >
+                                {saving ? 'Сохраняем…' : 'Сохранить категорию'}
                             </button>
                         </div>
                     </form>

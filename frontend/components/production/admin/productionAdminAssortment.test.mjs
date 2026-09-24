@@ -50,6 +50,10 @@ const fabrics = readFileSync(
     new URL('./assortment/AdminFabrics.tsx', import.meta.url),
     'utf8',
 );
+const techCards = readFileSync(
+    new URL('./assortment/AdminTechCards.tsx', import.meta.url),
+    'utf8',
+);
 const specification = readFileSync(
     new URL('../SpecificationForm.tsx', import.meta.url),
     'utf8',
@@ -133,6 +137,9 @@ test('model editor explains the flow and keeps one compact size editor open', ()
     assert.doesNotMatch(models, /Сначала задайте общие параметры/);
     assert.match(models, /model-categories/);
     assert.match(models, /Категории моделей/);
+    assert.match(models, /model-categories\/\$\{categoryEditor\.id\}/);
+    assert.match(models, /Сохранить категорию/);
+    assert.doesNotMatch(models, /min="0\.01"[\s\S]{0,80}step="2"/);
     for (const category of ['Майка', 'Худи', 'Штаны']) {
         assert.match(
             readFileSync(
@@ -144,6 +151,22 @@ test('model editor explains the flow and keeps one compact size editor open', ()
             ),
             new RegExp(category),
         );
+    }
+});
+
+test('every assortment list has search, popup filters, and sorting', () => {
+    for (const source of [
+        models,
+        patterns,
+        techCards,
+        fabrics,
+        accessories,
+        boxes,
+        products,
+    ]) {
+        assert.match(source, /type="search"|Поиск /);
+        assert.match(source, /<AdminFilters/);
+        assert.match(source, /key: 'sorting'/);
     }
 });
 

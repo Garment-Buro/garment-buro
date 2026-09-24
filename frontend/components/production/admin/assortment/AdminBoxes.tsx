@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import { PiLink, PiPencilSimple, PiPlus } from 'react-icons/pi';
 import { useAssortmentResource } from '@/hooks/production/useAssortmentResource';
 import { saveAssortment } from '@/lib/api/productionAssortment';
@@ -11,6 +11,7 @@ import type {
     PackagingRule,
     ReferencePage,
 } from '@/lib/production/assortmentTypes';
+import { AdminFilters } from '../AdminFilters';
 import { AssortmentDialog, AssortmentFeedback } from './AssortmentDialog';
 import styles from '../ProductionAdmin.module.css';
 
@@ -38,6 +39,10 @@ export function AdminBoxes() {
     const boxes = useAssortmentResource<PackagingBox[]>('boxes');
     const rules = useAssortmentResource<PackagingRule[]>('packaging-rules');
     const models = useAssortmentResource<ReferencePage<GarmentModel>>('models');
+    const [search, setSearch] = useState('');
+    const [activityFilter, setActivityFilter] = useState('');
+    const [stockFilter, setStockFilter] = useState('');
+    const [sorting, setSorting] = useState('name:asc');
     const [editor, setEditor] = useState<BoxForm | null>(null);
     const [ruleEditor, setRuleEditor] = useState<RuleForm | null>(null);
     const [saving, setSaving] = useState(false);
@@ -46,6 +51,37 @@ export function AdminBoxes() {
         boxes.data?.find((box) => box.id === id)?.name ?? `№${id}`;
     const modelName = (id: number) =>
         models.data?.items.find((model) => model.id === id)?.name ?? `№${id}`;
+    const visibleBoxes = useMemo(() => {
+        const needle = search.trim().toLocaleLowerCase('ru');
+        const filtered = (boxes.data ?? []).filter((box) =>
+            (!needle ||
+                `${box.name} ${box.code}`
+                    .toLocaleLowerCase('ru')
+                    .includes(needle)) &&
+            (!activityFilter ||
+                box.is_active === (activityFilter === 'active')) &&
+            (!stockFilter ||
+                (stockFilter === 'low'
+                    ? box.stock_quantity <= box.minimum_stock_quantity
+                    : box.stock_quantity > box.minimum_stock_quantity)),
+        );
+        const [field, direction] = sorting.split(':');
+        return [...filtered].sort((left, right) => {
+            const values: Record<string, [string | number, string | number]> = {
+                name: [left.name, right.name],
+                code: [left.code, right.code],
+                stock: [left.stock_quantity, right.stock_quantity],
+                capacity: [left.max_items, right.max_items],
+                price: [Number(left.unit_cost), Number(right.unit_cost)],
+            };
+            const [a, b] = values[field] ?? values.name;
+            const result =
+                typeof a === 'number' && typeof b === 'number'
+                    ? a - b
+                    : String(a).localeCompare(String(b), 'ru');
+            return direction === 'desc' ? -result : result;
+        });
+    }, [activityFilter, boxes.data, search, sorting, stockFilter]);
 
     const submitBox = async (event: FormEvent) => {
         event.preventDefault();
@@ -164,13 +200,73 @@ export function AdminBoxes() {
                     </button>
                 </div>
             </div>
+            <div className={styles.assortmentFilters}>
+                <label className={styles.assortmentSearch}>
+                    Поиск коробки
+                    <input
+                        type="search"
+                        value={search}
+                        placeholder="Название или код"
+                        onChange={(event) => setSearch(event.target.value)}
+                    />
+                </label>
+                <AdminFilters
+                    groups={[
+                        {
+                            key: 'activity',
+                            label: 'Видимость',
+                            options: [
+                                ['', 'Все коробки'],
+                                ['active', 'Активные'],
+                                ['hidden', 'Скрытые'],
+                            ],
+                        },
+                        {
+                            key: 'stock',
+                            label: 'Остаток',
+                            options: [
+                                ['', 'Любой остаток'],
+                                ['available', 'Выше минимума'],
+                                ['low', 'Заканчивается'],
+                            ],
+                        },
+                        {
+                            key: 'sorting',
+                            label: 'Сортировка',
+                            options: [
+                                ['name:asc', 'Название: А–Я'],
+                                ['code:asc', 'По коду'],
+                                ['stock:asc', 'Сначала заканчивающиеся'],
+                                ['stock:desc', 'Сначала большие остатки'],
+                                ['capacity:desc', 'Сначала вместительные'],
+                                ['price:asc', 'Сначала дешевле'],
+                            ],
+                        },
+                    ]}
+                    values={{
+                        activity: activityFilter,
+                        stock: stockFilter,
+                        sorting,
+                    }}
+                    defaults={{
+                        activity: '',
+                        stock: '',
+                        sorting: 'name:asc',
+                    }}
+                    onApply={(values) => {
+                        setActivityFilter(values.activity);
+                        setStockFilter(values.stock);
+                        setSorting(values.sorting);
+                    }}
+                />
+            </div>
             <AssortmentFeedback
                 loading={boxes.loading}
                 error={boxes.error}
-                empty={!boxes.loading && (boxes.data ?? []).length === 0}
+                empty={!boxes.loading && visibleBoxes.length === 0}
             />
             <div className={styles.assortmentCards}>
-                {(boxes.data ?? []).map((box) => (
+                {visibleBoxes.map((box) => (
                     <article className={styles.assortmentCard} key={box.id}>
                         <div className={styles.assortmentCardTop}>
                             <div>

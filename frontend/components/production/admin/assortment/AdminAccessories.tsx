@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import {
     PiLink,
     PiPencilSimple,
@@ -20,6 +20,7 @@ import type {
     GarmentModel,
     ReferencePage,
 } from '@/lib/production/assortmentTypes';
+import { AdminFilters } from '../AdminFilters';
 import {
     AssortmentDialog,
     AssortmentFeedback,
@@ -61,6 +62,11 @@ export function AdminAccessories() {
         'accessory-requirements',
     );
     const models = useAssortmentResource<ReferencePage<GarmentModel>>('models');
+    const [search, setSearch] = useState('');
+    const [categoryFilter, setCategoryFilter] = useState('');
+    const [activityFilter, setActivityFilter] = useState('');
+    const [stockFilter, setStockFilter] = useState('');
+    const [sorting, setSorting] = useState('name:asc');
     const [categoryEditor, setCategoryEditor] = useState<CategoryForm | null>(null);
     const [editor, setEditor] = useState<AccessoryForm | null>(null);
     const [requirementEditor, setRequirementEditor] =
@@ -76,6 +82,37 @@ export function AdminAccessories() {
         accessories.data?.find((item) => item.id === id)?.name ?? `№${id}`;
     const modelName = (id: number) =>
         models.data?.items.find((item) => item.id === id)?.name ?? `№${id}`;
+    const visibleAccessories = useMemo(() => {
+        const needle = search.trim().toLocaleLowerCase('ru');
+        const filtered = (accessories.data ?? []).filter((item) =>
+            (!needle ||
+                `${item.name} ${item.code}`
+                    .toLocaleLowerCase('ru')
+                    .includes(needle)) &&
+            (!categoryFilter || item.category_id === Number(categoryFilter)) &&
+            (!activityFilter ||
+                item.is_active === (activityFilter === 'active')) &&
+            (!stockFilter ||
+                (stockFilter === 'low'
+                    ? item.stock_quantity <= item.minimum_stock_quantity
+                    : item.stock_quantity > item.minimum_stock_quantity)),
+        );
+        const [field, direction] = sorting.split(':');
+        return [...filtered].sort((left, right) => {
+            const values: Record<string, [string | number, string | number]> = {
+                name: [left.name, right.name],
+                code: [left.code, right.code],
+                stock: [left.stock_quantity, right.stock_quantity],
+                price: [Number(left.unit_cost), Number(right.unit_cost)],
+            };
+            const [a, b] = values[field] ?? values.name;
+            const result =
+                typeof a === 'number' && typeof b === 'number'
+                    ? a - b
+                    : String(a).localeCompare(String(b), 'ru');
+            return direction === 'desc' ? -result : result;
+        });
+    }, [accessories.data, activityFilter, categoryFilter, search, sorting, stockFilter]);
 
     const runSave = async (
         path: string,
@@ -227,17 +264,91 @@ export function AdminAccessories() {
                     </button>
                 ))}
             </div>
+            <div className={styles.assortmentFilters}>
+                <label className={styles.assortmentSearch}>
+                    Поиск фурнитуры
+                    <input
+                        type="search"
+                        value={search}
+                        placeholder="Название или код"
+                        onChange={(event) => setSearch(event.target.value)}
+                    />
+                </label>
+                <AdminFilters
+                    groups={[
+                        {
+                            key: 'category',
+                            label: 'Категория',
+                            options: [
+                                ['', 'Все категории'],
+                                ...(categories.data ?? []).map(
+                                    (category) =>
+                                        [String(category.id), category.name] as const,
+                                ),
+                            ],
+                        },
+                        {
+                            key: 'activity',
+                            label: 'Видимость',
+                            options: [
+                                ['', 'Все позиции'],
+                                ['active', 'Активные'],
+                                ['hidden', 'Скрытые'],
+                            ],
+                        },
+                        {
+                            key: 'stock',
+                            label: 'Остаток',
+                            options: [
+                                ['', 'Любой остаток'],
+                                ['available', 'Выше минимума'],
+                                ['low', 'Заканчивается'],
+                            ],
+                        },
+                        {
+                            key: 'sorting',
+                            label: 'Сортировка',
+                            options: [
+                                ['name:asc', 'Название: А–Я'],
+                                ['code:asc', 'По коду'],
+                                ['stock:asc', 'Сначала заканчивающиеся'],
+                                ['stock:desc', 'Сначала большие остатки'],
+                                ['price:asc', 'Сначала дешевле'],
+                                ['price:desc', 'Сначала дороже'],
+                            ],
+                        },
+                    ]}
+                    values={{
+                        category: categoryFilter,
+                        activity: activityFilter,
+                        stock: stockFilter,
+                        sorting,
+                    }}
+                    defaults={{
+                        category: '',
+                        activity: '',
+                        stock: '',
+                        sorting: 'name:asc',
+                    }}
+                    onApply={(values) => {
+                        setCategoryFilter(values.category);
+                        setActivityFilter(values.activity);
+                        setStockFilter(values.stock);
+                        setSorting(values.sorting);
+                    }}
+                />
+            </div>
             <AssortmentFeedback
                 loading={accessories.loading || categories.loading}
                 error={accessories.error || categories.error}
                 empty={
                     !accessories.loading &&
                     !categories.loading &&
-                    (accessories.data ?? []).length === 0
+                    visibleAccessories.length === 0
                 }
             />
             <div className={styles.assortmentCards}>
-                {(accessories.data ?? []).map((item) => (
+                {visibleAccessories.map((item) => (
                     <article className={styles.assortmentCard} key={item.id}>
                         <div className={styles.assortmentCardTop}>
                             <div>

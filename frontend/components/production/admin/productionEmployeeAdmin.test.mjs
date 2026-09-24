@@ -69,6 +69,18 @@ test('employee search, popup filters, and normal management are explicit', () =>
     assert.match(filtersPopup, /PiFunnel/);
     assert.match(filtersPopup, /role="dialog"/);
     assert.match(patterns, /<AdminFilters/);
+    for (const section of [
+        'orders',
+        'payouts',
+        'employees',
+        'clients',
+        'problems',
+        'support',
+    ]) {
+        assert.match(records, new RegExp(`${section}: \\[`));
+    }
+    assert.match(records, /clientKindOptions/);
+    assert.match(records, /key: 'sorting'/);
 });
 
 test('admin uses the compact cart animation asset', () => {

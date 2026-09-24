@@ -157,7 +157,19 @@ def test_administrator_reads_all_sections_without_exposing_secrets(tmp_path):
                 ]
                 users = (await client.get("/api/production/admin/employees?limit=1")).json()
                 assert len(users["items"]) == 1 and users["next_offset"] is None
-                clients = (await client.get("/api/production/admin/clients")).json()
+                assert (
+                    await client.get("/api/production/admin/employees?sort=name&direction=asc")
+                ).status_code == 200
+                clients = (
+                    await client.get(
+                        "/api/production/admin/clients",
+                        params={
+                            "kind": "registered",
+                            "sort": "orders_total",
+                            "direction": "desc",
+                        },
+                    )
+                ).json()
                 detail = await client.get(
                     "/api/production/admin/clients/detail",
                     params={"key": clients["items"][0]["key"]},
@@ -173,6 +185,9 @@ def test_administrator_reads_all_sections_without_exposing_secrets(tmp_path):
                 assert (await client.get("/api/production/admin/orders/999")).status_code == 404
                 assert (
                     await client.get("/api/production/admin/employees?limit=10000")
+                ).status_code == 422
+                assert (
+                    await client.get("/api/production/admin/clients?sort=unknown")
                 ).status_code == 422
             async with db.session() as session:
                 # Unpaid orders must not be counted as captured/paid turnover.
@@ -275,6 +290,9 @@ def test_admin_filters_and_updates_support_and_production_problems(tmp_path):
                 assert [item["subject"] for item in support.json()["items"]] == [
                     "Не открывается заказ"
                 ]
+                assert (
+                    await client.get("/api/production/admin/support?sort=updated_at&direction=asc")
+                ).status_code == 200
                 assert (
                     await client.get("/api/production/admin/support?status=unknown")
                 ).status_code == 422

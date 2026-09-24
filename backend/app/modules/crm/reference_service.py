@@ -11,6 +11,7 @@ from app.modules.catalog.models import Product
 from app.modules.crm.reference_models import (
     CrmFabric,
     CrmGarmentModel,
+    CrmGarmentModelCategory,
     CrmGarmentSize,
     CrmReferenceAction,
     CrmReferenceEntityType,
@@ -22,6 +23,7 @@ from app.modules.crm.reference_models import (
 from app.modules.crm.reference_repository import CrmReferenceRepository
 from app.modules.crm.reference_schemas import (
     CrmFabricWrite,
+    CrmGarmentModelCategoryWrite,
     CrmGarmentModelWrite,
     CrmGarmentSizeWrite,
     CrmTechCardCreate,
@@ -45,6 +47,62 @@ class CrmReferenceVersionConflictError(RuntimeError):
 class CrmReferenceService:
     def __init__(self, repository: CrmReferenceRepository | None = None) -> None:
         self.repository = repository or CrmReferenceRepository()
+
+    async def create_garment_model_category(
+        self,
+        session: AsyncSession,
+        *,
+        payload: CrmGarmentModelCategoryWrite,
+        actor_user_id: int | None,
+        now: datetime | None = None,
+    ) -> CrmGarmentModelCategory:
+        category = CrmGarmentModelCategory(version=1)
+        self._apply_garment_model_category(category, payload)
+        await self.repository.add(session, category)
+        await self._audit(
+            session,
+            entity_type=CrmReferenceEntityType.GARMENT_MODEL_CATEGORY,
+            entity_id=category.id,
+            entity_version=category.version,
+            action=CrmReferenceAction.CREATED,
+            actor_user_id=actor_user_id,
+            snapshot=payload.model_dump(mode="json"),
+            details={},
+            now=now,
+        )
+        return category
+
+    async def update_garment_model_category(
+        self,
+        session: AsyncSession,
+        *,
+        category_id: int,
+        expected_version: int,
+        payload: CrmGarmentModelCategoryWrite,
+        actor_user_id: int | None,
+        now: datetime | None = None,
+    ) -> CrmGarmentModelCategory:
+        category = await self.repository.get_garment_model_category_for_update(
+            session, category_id=category_id
+        )
+        if category is None:
+            raise CrmReferenceNotFoundError("Garment model category was not found")
+        self._require_version(category.version, expected_version)
+        self._apply_garment_model_category(category, payload)
+        category.version += 1
+        await session.flush()
+        await self._audit(
+            session,
+            entity_type=CrmReferenceEntityType.GARMENT_MODEL_CATEGORY,
+            entity_id=category.id,
+            entity_version=category.version,
+            action=CrmReferenceAction.UPDATED,
+            actor_user_id=actor_user_id,
+            snapshot=payload.model_dump(mode="json"),
+            details={},
+            now=now,
+        )
+        return category
 
     async def create_fabric(
         self,
@@ -455,6 +513,15 @@ class CrmReferenceService:
         fabric.minimum_stock_meters = payload.minimum_stock_meters
         fabric.currency = payload.currency
         fabric.is_active = payload.is_active
+
+    @staticmethod
+    def _apply_garment_model_category(
+        category: CrmGarmentModelCategory,
+        payload: CrmGarmentModelCategoryWrite,
+    ) -> None:
+        category.code = payload.code
+        category.name = payload.name
+        category.is_active = payload.is_active
 
     @staticmethod
     def _apply_garment_model(
