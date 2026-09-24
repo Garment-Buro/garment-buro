@@ -223,6 +223,8 @@ def test_factory_registers_catalog_mutations_only_for_guarded_cutover() -> None:
         ("GET", "/api/crm/files/{attachment_id}/download"),
         ("GET", "/api/production/admin/assortment/models"),
         ("GET", "/api/production/admin/assortment/model-categories"),
+        ("POST", "/api/production/admin/assortment/model-categories"),
+        ("PUT", "/api/production/admin/assortment/model-categories/{category_id}"),
         ("POST", "/api/production/admin/assortment/models"),
         ("GET", "/api/production/admin/assortment/tech-cards"),
         ("GET", "/api/production/admin/assortment/fabrics"),

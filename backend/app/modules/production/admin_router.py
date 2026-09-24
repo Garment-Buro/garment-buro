@@ -172,12 +172,28 @@ class EmployeeListQuery(ListQuery):
     status: Literal["active", "blocked", ""] = ""
     availability: Literal["available", "sick", "vacation", "absent", ""] = ""
     station: Station | Literal["manager", ""] = ""
+    sort: Literal["created_at", "name", "status", "station"] = "created_at"
+    direction: Literal["asc", "desc"] = "desc"
+
+
+class ClientListQuery(ListQuery):
+    kind: Literal["registered", "guest", ""] = ""
+    sort: Literal[
+        "last_order_at",
+        "orders_count",
+        "orders_total",
+        "paid_orders_total",
+        "client",
+    ] = "last_order_at"
+    direction: Literal["asc", "desc"] = "desc"
 
 
 class InboxListQuery(BaseModel):
     q: str = Field(default="", max_length=100)
     status: InboxStatus | Literal[""] = ""
     priority: InboxPriority | Literal[""] = ""
+    sort: Literal["created_at", "updated_at", "priority", "status", "reporter"] = "created_at"
+    direction: Literal["asc", "desc"] = "desc"
     limit: int = Field(default=30, ge=1, le=100)
     offset: int = Field(default=0, ge=0, le=1000000)
 
@@ -373,7 +389,9 @@ async def rotate_employee_code(
 
 
 @router.get("/clients")
-async def clients(_admin: SystemAdmin, session: Session, query: Annotated[ListQuery, Query()]):
+async def clients(
+    _admin: SystemAdmin, session: Session, query: Annotated[ClientListQuery, Query()]
+):
     return await ProductionAdminReads().clients(session, **query.model_dump(exclude={"status"}))
 
 

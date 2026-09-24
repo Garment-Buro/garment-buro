@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import {
     PiCheckCircle,
     PiCopy,
@@ -21,6 +21,7 @@ import type {
     TechCard,
     TechCheckpoint,
 } from '@/lib/production/assortmentTypes';
+import { AdminFilters } from '../AdminFilters';
 import { AssortmentDialog, AssortmentFeedback } from './AssortmentDialog';
 import styles from '../ProductionAdmin.module.css';
 
@@ -50,9 +51,16 @@ export function AdminTechCards() {
     const modelsResource =
         useAssortmentResource<ReferencePage<GarmentModel>>('models');
     const [editor, setEditor] = useState<CardEditor | null>(null);
+    const [query, setQuery] = useState('');
+    const [activityFilter, setActivityFilter] = useState('');
+    const [revisionFilter, setRevisionFilter] = useState('');
+    const [sorting, setSorting] = useState('model:asc');
     const [saving, setSaving] = useState(false);
     const [formError, setFormError] = useState('');
-    const models = modelsResource.data?.items ?? [];
+    const models = useMemo(
+        () => modelsResource.data?.items ?? [],
+        [modelsResource.data],
+    );
     const availableModels = models.filter(
         (model) =>
             !(cardsResource.data ?? []).some(
@@ -61,6 +69,45 @@ export function AdminTechCards() {
     );
     const modelName = (id: number) =>
         models.find((model) => model.id === id)?.name ?? `Модель №${id}`;
+    const visibleCards = useMemo(() => {
+        const needle = query.trim().toLocaleLowerCase('ru');
+        const nameFor = (id: number) =>
+            models.find((model) => model.id === id)?.name ?? `Модель №${id}`;
+        const filtered = (cardsResource.data ?? []).filter((card) => {
+            const current = [...card.revisions].sort(
+                (left, right) => right.revision_number - left.revision_number,
+            )[0];
+            return (
+                (!activityFilter ||
+                    card.is_active === (activityFilter === 'active')) &&
+                (!revisionFilter || current?.status === revisionFilter) &&
+                (!needle ||
+                    `${card.code} ${nameFor(card.garment_model_id)} ${current?.name_snapshot ?? ''}`
+                        .toLocaleLowerCase('ru')
+                        .includes(needle))
+            );
+        });
+        const [field, direction] = sorting.split(':');
+        return [...filtered].sort((left, right) => {
+            const values: Record<string, [string | number, string | number]> = {
+                model: [
+                    nameFor(left.garment_model_id),
+                    nameFor(right.garment_model_id),
+                ],
+                code: [left.code, right.code],
+                revision: [
+                    left.latest_revision_number,
+                    right.latest_revision_number,
+                ],
+            };
+            const [a, b] = values[field] ?? values.model;
+            const result =
+                typeof a === 'number' && typeof b === 'number'
+                    ? a - b
+                    : String(a).localeCompare(String(b), 'ru');
+            return direction === 'desc' ? -result : result;
+        });
+    }, [activityFilter, cardsResource.data, models, query, revisionFilter, sorting]);
     const startCard = () => {
         const model = availableModels[0];
         setEditor({
@@ -204,6 +251,66 @@ export function AdminTechCards() {
                     <PiPlus aria-hidden /> Создать техкарту
                 </button>
             </div>
+            <div className={styles.assortmentFilters}>
+                <label className={styles.assortmentSearch}>
+                    Поиск техкарты
+                    <input
+                        type="search"
+                        value={query}
+                        placeholder="Код, модель или название"
+                        onChange={(event) => setQuery(event.target.value)}
+                    />
+                </label>
+                <AdminFilters
+                    groups={[
+                        {
+                            key: 'activity',
+                            label: 'Видимость',
+                            options: [
+                                ['', 'Все техкарты'],
+                                ['active', 'Активные'],
+                                ['hidden', 'Скрытые'],
+                            ],
+                        },
+                        {
+                            key: 'revision',
+                            label: 'Последняя версия',
+                            options: [
+                                ['', 'Любое состояние'],
+                                ['draft', 'Черновик'],
+                                ['published', 'Опубликована'],
+                                ['archived', 'Архив'],
+                                ['discarded', 'Отклонена'],
+                            ],
+                        },
+                        {
+                            key: 'sorting',
+                            label: 'Сортировка',
+                            options: [
+                                ['model:asc', 'По модели'],
+                                ['code:asc', 'По коду'],
+                                ['revision:desc', 'Сначала новые версии'],
+                                ['revision:asc', 'Сначала ранние версии'],
+                            ],
+                        },
+                    ]}
+                    values={{
+                        activity: activityFilter,
+                        revision: revisionFilter,
+                        sorting,
+                    }}
+                    defaults={{
+                        activity: '',
+                        revision: '',
+                        sorting: 'model:asc',
+                    }}
+                    onApply={(values) => {
+                        setActivityFilter(values.activity);
+                        setRevisionFilter(values.revision);
+                        setSorting(values.sorting);
+                    }}
+                />
+            </div>
             {formError && !editor && (
                 <p className={styles.error} role="alert">
                     {formError}
@@ -215,11 +322,11 @@ export function AdminTechCards() {
                 empty={
                     !cardsResource.loading &&
                     !modelsResource.loading &&
-                    (cardsResource.data ?? []).length === 0
+                    visibleCards.length === 0
                 }
             />
             <div className={styles.assortmentCards}>
-                {(cardsResource.data ?? []).map((card) => {
+                {visibleCards.map((card) => {
                     const current = [...card.revisions].sort(
                         (a, b) => b.revision_number - a.revision_number,
                     )[0];

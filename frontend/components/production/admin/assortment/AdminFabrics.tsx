@@ -11,6 +11,7 @@ import type {
     ReferencePage,
 } from '@/lib/production/assortmentTypes';
 import { compactDecimal } from '@/lib/production/numbers';
+import { AdminFilters } from '../AdminFilters';
 import { AssortmentDialog, AssortmentFeedback } from './AssortmentDialog';
 import styles from '../ProductionAdmin.module.css';
 
@@ -49,6 +50,9 @@ export function AdminFabrics() {
     const requirementsResource =
         useAssortmentResource<FabricRequirement[]>('fabric-requirements');
     const [search, setSearch] = useState('');
+    const [activityFilter, setActivityFilter] = useState('');
+    const [stockFilter, setStockFilter] = useState('');
+    const [sorting, setSorting] = useState('name:asc');
     const [editor, setEditor] = useState<FabricForm | null>(null);
     const [requirementEditor, setRequirementEditor] =
         useState<RequirementForm | null>(null);
@@ -57,14 +61,47 @@ export function AdminFabrics() {
     const fabrics = useMemo(() => {
         const query = search.trim().toLocaleLowerCase('ru');
         const rows = fabricsResource.data?.items ?? [];
-        return query
+        const filtered = (query
             ? rows.filter((fabric) =>
                   `${fabric.name} ${fabric.code} ${fabric.color_name}`
                       .toLocaleLowerCase('ru')
                       .includes(query),
               )
-            : rows;
-    }, [fabricsResource.data, search]);
+            : rows
+        ).filter((fabric) => {
+            const available = Number(fabric.balance?.available_quantity ?? 0);
+            const minimum = Number(fabric.minimum_stock_meters);
+            return (
+                (!activityFilter ||
+                    fabric.is_active === (activityFilter === 'active')) &&
+                (!stockFilter ||
+                    (stockFilter === 'low'
+                        ? available <= minimum
+                        : available > minimum))
+            );
+        });
+        const [field, direction] = sorting.split(':');
+        return [...filtered].sort((left, right) => {
+            const values: Record<string, [string | number, string | number]> = {
+                name: [left.name, right.name],
+                code: [left.code, right.code],
+                stock: [
+                    Number(left.balance?.available_quantity ?? 0),
+                    Number(right.balance?.available_quantity ?? 0),
+                ],
+                price: [
+                    Number(left.cost_per_meter ?? 0),
+                    Number(right.cost_per_meter ?? 0),
+                ],
+            };
+            const [a, b] = values[field] ?? values.name;
+            const result =
+                typeof a === 'number' && typeof b === 'number'
+                    ? a - b
+                    : String(a).localeCompare(String(b), 'ru');
+            return direction === 'desc' ? -result : result;
+        });
+    }, [activityFilter, fabricsResource.data, search, sorting, stockFilter]);
 
     const submitFabric = async (event: FormEvent) => {
         event.preventDefault();
@@ -175,14 +212,66 @@ export function AdminFabrics() {
                     </button>
                 </div>
             </div>
-            <label className={styles.assortmentSearch}>
-                Поиск ткани
-                <input
-                    value={search}
-                    placeholder="Название, код или цвет"
-                    onChange={(event) => setSearch(event.target.value)}
+            <div className={styles.assortmentFilters}>
+                <label className={styles.assortmentSearch}>
+                    Поиск ткани
+                    <input
+                        type="search"
+                        value={search}
+                        placeholder="Название, код или цвет"
+                        onChange={(event) => setSearch(event.target.value)}
+                    />
+                </label>
+                <AdminFilters
+                    groups={[
+                        {
+                            key: 'activity',
+                            label: 'Видимость',
+                            options: [
+                                ['', 'Все ткани'],
+                                ['active', 'Активные'],
+                                ['hidden', 'Скрытые'],
+                            ],
+                        },
+                        {
+                            key: 'stock',
+                            label: 'Остаток',
+                            options: [
+                                ['', 'Любой остаток'],
+                                ['available', 'Выше минимума'],
+                                ['low', 'Заканчивается'],
+                            ],
+                        },
+                        {
+                            key: 'sorting',
+                            label: 'Сортировка',
+                            options: [
+                                ['name:asc', 'Название: А–Я'],
+                                ['code:asc', 'По коду'],
+                                ['stock:asc', 'Сначала заканчивающиеся'],
+                                ['stock:desc', 'Сначала большие остатки'],
+                                ['price:asc', 'Сначала дешевле'],
+                                ['price:desc', 'Сначала дороже'],
+                            ],
+                        },
+                    ]}
+                    values={{
+                        activity: activityFilter,
+                        stock: stockFilter,
+                        sorting,
+                    }}
+                    defaults={{
+                        activity: '',
+                        stock: '',
+                        sorting: 'name:asc',
+                    }}
+                    onApply={(values) => {
+                        setActivityFilter(values.activity);
+                        setStockFilter(values.stock);
+                        setSorting(values.sorting);
+                    }}
                 />
-            </label>
+            </div>
             <AssortmentFeedback
                 loading={fabricsResource.loading}
                 error={fabricsResource.error}

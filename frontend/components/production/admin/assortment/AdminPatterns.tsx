@@ -140,6 +140,8 @@ export function AdminPatterns() {
     const modelsResource =
         useAssortmentResource<ReferencePage<GarmentModel>>('models');
     const [modelFilter, setModelFilter] = useState(0);
+    const [activityFilter, setActivityFilter] = useState('');
+    const [sorting, setSorting] = useState('code:asc');
     const [query, setQuery] = useState('');
     const [editor, setEditor] = useState<PatternForm | null>(null);
     const [saving, setSaving] = useState(false);
@@ -147,30 +149,54 @@ export function AdminPatterns() {
     const [uploadStatus, setUploadStatus] =
         useState<FileUploadStatusValue>(idleFileUploadStatus);
     const [formError, setFormError] = useState('');
-    const patterns = useMemo(
-        () =>
-            (patternsResource.data ?? []).filter((item) => {
-                const matchesModel =
-                    !modelFilter || item.garment_model_id === modelFilter;
-                const needle = query.trim().toLowerCase();
-                return (
-                    matchesModel &&
-                    (!needle ||
-                        `${item.code} ${item.grid_key}`
-                            .toLowerCase()
-                            .includes(needle))
-                );
-            }),
-        [modelFilter, patternsResource.data, query],
+    const models = useMemo(
+        () => modelsResource.data?.items ?? [],
+        [modelsResource.data],
     );
-    const models = modelsResource.data?.items ?? [];
     const modelName = (id: number) =>
         models.find((model) => model.id === id)?.name ?? `Модель №${id}`;
     const sizeName = (modelId: number, sizeId: number) =>
         models
             .find((model) => model.id === modelId)
             ?.sizes.find((size) => size.id === sizeId)?.code ?? `№${sizeId}`;
-
+    const patterns = useMemo(() => {
+        const filtered = (patternsResource.data ?? []).filter((item) => {
+                const matchesModel =
+                    !modelFilter || item.garment_model_id === modelFilter;
+                const needle = query.trim().toLowerCase();
+                return (
+                    matchesModel &&
+                    (!activityFilter ||
+                        item.is_active === (activityFilter === 'active')) &&
+                    (!needle ||
+                        `${item.code} ${item.grid_key}`
+                            .toLowerCase()
+                            .includes(needle))
+                );
+            });
+        const [field, direction] = sorting.split(':');
+        return [...filtered].sort((left, right) => {
+            const nameFor = (id: number) =>
+                models.find((model) => model.id === id)?.name ?? `Модель №${id}`;
+            const sizeFor = (modelId: number, sizeId: number) =>
+                models
+                    .find((model) => model.id === modelId)
+                    ?.sizes.find((size) => size.id === sizeId)?.code ?? `№${sizeId}`;
+            const values: Record<string, [string | number, string | number]> = {
+                code: [left.code, right.code],
+                model: [nameFor(left.garment_model_id), nameFor(right.garment_model_id)],
+                size: [
+                    sizeFor(left.garment_model_id, left.garment_size_id),
+                    sizeFor(right.garment_model_id, right.garment_size_id),
+                ],
+            };
+            const [a, b] = values[field] ?? values.code;
+            const result = String(a).localeCompare(String(b), 'ru', {
+                numeric: true,
+            });
+            return direction === 'desc' ? -result : result;
+        });
+    }, [activityFilter, modelFilter, models, patternsResource.data, query, sorting]);
     const submit = async (event: FormEvent) => {
         event.preventDefault();
         if (!editor) return;
@@ -257,12 +283,41 @@ export function AdminPatterns() {
                                 ),
                             ],
                         },
+                        {
+                            key: 'activity',
+                            label: 'Видимость',
+                            options: [
+                                ['', 'Все лекала'],
+                                ['active', 'Активные'],
+                                ['hidden', 'Скрытые'],
+                            ],
+                        },
+                        {
+                            key: 'sorting',
+                            label: 'Сортировка',
+                            options: [
+                                ['code:asc', 'Код: А–Я'],
+                                ['code:desc', 'Код: Я–А'],
+                                ['model:asc', 'По модели'],
+                                ['size:asc', 'По размеру'],
+                            ],
+                        },
                     ]}
-                    values={{ model: String(modelFilter) }}
-                    defaults={{ model: '0' }}
-                    onApply={(values) =>
-                        setModelFilter(Number(values.model))
-                    }
+                    values={{
+                        model: String(modelFilter),
+                        activity: activityFilter,
+                        sorting,
+                    }}
+                    defaults={{
+                        model: '0',
+                        activity: '',
+                        sorting: 'code:asc',
+                    }}
+                    onApply={(values) => {
+                        setModelFilter(Number(values.model));
+                        setActivityFilter(values.activity);
+                        setSorting(values.sorting);
+                    }}
                 />
             </div>
             <AssortmentFeedback

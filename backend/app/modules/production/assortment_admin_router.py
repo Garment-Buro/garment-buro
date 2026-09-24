@@ -63,6 +63,8 @@ from app.modules.crm.reference_schemas import (
     CrmFabricUpdate,
     CrmFabricWrite,
     CrmGarmentModelCategoryRead,
+    CrmGarmentModelCategoryUpdate,
+    CrmGarmentModelCategoryWrite,
     CrmGarmentModelReferenceRead,
     CrmGarmentModelUpdate,
     CrmGarmentModelWrite,
@@ -146,6 +148,54 @@ async def models(_admin: Admin, session: Session, active: bool | None = None):
 @router.get("/model-categories", response_model=list[CrmGarmentModelCategoryRead])
 async def model_categories(_admin: Admin, session: Session):
     return await CrmReferenceService().repository.list_garment_model_categories(session)
+
+
+@router.post(
+    "/model-categories",
+    response_model=CrmGarmentModelCategoryRead,
+    status_code=201,
+)
+async def create_model_category(
+    payload: CrmGarmentModelCategoryWrite,
+    request: Request,
+    admin: Admin,
+    session: Session,
+):
+    _writes_enabled(request)
+    return await _write(
+        session,
+        CrmReferenceService().create_garment_model_category(
+            session,
+            payload=payload,
+            actor_user_id=admin.id,
+        ),
+    )
+
+
+@router.put(
+    "/model-categories/{category_id}",
+    response_model=CrmGarmentModelCategoryRead,
+)
+async def update_model_category(
+    category_id: int,
+    payload: CrmGarmentModelCategoryUpdate,
+    request: Request,
+    admin: Admin,
+    session: Session,
+):
+    _writes_enabled(request)
+    return await _write(
+        session,
+        CrmReferenceService().update_garment_model_category(
+            session,
+            category_id=category_id,
+            expected_version=payload.expected_version,
+            payload=CrmGarmentModelCategoryWrite.model_validate(
+                payload.model_dump(exclude={"expected_version"})
+            ),
+            actor_user_id=admin.id,
+        ),
+    )
 
 
 @router.post("/models", response_model=CrmGarmentModelReferenceRead, status_code=201)

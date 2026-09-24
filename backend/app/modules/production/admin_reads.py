@@ -155,6 +155,8 @@ class ProductionAdminReads:
         pepper,
         availability="",
         station="",
+        sort="created_at",
+        direction="desc",
     ):
         q = q.strip()
         active_station = (
@@ -225,9 +227,21 @@ class ProductionAdminReads:
                     .where(Role.name.in_(role_names))
                 )
             )
+        employee_fields = {
+            "created_at": func.coalesce(ProductionEmployee.created_at, User.created_at),
+            "name": func.lower(
+                func.coalesce(User.last_name, User.first_name, User.email, User.phone, "")
+            ),
+            "status": User.status,
+            "station": func.coalesce(ProductionEmployee.primary_station, active_station, ""),
+        }
+        ordered = (
+            employee_fields[sort].asc() if direction == "asc" else employee_fields[sort].desc()
+        )
+        tie_breaker = User.id.asc() if direction == "asc" else User.id.desc()
         rows = (
             await session.execute(
-                statement.order_by(User.id.desc()).offset(offset).limit(limit + 1)
+                statement.order_by(ordered, tie_breaker).offset(offset).limit(limit + 1)
             )
         ).all()
         roles = {}
@@ -301,6 +315,8 @@ class ProductionAdminReads:
         pepper,
         availability="",
         station="",
+        sort="created_at",
+        direction="desc",
     ):
         """Compatibility alias: terminal users are production employees."""
         return await self.employees(
@@ -309,6 +325,8 @@ class ProductionAdminReads:
             status=status,
             availability=availability,
             station=station,
+            sort=sort,
+            direction=direction,
             limit=limit,
             offset=offset,
             pepper=pepper,
@@ -343,28 +361,55 @@ class ProductionAdminReads:
             .subquery()
         )
 
-    async def clients(self, session, *, q, limit, offset):
+    async def clients(
+        self,
+        session,
+        *,
+        q,
+        limit,
+        offset,
+        kind="",
+        sort="last_order_at",
+        direction="desc",
+    ):
         clients = self.clients_query()
+        statement = (
+            select(clients, Order.first_name, Order.last_name, Order.email, Order.phone)
+            .join(Order, Order.id == clients.c.last_order_id)
+            .where(
+                search(
+                    q,
+                    [
+                        clients.c.user_id,
+                        Order.first_name,
+                        Order.last_name,
+                        Order.email,
+                        Order.phone,
+                    ],
+                )
+            )
+        )
+        if kind == "registered":
+            statement = statement.where(clients.c.user_id.is_not(None))
+        elif kind == "guest":
+            statement = statement.where(clients.c.user_id.is_(None))
+        client_fields = {
+            "last_order_at": clients.c.last_order_at,
+            "orders_count": clients.c.orders_count,
+            "orders_total": clients.c.orders_total,
+            "paid_orders_total": clients.c.paid_orders_total,
+            "client": func.lower(
+                func.coalesce(Order.last_name, Order.first_name, Order.email, Order.phone, "")
+            ),
+        }
+        ordered = client_fields[sort].asc() if direction == "asc" else client_fields[sort].desc()
+        tie_breaker = (
+            clients.c.last_order_id.asc() if direction == "asc" else clients.c.last_order_id.desc()
+        )
         rows = (
             (
                 await session.execute(
-                    select(clients, Order.first_name, Order.last_name, Order.email, Order.phone)
-                    .join(Order, Order.id == clients.c.last_order_id)
-                    .where(
-                        search(
-                            q,
-                            [
-                                clients.c.user_id,
-                                Order.first_name,
-                                Order.last_name,
-                                Order.email,
-                                Order.phone,
-                            ],
-                        )
-                    )
-                    .order_by(clients.c.last_order_id.desc())
-                    .offset(offset)
-                    .limit(limit + 1)
+                    statement.order_by(ordered, tie_breaker).offset(offset).limit(limit + 1)
                 )
             )
             .mappings()
