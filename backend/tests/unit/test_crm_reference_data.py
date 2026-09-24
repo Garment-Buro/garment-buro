@@ -66,7 +66,7 @@ def _fabric_payload(*, name: str = "Italian wool") -> CrmFabricWrite:
         color_hex="#1a1a1a",
         density_gsm=Decimal("285.50"),
         width_cm=Decimal("150.00"),
-        cost_per_meter=Decimal("2450.00"),
+        cost_per_kg=Decimal("5720.00"),
     )
 
 
@@ -213,6 +213,8 @@ def test_fabrics_are_versioned_without_mutable_stock_counters(tmp_path: Path) ->
                 assert fabric is not None
                 assert fabric.code == "FAB_WOOL_001"
                 assert fabric.name == "Updated wool"
+                assert fabric.cost_per_kg == Decimal("5720.00")
+                assert fabric.cost_per_meter == Decimal("2449.59")
                 assert "stock_meters" not in CrmFabric.__table__.c
                 assert "reserved_meters" not in CrmFabric.__table__.c
                 assert [(event.action, event.entity_version) for event in events] == [

@@ -160,6 +160,13 @@ test('model editor explains the flow and keeps one compact size editor open', ()
     }
 });
 
+test('tech cards explain model ownership and never create a second draft', () => {
+    assert.match(techCards, /У каждой модели уже есть техкарта/);
+    assert.match(techCards, /Для изменений создайте новую версию/);
+    assert.match(techCards, /Сначала опубликуйте текущий черновик/);
+    assert.match(techCards, /!draft \?/);
+});
+
 test('every assortment list has search, popup filters, and sorting', () => {
     for (const source of [
         models,
@@ -174,6 +181,13 @@ test('every assortment list has search, popup filters, and sorting', () => {
         assert.match(source, /<AdminFilters/);
         assert.match(source, /key: 'sorting'/);
     }
+});
+
+test('fabric purchase price is stored and shown per kilogram', () => {
+    assert.match(types, /cost_per_kg: string \| null/);
+    assert.match(fabrics, /Цена за кг/);
+    assert.match(fabrics, /₽\/кг/);
+    assert.doesNotMatch(fabrics, /Цена за метр/);
 });
 
 test('product variants use compact multi-select matrices', () => {

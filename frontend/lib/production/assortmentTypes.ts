@@ -75,7 +75,7 @@ export interface Fabric {
     color_hex: string | null;
     density_gsm: string | null;
     width_cm: string;
-    cost_per_meter: string | null;
+    cost_per_kg: string | null;
     minimum_stock_meters: string;
     currency: string;
     is_active: boolean;

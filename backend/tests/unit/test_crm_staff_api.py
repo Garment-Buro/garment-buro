@@ -239,6 +239,7 @@ async def _seed(database: DatabaseManager) -> tuple[User, User]:
             density_gsm=Decimal("180.00"),
             width_cm=Decimal("150.00"),
             cost_per_meter=Decimal("900.00"),
+            cost_per_kg=Decimal("3333.33"),
             currency="RUB",
             is_active=True,
             version=1,
@@ -454,6 +455,7 @@ def test_crm_staff_api_requires_permission_and_returns_bounded_pii_minimized_rea
                 )
                 assert fabrics.status_code == 200
                 assert fabrics.json()["items"][0]["code"] == "LINEN_BLACK"
+                assert fabrics.json()["items"][0]["cost_per_kg"] == "3333.33"
                 assert fabrics.json()["items"][0]["balance"]["available_meters"] == "20.000"
 
                 models = await client.get(

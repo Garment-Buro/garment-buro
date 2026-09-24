@@ -14,7 +14,8 @@ def test_alembic_has_one_linear_partner_cabinet_head() -> None:
     config = Config(str(backend_dir / "alembic.ini"))
     scripts = ScriptDirectory.from_config(config)
 
-    assert scripts.get_heads() == ["20260924_0052"]
+    assert scripts.get_heads() == ["20260924_0053"]
+    assert scripts.get_revision("20260924_0053").down_revision == "20260924_0052"
     assert scripts.get_revision("20260924_0052").down_revision == "20260924_0051"
     assert scripts.get_revision("20260924_0051").down_revision == "20260923_0050"
     assert scripts.get_revision("20260923_0049").down_revision == "20260921_0048"
@@ -241,6 +242,8 @@ def test_crm_reference_data_shares_the_target_metadata() -> None:
     revision_columns = Base.metadata.tables["crm_tech_card_revisions"].c
     size_columns = Base.metadata.tables["crm_garment_sizes"].c
     assert {"base_length_cm", "base_width_cm"} <= set(size_columns.keys())
+    fabric_columns = Base.metadata.tables["crm_fabrics"].c
+    assert "cost_per_kg" in fabric_columns
     assert {
         "tech_card_id",
         "revision_number",

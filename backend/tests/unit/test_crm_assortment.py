@@ -94,7 +94,7 @@ def test_assortment_models_patterns_materials_accessories_and_boxes(tmp_path: Pa
                         material_type="cotton",
                         color_name="black",
                         width_cm=Decimal("150"),
-                        cost_per_meter=Decimal("900"),
+                        cost_per_kg=Decimal("3333.33"),
                         minimum_stock_meters=Decimal("30"),
                     ),
                     actor_user_id=None,

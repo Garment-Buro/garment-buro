@@ -555,7 +555,20 @@ class CrmReferenceService:
         fabric.color_hex = payload.color_hex
         fabric.density_gsm = payload.density_gsm
         fabric.width_cm = payload.width_cm
-        fabric.cost_per_meter = payload.cost_per_meter
+        if payload.cost_per_kg is not None:
+            fabric.cost_per_kg = payload.cost_per_kg
+            fabric.cost_per_meter = CrmReferenceService._cost_per_meter(
+                cost_per_kg=payload.cost_per_kg,
+                density_gsm=payload.density_gsm,
+                width_cm=payload.width_cm,
+            )
+        else:
+            fabric.cost_per_meter = payload.cost_per_meter
+            fabric.cost_per_kg = CrmReferenceService._cost_per_kg(
+                cost_per_meter=payload.cost_per_meter,
+                density_gsm=payload.density_gsm,
+                width_cm=payload.width_cm,
+            )
         fabric.minimum_stock_meters = payload.minimum_stock_meters
         fabric.currency = payload.currency
         fabric.is_active = payload.is_active
@@ -785,3 +798,27 @@ class CrmReferenceService:
     @staticmethod
     def _decimal(value: Decimal | None) -> str | None:
         return format(value, "f") if value is not None else None
+
+    @staticmethod
+    def _cost_per_meter(
+        *,
+        cost_per_kg: Decimal,
+        density_gsm: Decimal | None,
+        width_cm: Decimal,
+    ) -> Decimal | None:
+        if density_gsm is None:
+            return None
+        return (cost_per_kg * density_gsm * width_cm / Decimal("100000")).quantize(Decimal("0.01"))
+
+    @staticmethod
+    def _cost_per_kg(
+        *,
+        cost_per_meter: Decimal | None,
+        density_gsm: Decimal | None,
+        width_cm: Decimal,
+    ) -> Decimal | None:
+        if cost_per_meter is None or density_gsm is None:
+            return None
+        return (cost_per_meter * Decimal("100000") / (density_gsm * width_cm)).quantize(
+            Decimal("0.01")
+        )

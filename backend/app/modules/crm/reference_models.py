@@ -68,6 +68,10 @@ class CrmFabric(Base, IntegerIdMixin, TimestampMixin):
             name="crm_fabric_cost_nonnegative",
         ),
         CheckConstraint(
+            "cost_per_kg IS NULL OR cost_per_kg >= 0",
+            name="crm_fabric_cost_per_kg_nonnegative",
+        ),
+        CheckConstraint(
             "minimum_stock_meters >= 0",
             name="crm_fabric_minimum_stock_nonnegative",
         ),
@@ -83,6 +87,7 @@ class CrmFabric(Base, IntegerIdMixin, TimestampMixin):
     density_gsm: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     width_cm: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     cost_per_meter: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    cost_per_kg: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     minimum_stock_meters: Mapped[Decimal] = mapped_column(
         Numeric(14, 3),
         nullable=False,

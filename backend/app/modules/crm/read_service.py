@@ -233,6 +233,7 @@ class CrmReadService:
             density_gsm=fabric.density_gsm,
             width_cm=fabric.width_cm,
             cost_per_meter=fabric.cost_per_meter,
+            cost_per_kg=fabric.cost_per_kg,
             minimum_stock_meters=fabric.minimum_stock_meters,
             currency=fabric.currency,
             is_active=fabric.is_active,

@@ -87,6 +87,7 @@ class CrmFabricRead(BaseModel):
     density_gsm: Decimal | None
     width_cm: Decimal
     cost_per_meter: Decimal | None
+    cost_per_kg: Decimal | None
     minimum_stock_meters: Decimal
     currency: str
     is_active: bool

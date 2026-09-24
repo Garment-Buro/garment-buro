@@ -67,6 +67,11 @@ export function AdminTechCards() {
                 (card) => card.garment_model_id === model.id,
             ),
     );
+    const createUnavailableReason = !models.length
+        ? 'Сначала добавьте модель изделия.'
+        : !availableModels.length
+          ? 'У каждой модели уже есть техкарта. Для изменений создайте новую версию в карточке нужной модели.'
+          : null;
     const modelName = (id: number) =>
         models.find((model) => model.id === id)?.name ?? `Модель №${id}`;
     const visibleCards = useMemo(() => {
@@ -247,10 +252,19 @@ export function AdminTechCards() {
                         Последовательность операций, роли, время и стоимость работ.
                     </p>
                 </div>
-                <button disabled={!availableModels.length} onClick={startCard}>
+                <button
+                    disabled={!availableModels.length}
+                    title={createUnavailableReason ?? 'Создать техкарту'}
+                    onClick={startCard}
+                >
                     <PiPlus aria-hidden /> Создать техкарту
                 </button>
             </div>
+            {createUnavailableReason &&
+                !cardsResource.loading &&
+                !modelsResource.loading && (
+                    <p className={styles.muted}>{createUnavailableReason}</p>
+                )}
             <div className={styles.assortmentFilters}>
                 <label className={styles.assortmentSearch}>
                     Поиск техкарты
@@ -350,9 +364,21 @@ export function AdminTechCards() {
                                 {draft ? 'Есть черновик' : 'Черновика нет'}
                             </p>
                             <div className={styles.cardActions}>
-                                <button onClick={() => startRevision(card)}>
-                                    <PiCopy aria-hidden /> Новая версия
-                                </button>
+                                {!draft ? (
+                                    <button
+                                        disabled={saving}
+                                        onClick={() => startRevision(card)}
+                                    >
+                                        <PiCopy aria-hidden /> Новая версия
+                                    </button>
+                                ) : (
+                                    <button
+                                        disabled
+                                        title="Сначала опубликуйте текущий черновик"
+                                    >
+                                        <PiCopy aria-hidden /> Черновик уже есть
+                                    </button>
+                                )}
                                 {draft && (
                                     <button
                                         className={styles.primaryButton}

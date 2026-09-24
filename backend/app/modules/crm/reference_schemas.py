@@ -39,6 +39,12 @@ class CrmFabricWrite(BaseModel):
         max_digits=12,
         decimal_places=2,
     )
+    cost_per_kg: Decimal | None = Field(
+        default=None,
+        ge=0,
+        max_digits=12,
+        decimal_places=2,
+    )
     minimum_stock_meters: Decimal = Field(
         default=Decimal("0"),
         ge=0,
