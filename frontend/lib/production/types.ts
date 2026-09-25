@@ -138,7 +138,7 @@ export interface Unit {
         fabric_location: string;
         back_width_cm: number | null;
         garment_length_cm: number | null;
-        sleeve_length_cm: number | null;
+        sleeve_variant: 'standard' | 'height';
         has_dtf: boolean;
     } | null;
 }

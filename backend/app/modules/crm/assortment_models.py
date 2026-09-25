@@ -30,6 +30,10 @@ class CrmGarmentPattern(Base, IntegerIdMixin, TimestampMixin):
         CheckConstraint("length(trim(grid_key)) > 0", name="crm_pattern_grid_key_nonempty"),
         CheckConstraint("length(trim(code)) > 0", name="crm_pattern_code_nonempty"),
         CheckConstraint("length(trim(name)) > 0", name="crm_pattern_name_nonempty"),
+        CheckConstraint(
+            "sleeve_variant IN ('standard', 'height')",
+            name="crm_pattern_sleeve_variant_valid",
+        ),
         CheckConstraint("width_cm > 0", name="crm_pattern_width_positive"),
         CheckConstraint("length_cm > 0", name="crm_pattern_length_positive"),
         CheckConstraint(
@@ -61,6 +65,13 @@ class CrmGarmentPattern(Base, IntegerIdMixin, TimestampMixin):
     grid_key: Mapped[str] = mapped_column(String(160), nullable=False)
     code: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    sleeve_variant: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default="standard",
+        server_default="standard",
+        index=True,
+    )
     width_cm: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     length_cm: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     sleeve_length_cm: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)

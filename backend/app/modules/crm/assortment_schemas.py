@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -56,10 +57,9 @@ class CrmGarmentPatternWrite(BaseModel):
     garment_size_id: int = Field(gt=0)
     media_object_id: int = Field(gt=0)
     name: str = Field(min_length=1, max_length=255)
+    sleeve_variant: Literal["standard", "height"] = "standard"
     width_cm: Decimal = Field(gt=0, max_digits=10, decimal_places=2)
     length_cm: Decimal = Field(gt=0, max_digits=10, decimal_places=2)
-    sleeve_length_cm: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)
-    height_cm: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)
     is_active: bool = True
 
     @field_validator("code")

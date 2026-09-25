@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from decimal import Decimal
 
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -98,6 +99,28 @@ class CrmAssortmentRepository:
         return await session.scalar(
             select(CrmGarmentPattern).where(CrmGarmentPattern.id == pattern_id).with_for_update()
         )
+
+    @staticmethod
+    async def get_pattern_for_slot(
+        session: AsyncSession,
+        *,
+        model_id: int,
+        size_id: int,
+        width_cm: Decimal,
+        length_cm: Decimal,
+        sleeve_variant: str,
+        exclude_id: int | None = None,
+    ) -> CrmGarmentPattern | None:
+        statement = select(CrmGarmentPattern).where(
+            CrmGarmentPattern.garment_model_id == model_id,
+            CrmGarmentPattern.garment_size_id == size_id,
+            CrmGarmentPattern.width_cm == width_cm,
+            CrmGarmentPattern.length_cm == length_cm,
+            CrmGarmentPattern.sleeve_variant == sleeve_variant,
+        )
+        if exclude_id is not None:
+            statement = statement.where(CrmGarmentPattern.id != exclude_id)
+        return await session.scalar(statement.limit(1))
 
     @staticmethod
     async def list_fabric_requirements(

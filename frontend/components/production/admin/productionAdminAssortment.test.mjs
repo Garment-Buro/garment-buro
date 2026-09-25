@@ -104,9 +104,16 @@ test('assortment remains usable on phones', () => {
     );
 });
 
-test('pattern editor uses visual measurements and compact header controls', () => {
+test('pattern editor uses model coverage and sleeve file variants', () => {
     assert.match(patterns, /type="range"/);
     assert.match(patterns, /step="2"/);
+    assert.match(patterns, /Лекала по моделям/);
+    assert.match(patterns, /Длина ↓ \/ Ширина →/);
+    assert.match(patterns, /sleeve_variant/);
+    assert.match(patterns, /Стандартный рукав/);
+    assert.match(patterns, /Рукав по росту/);
+    assert.doesNotMatch(patterns, /field="sleeve_length_cm"/);
+    assert.doesNotMatch(patterns, /field="height_cm"/);
     assert.match(patterns, /className=\{styles\.patternFilePicker\}/);
     assert.match(patterns, /PDF, JPEG, PNG или WebP/);
     assert.match(patterns, /headerActions=/);

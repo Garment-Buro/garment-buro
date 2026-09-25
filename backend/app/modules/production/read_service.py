@@ -50,6 +50,12 @@ def _custom_measurement(source, key):
         return None
 
 
+def _custom_sleeve_variant(source):
+    customization = source.customization_snapshot or {}
+    fit = customization.get("fit") or {}
+    return "height" if fit.get("sleeveMode") == "height" else "standard"
+
+
 async def cutting_details(session, *, source, spec, files):
     if spec is None:
         return None
@@ -72,6 +78,7 @@ async def cutting_details(session, *, source, spec, files):
             .order_by(CrmGarmentPattern.code, CrmGarmentPattern.id)
         )
     )
+    sleeve_variant = _custom_sleeve_variant(source)
     pattern = next((row for row in patterns if row.media_object_id in pattern_media_ids), None)
     if pattern is None and len(patterns) == 1:
         pattern = patterns[0]
@@ -85,6 +92,7 @@ async def cutting_details(session, *, source, spec, files):
                     for row in patterns
                     if (width is None or float(row.width_cm) == width)
                     and (length is None or float(row.length_cm) == length)
+                    and row.sleeve_variant == sleeve_variant
                 ),
                 None,
             )
@@ -137,11 +145,7 @@ async def cutting_details(session, *, source, spec, files):
         "fabric_location": "",
         "back_width_cm": float(pattern.width_cm) if pattern else None,
         "garment_length_cm": float(pattern.length_cm) if pattern else None,
-        "sleeve_length_cm": (
-            float(pattern.sleeve_length_cm)
-            if pattern and pattern.sleeve_length_cm is not None
-            else None
-        ),
+        "sleeve_variant": pattern.sleeve_variant if pattern else sleeve_variant,
         "has_dtf": bool(spec.specification["print_file_ids"]),
     }
 

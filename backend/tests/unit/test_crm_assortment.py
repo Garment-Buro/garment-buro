@@ -136,7 +136,7 @@ def test_assortment_models_patterns_materials_accessories_and_boxes(tmp_path: Pa
                             min_sleeve_length_cm=Decimal("20"),
                             max_sleeve_length_cm=Decimal("26"),
                             allow_standard_sleeve=True,
-                            allow_height_sleeve=False,
+                            allow_height_sleeve=True,
                         )
                     ],
                 )
@@ -164,7 +164,7 @@ def test_assortment_models_patterns_materials_accessories_and_boxes(tmp_path: Pa
                 assert size.base_width_cm == Decimal("47")
                 assert size.base_length_cm == Decimal("71")
                 assert size.allow_standard_sleeve is True
-                assert size.allow_height_sleeve is False
+                assert size.allow_height_sleeve is True
                 updated_category = await references.update_garment_model_category(
                     session,
                     category_id=model_category.id,
@@ -185,14 +185,24 @@ def test_assortment_models_patterns_materials_accessories_and_boxes(tmp_path: Pa
                     garment_size_id=size.id,
                     media_object_id=media.id,
                     name="M 46×70 sleeve 22",
+                    sleeve_variant="standard",
                     width_cm=Decimal("46"),
                     length_cm=Decimal("70"),
-                    sleeve_length_cm=Decimal("22"),
-                    height_cm=Decimal("168"),
                 )
                 pattern = await assortment.create_pattern(session, pattern_payload)
-                assert pattern.grid_key == "M:46.00:70.00:22.00:168.00"
+                assert pattern.grid_key == "M:46.00:70.00:standard"
                 assert pattern.code == "PAT-TSHIRT-M-001"
+                height_pattern = await assortment.create_pattern(
+                    session,
+                    pattern_payload.model_copy(
+                        update={
+                            "code": "PAT-TSHIRT-M-001-H",
+                            "name": "M 46×70 height sleeve",
+                            "sleeve_variant": "height",
+                        }
+                    ),
+                )
+                assert height_pattern.grid_key == "M:46.00:70.00:height"
                 assert [
                     item.id
                     for item in await assortment.list_patterns(
@@ -201,7 +211,13 @@ def test_assortment_models_patterns_materials_accessories_and_boxes(tmp_path: Pa
                         active=None,
                         query="tshirt-m-001",
                     )
-                ] == [pattern.id]
+                ] == [height_pattern.id, pattern.id]
+
+                with pytest.raises(CrmAssortmentConflictError, match="уже загружено"):
+                    await assortment.create_pattern(
+                        session,
+                        pattern_payload.model_copy(update={"code": "PAT-TSHIRT-M-001-DUPLICATE"}),
+                    )
 
                 with pytest.raises(CrmAssortmentConflictError, match="2 cm grid"):
                     await assortment.create_pattern(
