@@ -50,8 +50,12 @@ export function ProductionCuttingBrief({ unit }: { unit: Unit }) {
                     <dd>{centimeters(cutting?.garment_length_cm ?? null)}</dd>
                 </div>
                 <div>
-                    <dt>Длина рукава</dt>
-                    <dd>{centimeters(cutting?.sleeve_length_cm ?? null)}</dd>
+                    <dt>Рукав</dt>
+                    <dd>
+                        {cutting?.sleeve_variant === 'height'
+                            ? 'По росту'
+                            : 'Стандартный'}
+                    </dd>
                 </div>
                 <div>
                     <dt>DTF</dt>

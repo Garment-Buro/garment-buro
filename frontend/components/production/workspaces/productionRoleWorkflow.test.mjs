@@ -72,7 +72,7 @@ test('bag history, order comments and cutting data follow role rules', () => {
         'Где ткань',
         'Ширина спинки',
         'Длина изделия',
-        'Длина рукава',
+        'Рукав',
         'DTF',
     ]) {
         assert.match(cutting, new RegExp(label));

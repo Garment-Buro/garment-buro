@@ -129,7 +129,7 @@ class CrmAssortmentService:
     async def create_pattern(
         self, session: AsyncSession, payload: CrmGarmentPatternWrite
     ) -> CrmGarmentPatternRead:
-        size = await self._validate_pattern(session, payload)
+        size = await self._validate_pattern(session, payload, exclude_id=None)
         row = CrmGarmentPattern(version=1)
         self._apply_pattern(row, payload, size)
         await self.repository.add(session, row)
@@ -147,7 +147,7 @@ class CrmAssortmentService:
         if row is None:
             raise CrmAssortmentNotFoundError("Pattern was not found")
         self._version(row.version, expected_version)
-        size = await self._validate_pattern(session, payload)
+        size = await self._validate_pattern(session, payload, exclude_id=pattern_id)
         self._apply_pattern(row, payload, size)
         row.version += 1
         await session.flush()
@@ -360,7 +360,11 @@ class CrmAssortmentService:
         return CrmGarmentPackagingRuleRead.model_validate(row)
 
     async def _validate_pattern(
-        self, session: AsyncSession, payload: CrmGarmentPatternWrite
+        self,
+        session: AsyncSession,
+        payload: CrmGarmentPatternWrite,
+        *,
+        exclude_id: int | None,
     ) -> CrmGarmentSize:
         model = await self.repository.get_model(session, payload.garment_model_id)
         size = await self.repository.get_size(session, payload.garment_size_id)
@@ -372,15 +376,27 @@ class CrmAssortmentService:
             raise CrmAssortmentConflictError("Pattern file must reference ready media")
         self._grid(payload.width_cm, size.min_width_cm, size.max_width_cm, "width")
         self._grid(payload.length_cm, size.min_length_cm, size.max_length_cm, "length")
-        if payload.sleeve_length_cm is not None:
-            self._grid(
-                payload.sleeve_length_cm,
-                size.min_sleeve_length_cm,
-                size.max_sleeve_length_cm,
-                "sleeve length",
+        if payload.sleeve_variant == "standard" and not size.allow_standard_sleeve:
+            raise CrmAssortmentConflictError(
+                "Для этого размера отключено лекало со стандартным рукавом"
             )
-        if payload.height_cm is not None:
-            self._grid(payload.height_cm, size.min_height_cm, size.max_height_cm, "height")
+        if payload.sleeve_variant == "height" and not size.allow_height_sleeve:
+            raise CrmAssortmentConflictError(
+                "Для этого размера отключено лекало с рукавом по росту"
+            )
+        duplicate = await self.repository.get_pattern_for_slot(
+            session,
+            model_id=payload.garment_model_id,
+            size_id=payload.garment_size_id,
+            width_cm=payload.width_cm,
+            length_cm=payload.length_cm,
+            sleeve_variant=payload.sleeve_variant,
+            exclude_id=exclude_id,
+        )
+        if duplicate is not None:
+            raise CrmAssortmentConflictError(
+                "Для этого размера, ширины, длины и варианта рукава лекало уже загружено"
+            )
         return size
 
     async def _validate_fabric_requirement(
@@ -471,25 +487,22 @@ class CrmAssortmentService:
         row.garment_size_id = payload.garment_size_id
         row.media_object_id = payload.media_object_id
         row.name = payload.name
+        row.sleeve_variant = payload.sleeve_variant
         row.width_cm = payload.width_cm
         row.length_cm = payload.length_cm
-        row.sleeve_length_cm = payload.sleeve_length_cm
-        row.height_cm = payload.height_cm
+        row.sleeve_length_cm = None
+        row.height_cm = None
         row.grid_key = CrmAssortmentService._grid_key(payload, size)
         row.is_active = payload.is_active
 
     @staticmethod
     def _grid_key(payload: CrmGarmentPatternWrite, size: CrmGarmentSize) -> str:
-        def part(value: Decimal | None) -> str:
-            return "-" if value is None else format(value, ".2f")
-
         return ":".join(
             (
                 size.code,
-                part(payload.width_cm),
-                part(payload.length_cm),
-                part(payload.sleeve_length_cm),
-                part(payload.height_cm),
+                format(payload.width_cm, ".2f"),
+                format(payload.length_cm, ".2f"),
+                payload.sleeve_variant,
             )
         )
 

@@ -130,9 +130,9 @@ async def setup(tmp_path, postgres_url=None, quantity=1):
                         grid_key="M-58-72",
                         code="PAT-DRESS-M-001",
                         name="PAT-DRESS-M-001",
+                        sleeve_variant="height",
                         width_cm=58,
                         length_cm=72,
-                        sleeve_length_cm=61,
                     ),
                     CrmGarmentFabricRequirement(
                         garment_model_id=product.garment_model_id,
@@ -251,7 +251,7 @@ def test_full_flow_persists_dtf_pocket_quality_and_order_shipment(tmp_path):
                     "fabric_location": "",
                     "back_width_cm": 58.0,
                     "garment_length_cm": 72.0,
-                    "sleeve_length_cm": 61.0,
+                    "sleeve_variant": "height",
                     "has_dtf": True,
                 }
             await execute(db, service, "insert_dtf", unit_id=1)

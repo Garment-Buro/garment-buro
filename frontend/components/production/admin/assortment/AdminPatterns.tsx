@@ -4,7 +4,6 @@ import { useMemo, useState, type FormEvent } from 'react';
 import {
     PiCaretDown,
     PiCheck,
-    PiPencilSimple,
     PiPlus,
     PiUploadSimple,
 } from 'react-icons/pi';
@@ -16,6 +15,7 @@ import {
 import { compactDecimal } from '@/lib/production/numbers';
 import type {
     GarmentModel,
+    GarmentSize,
     Pattern,
     ReferencePage,
 } from '@/lib/production/assortmentTypes';
@@ -29,93 +29,119 @@ import {
 } from './AssortmentDialog';
 import styles from '../ProductionAdmin.module.css';
 
+type SleeveVariant = Pattern['sleeve_variant'];
+type MeasurementKey = 'width_cm' | 'length_cm';
 type PatternForm = Omit<Pattern, 'id' | 'version' | 'grid_key' | 'name'> & {
     id?: number;
     version?: number;
     filename?: string;
 };
 
-type MeasurementKey =
-    | 'width_cm'
-    | 'length_cm'
-    | 'sleeve_length_cm'
-    | 'height_cm';
+type MeasurementRange = { min: string | null; max: string | null };
 
-type MeasurementRange = {
-    min: string | null;
-    max: string | null;
+const variantLabel: Record<SleeveVariant, string> = {
+    standard: 'Стандартный рукав',
+    height: 'Рукав по росту',
 };
 
-const firstMeasurement = (range: MeasurementRange) => range.min ?? '';
+const variantShortLabel: Record<SleeveVariant, string> = {
+    standard: 'Стандарт',
+    height: 'По росту',
+};
+
+const sizeVariants = (size?: GarmentSize): SleeveVariant[] => {
+    if (!size) return ['standard'];
+    const variants: SleeveVariant[] = [];
+    if (size.allow_standard_sleeve) variants.push('standard');
+    if (size.allow_height_sleeve) variants.push('height');
+    return variants.length ? variants : ['standard'];
+};
+
+const rangeValues = (minimum: string | null, maximum: string | null) => {
+    if (minimum === null || maximum === null) return [];
+    const start = Number(minimum);
+    const end = Number(maximum);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start > end) return [];
+    const values: string[] = [];
+    for (let value = start; value <= end + 0.001; value += 2) {
+        values.push(compactDecimal(value.toFixed(2)));
+    }
+    return values;
+};
+
+const slotKey = (
+    modelId: number,
+    sizeId: number,
+    width: string,
+    length: string,
+    sleeveVariant: SleeveVariant,
+) =>
+    [
+        modelId,
+        sizeId,
+        Number(width).toFixed(2),
+        Number(length).toFixed(2),
+        sleeveVariant,
+    ].join(':');
+
+const generatedCode = (
+    model: GarmentModel,
+    size: GarmentSize,
+    width: string,
+    length: string,
+    sleeveVariant: SleeveVariant,
+) => {
+    const part = (value: string) => compactDecimal(value).replace('.', '_');
+    const suffix = `-${size.code}-${part(width)}X${part(length)}-${
+        sleeveVariant === 'height' ? 'H' : 'S'
+    }`;
+    return `${`PAT-${model.code}`.slice(0, 64 - suffix.length)}${suffix}`;
+};
 
 function PatternMeasurement({
     label,
     field,
     value,
     range,
-    required,
     onChange,
 }: {
     label: string;
     field: MeasurementKey;
-    value: string | null;
+    value: string;
     range: MeasurementRange;
-    required?: boolean;
-    onChange: (field: MeasurementKey, value: string | null) => void;
+    onChange: (field: MeasurementKey, value: string) => void;
 }) {
     const available = range.min !== null && range.max !== null;
-    const enabled = required || value !== null;
-    const current = value ?? range.min ?? '';
-
     return (
-        <section className={styles.patternMeasurement} data-enabled={enabled}>
+        <section className={styles.patternMeasurement} data-enabled={available}>
             <div className={styles.patternMeasurementHeading}>
                 <div>
                     <strong>{label}</strong>
                     <small>
                         {available
-                            ? `${range.min}–${range.max} см`
+                            ? `${compactDecimal(range.min)}–${compactDecimal(range.max)} см`
                             : 'Диапазон не задан для размера'}
                     </small>
                 </div>
-                {required ? (
-                    <output htmlFor={`pattern-${field}`}>
-                        {current ? `${Number(current)} см` : '—'}
-                    </output>
-                ) : (
-                    <button
-                        type="button"
-                        className={styles.patternMeasureToggle}
-                        disabled={!available}
-                        aria-pressed={enabled}
-                        onClick={() =>
-                            onChange(field, enabled ? null : firstMeasurement(range))
-                        }
-                    >
-                        {enabled ? 'Убрать' : 'Указать'}
-                    </button>
-                )}
+                <output htmlFor={`pattern-${field}`}>
+                    {value ? `${compactDecimal(value)} см` : '—'}
+                </output>
             </div>
-            {enabled && available && (
+            {available && (
                 <div className={styles.patternRangeControl}>
-                    {!required && (
-                        <output htmlFor={`pattern-${field}`}>
-                            {current ? `${Number(current)} см` : '—'}
-                        </output>
-                    )}
                     <input
                         id={`pattern-${field}`}
                         type="range"
                         min={range.min ?? undefined}
                         max={range.max ?? undefined}
                         step="2"
-                        value={current}
+                        value={value}
                         aria-label={`${label}, сантиметры`}
                         onChange={(event) => onChange(field, event.target.value)}
                     />
                     <div className={styles.patternRangeEnds} aria-hidden="true">
-                        <span>{Number(range.min)}</span>
-                        <span>{Number(range.max)}</span>
+                        <span>{compactDecimal(range.min ?? '')}</span>
+                        <span>{compactDecimal(range.max ?? '')}</span>
                     </div>
                 </div>
             )}
@@ -123,16 +149,42 @@ function PatternMeasurement({
     );
 }
 
-const emptyPattern = (model?: GarmentModel): PatternForm => ({
-    code: '',
-    garment_model_id: model?.id ?? 0,
-    garment_size_id: model?.sizes[0]?.id ?? 0,
-    media_object_id: 0,
-    width_cm: model?.sizes[0]?.min_width_cm ?? '',
-    length_cm: model?.sizes[0]?.min_length_cm ?? '',
-    sleeve_length_cm: null,
-    height_cm: null,
-    is_active: true,
+const emptyPattern = (
+    model?: GarmentModel,
+    size?: GarmentSize,
+    width?: string,
+    length?: string,
+    sleeveVariant?: SleeveVariant,
+): PatternForm => {
+    const selectedSize = size ?? model?.sizes[0];
+    const variant = sleeveVariant ?? sizeVariants(selectedSize)[0];
+    const selectedWidth = width ?? selectedSize?.min_width_cm ?? '';
+    const selectedLength = length ?? selectedSize?.min_length_cm ?? '';
+    return {
+        code:
+            model && selectedSize && selectedWidth && selectedLength
+                ? generatedCode(
+                      model,
+                      selectedSize,
+                      selectedWidth,
+                      selectedLength,
+                      variant,
+                  )
+                : '',
+        garment_model_id: model?.id ?? 0,
+        garment_size_id: selectedSize?.id ?? 0,
+        media_object_id: 0,
+        sleeve_variant: variant,
+        width_cm: selectedWidth,
+        length_cm: selectedLength,
+        is_active: true,
+    };
+};
+
+const patternEditor = (pattern: Pattern): PatternForm => ({
+    ...pattern,
+    width_cm: compactDecimal(pattern.width_cm),
+    length_cm: compactDecimal(pattern.length_cm),
 });
 
 export function AdminPatterns() {
@@ -141,7 +193,7 @@ export function AdminPatterns() {
         useAssortmentResource<ReferencePage<GarmentModel>>('models');
     const [modelFilter, setModelFilter] = useState(0);
     const [activityFilter, setActivityFilter] = useState('');
-    const [sorting, setSorting] = useState('code:asc');
+    const [sorting, setSorting] = useState('model:asc');
     const [query, setQuery] = useState('');
     const [editor, setEditor] = useState<PatternForm | null>(null);
     const [saving, setSaving] = useState(false);
@@ -153,50 +205,80 @@ export function AdminPatterns() {
         () => modelsResource.data?.items ?? [],
         [modelsResource.data],
     );
-    const modelName = (id: number) =>
-        models.find((model) => model.id === id)?.name ?? `Модель №${id}`;
-    const sizeName = (modelId: number, sizeId: number) =>
-        models
-            .find((model) => model.id === modelId)
-            ?.sizes.find((size) => size.id === sizeId)?.code ?? `№${sizeId}`;
-    const patterns = useMemo(() => {
-        const filtered = (patternsResource.data ?? []).filter((item) => {
-                const matchesModel =
-                    !modelFilter || item.garment_model_id === modelFilter;
-                const needle = query.trim().toLowerCase();
-                return (
-                    matchesModel &&
-                    (!activityFilter ||
-                        item.is_active === (activityFilter === 'active')) &&
-                    (!needle ||
-                        `${item.code} ${item.grid_key}`
-                            .toLowerCase()
-                            .includes(needle))
-                );
-            });
-        const [field, direction] = sorting.split(':');
-        return [...filtered].sort((left, right) => {
-            const nameFor = (id: number) =>
-                models.find((model) => model.id === id)?.name ?? `Модель №${id}`;
-            const sizeFor = (modelId: number, sizeId: number) =>
-                models
-                    .find((model) => model.id === modelId)
-                    ?.sizes.find((size) => size.id === sizeId)?.code ?? `№${sizeId}`;
-            const values: Record<string, [string | number, string | number]> = {
-                code: [left.code, right.code],
-                model: [nameFor(left.garment_model_id), nameFor(right.garment_model_id)],
-                size: [
-                    sizeFor(left.garment_model_id, left.garment_size_id),
-                    sizeFor(right.garment_model_id, right.garment_size_id),
-                ],
-            };
-            const [a, b] = values[field] ?? values.code;
-            const result = String(a).localeCompare(String(b), 'ru', {
-                numeric: true,
-            });
-            return direction === 'desc' ? -result : result;
+    const allPatterns = useMemo(
+        () => patternsResource.data ?? [],
+        [patternsResource.data],
+    );
+    const patternsBySlot = useMemo(() => {
+        const result = new Map<string, Pattern>();
+        for (const pattern of allPatterns) {
+            result.set(
+                slotKey(
+                    pattern.garment_model_id,
+                    pattern.garment_size_id,
+                    pattern.width_cm,
+                    pattern.length_cm,
+                    pattern.sleeve_variant,
+                ),
+                pattern,
+            );
+        }
+        return result;
+    }, [allPatterns]);
+    const visibleModels = useMemo(() => {
+        const needle = query.trim().toLowerCase();
+        const result = models.filter((model) => {
+            if (modelFilter && model.id !== modelFilter) return false;
+            const modelPatterns = allPatterns.filter(
+                (pattern) => pattern.garment_model_id === model.id,
+            );
+            if (
+                activityFilter &&
+                !modelPatterns.some(
+                    (pattern) =>
+                        pattern.is_active === (activityFilter === 'active'),
+                )
+            ) {
+                return false;
+            }
+            return (
+                !needle ||
+                `${model.name} ${model.code}`.toLowerCase().includes(needle) ||
+                modelPatterns.some((pattern) =>
+                    pattern.code.toLowerCase().includes(needle),
+                )
+            );
         });
-    }, [activityFilter, modelFilter, models, patternsResource.data, query, sorting]);
+        const direction = sorting.endsWith(':desc') ? -1 : 1;
+        return [...result].sort((left, right) => {
+            const leftValue = sorting.startsWith('code') ? left.code : left.name;
+            const rightValue = sorting.startsWith('code') ? right.code : right.name;
+            return (
+                leftValue.localeCompare(rightValue, 'ru', { numeric: true }) *
+                direction
+            );
+        });
+    }, [activityFilter, allPatterns, modelFilter, models, query, sorting]);
+
+    const openNewPattern = (
+        model: GarmentModel,
+        size?: GarmentSize,
+        width?: string,
+        length?: string,
+        sleeveVariant?: SleeveVariant,
+    ) => {
+        setUploadStatus(idleFileUploadStatus);
+        setFormError('');
+        setEditor(emptyPattern(model, size, width, length, sleeveVariant));
+    };
+    const openPattern = (pattern: Pattern) => {
+        setUploadStatus({
+            state: 'success',
+            message: 'Файл лекала уже загружен',
+        });
+        setFormError('');
+        setEditor(patternEditor(pattern));
+    };
     const submit = async (event: FormEvent) => {
         event.preventDefault();
         if (!editor) return;
@@ -216,14 +298,9 @@ export function AdminPatterns() {
                     garment_size_id: editor.garment_size_id,
                     media_object_id: editor.media_object_id,
                     name: editor.code,
+                    sleeve_variant: editor.sleeve_variant,
                     width_cm: Number(editor.width_cm),
                     length_cm: Number(editor.length_cm),
-                    sleeve_length_cm: editor.sleeve_length_cm
-                        ? Number(editor.sleeve_length_cm)
-                        : null,
-                    height_cm: editor.height_cm
-                        ? Number(editor.height_cm)
-                        : null,
                     is_active: editor.is_active,
                     ...(editor.id ? { expected_version: editor.version } : {}),
                 },
@@ -245,28 +322,26 @@ export function AdminPatterns() {
         <section aria-busy={patternsResource.loading || modelsResource.loading}>
             <div className={styles.assortmentHeading}>
                 <div>
-                    <h3>Лекала</h3>
+                    <h3>Лекала по моделям</h3>
                     <p className={styles.muted}>
-                        Файл для каждой точки размерной сетки с шагом два сантиметра.
+                        В каждой клетке видно, какие файлы загружены для ширины и
+                        длины изделия.
                     </p>
                 </div>
                 <button
                     disabled={!models.length}
-                    onClick={() => {
-                        setUploadStatus(idleFileUploadStatus);
-                        setEditor(emptyPattern(models[0]));
-                    }}
+                    onClick={() => models[0] && openNewPattern(models[0])}
                 >
                     <PiPlus aria-hidden /> Добавить лекало
                 </button>
             </div>
             <div className={styles.assortmentFilters}>
                 <label className={styles.assortmentSearch}>
-                    Поиск по коду лекала
+                    Поиск по модели или коду лекала
                     <input
                         type="search"
                         value={query}
-                        placeholder="Например, PAT-HOODIE-M"
+                        placeholder="Модель или PAT-HOODIE-M"
                         onChange={(event) => setQuery(event.target.value)}
                     />
                 </label>
@@ -285,21 +360,21 @@ export function AdminPatterns() {
                         },
                         {
                             key: 'activity',
-                            label: 'Видимость',
+                            label: 'Лекала',
                             options: [
-                                ['', 'Все лекала'],
-                                ['active', 'Активные'],
-                                ['hidden', 'Скрытые'],
+                                ['', 'Все состояния'],
+                                ['active', 'Есть активные'],
+                                ['hidden', 'Есть скрытые'],
                             ],
                         },
                         {
                             key: 'sorting',
                             label: 'Сортировка',
                             options: [
+                                ['model:asc', 'Модель: А–Я'],
+                                ['model:desc', 'Модель: Я–А'],
                                 ['code:asc', 'Код: А–Я'],
                                 ['code:desc', 'Код: Я–А'],
-                                ['model:asc', 'По модели'],
-                                ['size:asc', 'По размеру'],
                             ],
                         },
                     ]}
@@ -308,11 +383,7 @@ export function AdminPatterns() {
                         activity: activityFilter,
                         sorting,
                     }}
-                    defaults={{
-                        model: '0',
-                        activity: '',
-                        sorting: 'code:asc',
-                    }}
+                    defaults={{ model: '0', activity: '', sorting: 'model:asc' }}
                     onApply={(values) => {
                         setModelFilter(Number(values.model));
                         setActivityFilter(values.activity);
@@ -326,74 +397,202 @@ export function AdminPatterns() {
                 empty={
                     !patternsResource.loading &&
                     !modelsResource.loading &&
-                    patterns.length === 0
+                    visibleModels.length === 0
                 }
             />
-            {patterns.length > 0 && (
-                <div className={styles.assortmentCards}>
-                    {patterns.map((pattern) => (
-                        <article className={styles.assortmentCard} key={pattern.id}>
-                            <div className={styles.assortmentCardTop}>
-                                <div>
-                                    <span className={styles.badge}>
-                                        {sizeName(
-                                            pattern.garment_model_id,
-                                            pattern.garment_size_id,
-                                        )}
-                                    </span>
-                                    <small>{pattern.code}</small>
+            {visibleModels.length > 0 && (
+                <div className={styles.patternCoverageList}>
+                    {visibleModels.map((model) => {
+                        let required = 0;
+                        let uploaded = 0;
+                        for (const size of model.sizes) {
+                            const widths = rangeValues(
+                                size.min_width_cm,
+                                size.max_width_cm,
+                            );
+                            const lengths = rangeValues(
+                                size.min_length_cm,
+                                size.max_length_cm,
+                            );
+                            for (const width of widths) {
+                                for (const length of lengths) {
+                                    for (const variant of sizeVariants(size)) {
+                                        required += 1;
+                                        if (
+                                            patternsBySlot.has(
+                                                slotKey(
+                                                    model.id,
+                                                    size.id ?? 0,
+                                                    width,
+                                                    length,
+                                                    variant,
+                                                ),
+                                            )
+                                        ) {
+                                            uploaded += 1;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        return (
+                            <details
+                                className={styles.patternModelCoverage}
+                                key={model.id}
+                                open={visibleModels.length === 1}
+                            >
+                                <summary>
+                                    <div>
+                                        <strong>{model.name}</strong>
+                                        <small>{model.code}</small>
+                                    </div>
+                                    <div className={styles.patternCoverageMeta}>
+                                        <span data-complete={required > 0 && uploaded === required}>
+                                            {uploaded} из {required}
+                                        </span>
+                                        <small>лекал загружено</small>
+                                        <PiCaretDown aria-hidden />
+                                    </div>
+                                </summary>
+                                <div className={styles.patternSizeList}>
+                                    {model.sizes.map((size) => {
+                                        const widths = rangeValues(
+                                            size.min_width_cm,
+                                            size.max_width_cm,
+                                        );
+                                        const lengths = rangeValues(
+                                            size.min_length_cm,
+                                            size.max_length_cm,
+                                        );
+                                        const variants = sizeVariants(size);
+                                        return (
+                                            <section
+                                                className={styles.patternSizeCoverage}
+                                                key={size.id ?? size.code}
+                                            >
+                                                <div className={styles.patternSizeSummary}>
+                                                    <div>
+                                                        <strong>Размер {size.code}</strong>
+                                                        <small>
+                                                            {variants
+                                                                .map(
+                                                                    (variant) =>
+                                                                        variantShortLabel[variant],
+                                                                )
+                                                                .join(' · ')}
+                                                        </small>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            openNewPattern(model, size)
+                                                        }
+                                                    >
+                                                        <PiPlus aria-hidden /> Добавить
+                                                    </button>
+                                                </div>
+                                                {!widths.length || !lengths.length ? (
+                                                    <p className={styles.patternEmptyGrid}>
+                                                        В модели не заполнены диапазоны
+                                                        ширины и длины для этого размера.
+                                                    </p>
+                                                ) : (
+                                                    <div
+                                                        className={styles.patternCoverageScroll}
+                                                        tabIndex={0}
+                                                    >
+                                                        <table className={styles.patternCoverageTable}>
+                                                            <thead>
+                                                                <tr>
+                                                                    <th scope="col">
+                                                                        Длина ↓ / Ширина →
+                                                                    </th>
+                                                                    {widths.map((width) => (
+                                                                        <th scope="col" key={width}>
+                                                                            {width} см
+                                                                        </th>
+                                                                    ))}
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                {lengths.map((length) => (
+                                                                    <tr key={length}>
+                                                                        <th scope="row">
+                                                                            {length} см
+                                                                        </th>
+                                                                        {widths.map((width) => (
+                                                                            <td key={width}>
+                                                                                <div className={styles.patternSlot}>
+                                                                                    {variants.map(
+                                                                                        (variant) => {
+                                                                                            const pattern = patternsBySlot.get(
+                                                                                                slotKey(
+                                                                                                    model.id,
+                                                                                                    size.id ?? 0,
+                                                                                                    width,
+                                                                                                    length,
+                                                                                                    variant,
+                                                                                                ),
+                                                                                            );
+                                                                                            const state = pattern
+                                                                                                ? pattern.is_active
+                                                                                                    ? 'ready'
+                                                                                                    : 'hidden'
+                                                                                                : 'missing';
+                                                                                            return (
+                                                                                                <button
+                                                                                                    type="button"
+                                                                                                    className={styles.patternVariantSlot}
+                                                                                                    data-state={state}
+                                                                                                    key={variant}
+                                                                                                    title={
+                                                                                                        pattern
+                                                                                                            ? `${variantLabel[variant]} · ${pattern.code}`
+                                                                                                            : `${variantLabel[variant]} · файл не загружен`
+                                                                                                    }
+                                                                                                    onClick={() =>
+                                                                                                        pattern
+                                                                                                            ? openPattern(pattern)
+                                                                                                            : openNewPattern(
+                                                                                                                  model,
+                                                                                                                  size,
+                                                                                                                  width,
+                                                                                                                  length,
+                                                                                                                  variant,
+                                                                                                              )
+                                                                                                    }
+                                                                                                >
+                                                                                                    {pattern ? (
+                                                                                                        <PiCheck aria-hidden />
+                                                                                                    ) : (
+                                                                                                        <PiPlus aria-hidden />
+                                                                                                    )}
+                                                                                                    <span>{variantShortLabel[variant]}</span>
+                                                                                                </button>
+                                                                                            );
+                                                                                        },
+                                                                                    )}
+                                                                                </div>
+                                                                            </td>
+                                                                        ))}
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                )}
+                                            </section>
+                                        );
+                                    })}
                                 </div>
-                                <button
-                                    className={styles.iconButton}
-                                    onClick={() => {
-                                        setUploadStatus({
-                                            state: 'success',
-                                            message: 'Файл лекала уже загружен',
-                                        });
-                                        setEditor({
-                                            ...pattern,
-                                            width_cm: compactDecimal(
-                                                pattern.width_cm,
-                                            ),
-                                            length_cm: compactDecimal(
-                                                pattern.length_cm,
-                                            ),
-                                            sleeve_length_cm:
-                                                pattern.sleeve_length_cm == null
-                                                    ? null
-                                                    : compactDecimal(
-                                                          pattern.sleeve_length_cm,
-                                                      ),
-                                            height_cm:
-                                                pattern.height_cm == null
-                                                    ? null
-                                                    : compactDecimal(
-                                                          pattern.height_cm,
-                                                      ),
-                                        });
-                                    }}
-                                    aria-label={`Изменить лекало ${pattern.code}`}
-                                >
-                                    <PiPencilSimple aria-hidden />
-                                </button>
-                            </div>
-                            <p>{modelName(pattern.garment_model_id)}</p>
-                            <dl className={styles.compactFacts}>
-                                <div>
-                                    <dt>Ширина</dt>
-                                    <dd>{compactDecimal(pattern.width_cm)} см</dd>
-                                </div>
-                                <div>
-                                    <dt>Длина</dt>
-                                    <dd>{compactDecimal(pattern.length_cm)} см</dd>
-                                </div>
-                                <div>
-                                    <dt>Файл</dt>
-                                    <dd>№{pattern.media_object_id}</dd>
-                                </div>
-                            </dl>
-                        </article>
-                    ))}
+                            </details>
+                        );
+                    })}
+                    <div className={styles.patternSlotLegend}>
+                        <span data-state="ready">Загружено</span>
+                        <span data-state="missing">Не загружено</span>
+                        <span data-state="hidden">Скрыто</span>
+                    </div>
                 </div>
             )}
             {editor && (
@@ -420,10 +619,7 @@ export function AdminPatterns() {
                                         aria-checked={editor.is_active === active}
                                         key={String(active)}
                                         onClick={(event) => {
-                                            setEditor({
-                                                ...editor,
-                                                is_active: Boolean(active),
-                                            });
+                                            setEditor({ ...editor, is_active: active });
                                             event.currentTarget
                                                 .closest('details')
                                                 ?.removeAttribute('open');
@@ -448,7 +644,7 @@ export function AdminPatterns() {
                                     required
                                     maxLength={64}
                                     value={editor.code}
-                                    placeholder="PAT-HOODIE-M-001"
+                                    placeholder="PAT-HOODIE-M-60X72-S"
                                     onChange={(event) =>
                                         setEditor({
                                             ...editor,
@@ -462,24 +658,14 @@ export function AdminPatterns() {
                                 Модель
                                 <select
                                     required
+                                    disabled={Boolean(editor.id)}
                                     value={editor.garment_model_id || ''}
                                     onChange={(event) => {
                                         const model = models.find(
                                             (item) =>
                                                 item.id === Number(event.target.value),
                                         );
-                                        setEditor({
-                                            ...editor,
-                                            garment_model_id: model?.id ?? 0,
-                                            garment_size_id:
-                                                model?.sizes[0]?.id ?? 0,
-                                            width_cm:
-                                                model?.sizes[0]?.min_width_cm ?? '',
-                                            length_cm:
-                                                model?.sizes[0]?.min_length_cm ?? '',
-                                            sleeve_length_cm: null,
-                                            height_cm: null,
-                                        });
+                                        setEditor(emptyPattern(model));
                                     }}
                                 >
                                     <option value="">Выберите модель</option>
@@ -494,35 +680,25 @@ export function AdminPatterns() {
                                 Размер
                                 <select
                                     required
+                                    disabled={Boolean(editor.id)}
                                     value={editor.garment_size_id || ''}
                                     onChange={(event) => {
-                                        const size = models
-                                            .find(
-                                                (model) =>
-                                                    model.id ===
-                                                    editor.garment_model_id,
-                                            )
-                                            ?.sizes.find(
-                                                (item) =>
-                                                    item.id ===
-                                                    Number(event.target.value),
-                                            );
-                                        setEditor({
-                                            ...editor,
-                                            garment_size_id: size?.id ?? 0,
-                                            width_cm: size?.min_width_cm ?? '',
-                                            length_cm: size?.min_length_cm ?? '',
-                                            sleeve_length_cm: null,
-                                            height_cm: null,
-                                        });
+                                        const model = models.find(
+                                            (item) =>
+                                                item.id === editor.garment_model_id,
+                                        );
+                                        const size = model?.sizes.find(
+                                            (item) =>
+                                                item.id === Number(event.target.value),
+                                        );
+                                        setEditor(emptyPattern(model, size));
                                     }}
                                 >
                                     <option value="">Выберите размер</option>
                                     {(
                                         models.find(
                                             (model) =>
-                                                model.id ===
-                                                editor.garment_model_id,
+                                                model.id === editor.garment_model_id,
                                         )?.sizes ?? []
                                     ).map((size) => (
                                         <option key={size.id} value={size.id}>
@@ -532,73 +708,102 @@ export function AdminPatterns() {
                                 </select>
                             </label>
                         </div>
-                        <div className={styles.patternMeasurements}>
-                            {(() => {
-                                const size = models
-                                    .find(
-                                        (model) =>
-                                            model.id === editor.garment_model_id,
-                                    )
-                                    ?.sizes.find(
-                                        (item) =>
-                                            item.id === editor.garment_size_id,
+                        {(() => {
+                            const model = models.find(
+                                (item) => item.id === editor.garment_model_id,
+                            );
+                            const size = model?.sizes.find(
+                                (item) => item.id === editor.garment_size_id,
+                            );
+                            const variants = sizeVariants(size);
+                            const updateMeasurement = (
+                                field: MeasurementKey,
+                                value: string,
+                            ) => {
+                                const next = { ...editor, [field]: value };
+                                if (!editor.id && model && size) {
+                                    next.code = generatedCode(
+                                        model,
+                                        size,
+                                        field === 'width_cm'
+                                            ? value
+                                            : editor.width_cm,
+                                        field === 'length_cm'
+                                            ? value
+                                            : editor.length_cm,
+                                        editor.sleeve_variant,
                                     );
-                                const updateMeasurement = (
-                                    field: MeasurementKey,
-                                    value: string | null,
-                                ) => setEditor({ ...editor, [field]: value });
-                                return (
-                                    <>
+                                }
+                                setEditor(next);
+                            };
+                            return (
+                                <>
+                                    <fieldset className={styles.patternVariantField}>
+                                        <legend>Вариант лекала</legend>
+                                        <div className={styles.squareChoiceGrid}>
+                                            {variants.map((variant) => (
+                                                <button
+                                                    type="button"
+                                                    key={variant}
+                                                    data-selected={
+                                                        editor.sleeve_variant === variant
+                                                    }
+                                                    aria-pressed={
+                                                        editor.sleeve_variant === variant
+                                                    }
+                                                    onClick={() => {
+                                                        const next = {
+                                                            ...editor,
+                                                            sleeve_variant: variant,
+                                                        };
+                                                        if (!editor.id && model && size) {
+                                                            next.code = generatedCode(
+                                                                model,
+                                                                size,
+                                                                editor.width_cm,
+                                                                editor.length_cm,
+                                                                variant,
+                                                            );
+                                                        }
+                                                        setEditor(next);
+                                                    }}
+                                                >
+                                                    <PiCheck aria-hidden />
+                                                    <strong>{variantLabel[variant]}</strong>
+                                                    <small>
+                                                        {variant === 'height'
+                                                            ? 'Файл для рукава, выбранного по росту'
+                                                            : 'Файл со стандартным рукавом'}
+                                                    </small>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </fieldset>
+                                    <div className={styles.patternMeasurements}>
                                         <PatternMeasurement
-                                            label="Ширина"
+                                            label="Ширина изделия"
                                             field="width_cm"
                                             value={editor.width_cm}
                                             range={{
                                                 min: size?.min_width_cm ?? null,
                                                 max: size?.max_width_cm ?? null,
                                             }}
-                                            required
                                             onChange={updateMeasurement}
                                         />
                                         <PatternMeasurement
-                                            label="Длина"
+                                            label="Длина изделия"
                                             field="length_cm"
                                             value={editor.length_cm}
                                             range={{
                                                 min: size?.min_length_cm ?? null,
                                                 max: size?.max_length_cm ?? null,
                                             }}
-                                            required
                                             onChange={updateMeasurement}
                                         />
-                                        <PatternMeasurement
-                                            label="Рукав"
-                                            field="sleeve_length_cm"
-                                            value={editor.sleeve_length_cm}
-                                            range={{
-                                                min:
-                                                    size?.min_sleeve_length_cm ??
-                                                    null,
-                                                max:
-                                                    size?.max_sleeve_length_cm ??
-                                                    null,
-                                            }}
-                                            onChange={updateMeasurement}
-                                        />
-                                        <PatternMeasurement
-                                            label="Рост"
-                                            field="height_cm"
-                                            value={editor.height_cm}
-                                            range={{
-                                                min: size?.min_height_cm ?? null,
-                                                max: size?.max_height_cm ?? null,
-                                            }}
-                                            onChange={updateMeasurement}
-                                        />
-                                    </>
-                                );
-                            })()}
-                        </div>
+                                    </div>
+                                </>
+                            );
+                        })()}
                         <div className={styles.patternFileField}>
                             <span>Файл лекала</span>
                             <label className={styles.patternFilePicker}>
@@ -663,7 +868,11 @@ export function AdminPatterns() {
                             </label>
                             <FileUploadStatus value={uploadStatus} />
                         </div>
-                        {formError && <p className={styles.error}>{formError}</p>}
+                        {formError && (
+                            <p className={styles.error} role="alert">
+                                {formError}
+                            </p>
+                        )}
                         <div className={styles.editorActions}>
                             <button type="button" onClick={() => setEditor(null)}>
                                 Отмена

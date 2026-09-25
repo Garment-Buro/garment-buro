@@ -90,10 +90,9 @@ export interface Pattern {
     garment_size_id: number;
     media_object_id: number;
     name: string;
+    sleeve_variant: 'standard' | 'height';
     width_cm: string;
     length_cm: string;
-    sleeve_length_cm: string | null;
-    height_cm: string | null;
     grid_key: string;
     is_active: boolean;
     version: number;
