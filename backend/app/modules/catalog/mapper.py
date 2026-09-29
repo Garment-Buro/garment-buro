@@ -4,6 +4,7 @@ from collections import defaultdict
 from urllib.parse import quote
 
 from app.core.config import Settings
+from app.modules.catalog.availability import available_stock
 from app.modules.catalog.models import Product, ProductVariant
 from app.modules.catalog.schemas import (
     ProductDetailResponse,
@@ -56,7 +57,7 @@ class CatalogResponseMapper:
             size=variant.size,
             color=variant.color,
             color_hex=variant.color_hex,
-            stock_quantity=variant.stock_quantity - variant.reserved_quantity,
+            stock_quantity=available_stock(variant),
             width_cm=self._optional_float(variant.width_cm),
             height_cm=self._optional_float(variant.height_cm),
             preview_image=self._first_url(
@@ -83,7 +84,12 @@ class CatalogResponseMapper:
             "height": float(product.height_cm),
             "width": float(product.width_cm),
             "length": float(product.length_cm),
-            "stock_quantity": product.stock_quantity - product.reserved_quantity,
+            "stock_quantity": available_stock(product),
+            "preset_source": product.preset_source or "garment_buro",
+            "tags": product.tags or [],
+            "slug": product.slug,
+            "garment_model_id": product.garment_model_id,
+            "category_id": product.category_id,
         }
 
     def _product_media(self, links: list[ProductMedia]) -> dict[str, str | None]:

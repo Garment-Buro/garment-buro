@@ -24,6 +24,7 @@ import {
 } from '@/lib/production/adminTypes';
 import { AdminRecords } from './AdminRecords';
 import { AdminStatistics } from './AdminStatistics';
+import { AdminProducts } from './assortment/AdminProducts';
 import { AdminAssortment } from './AdminAssortment';
 import styles from './ProductionAdmin.module.css';
 
@@ -34,6 +35,7 @@ const icons = {
     employees: PiUsers,
     clients: PiUserCircle,
     assortment: PiStorefront,
+    presets: PiPackage,
     problems: PiWarningCircle,
     support: PiLifebuoy,
 };
@@ -173,6 +175,8 @@ export function ProductionAdminTerminal() {
                 )}
                 {section === 'stats' ? (
                     <AdminStatistics onNavigate={selectSection} />
+                ) : section === 'presets' ? (
+                    <AdminProducts />
                 ) : section === 'assortment' ? (
                     <AdminAssortment />
                 ) : (

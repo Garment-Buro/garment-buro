@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings
 from app.modules.catalog.models import Product, ProductVariant
 from app.modules.identity.security import ensure_utc
+from app.modules.inventory.fabric_service import release_fabrics, reserve_fabrics
 from app.modules.inventory.models import InventoryReservation, InventoryReservationStatus
 from app.modules.inventory.repository import InventoryRepository
 from app.modules.orders.models import Order
@@ -54,6 +55,8 @@ class InventoryReservationService:
             product = products_by_id.get(item.product_id_snapshot)
             if product is None:
                 raise RuntimeError("Locked order product is missing")
+            if product.garment_model_id is not None:
+                continue
             product_requirements[product.id] = (
                 product_requirements.get(product.id, 0) + item.quantity
             )
@@ -79,6 +82,9 @@ class InventoryReservationService:
                     product_id_snapshot=item.product_id_snapshot,
                     variant_id_snapshot=item.variant_id_snapshot,
                     quantity=item.quantity,
+                    stock_source="fabric"
+                    if products_by_id[item.product_id_snapshot].garment_model_id is not None
+                    else "product",
                     status=InventoryReservationStatus.ACTIVE.value,
                     expires_at=expires_at,
                     resolved_at=None,
@@ -87,6 +93,7 @@ class InventoryReservationService:
                 )
             )
         await self.repository.add_reservations(session, reservations)
+        await reserve_fabrics(session, order, products_by_id, reservations, current_time)
 
     async def confirm_order(
         self,
@@ -187,6 +194,9 @@ class InventoryReservationService:
             products[product_id].reserved_quantity -= quantity
         for variant_id, quantity in variant_requirements.items():
             variants[variant_id].reserved_quantity -= quantity
+        await release_fabrics(
+            session, [r.id for r in reservations if r.stock_source == "fabric"], current_time
+        )
         for reservation in reservations:
             self._resolve(
                 reservation,
@@ -277,6 +287,8 @@ class InventoryReservationService:
         products: dict[int, int] = {}
         variants: dict[int, int] = {}
         for reservation in reservations:
+            if reservation.stock_source == "fabric":
+                continue
             products[reservation.product_id_snapshot] = (
                 products.get(reservation.product_id_snapshot, 0) + reservation.quantity
             )

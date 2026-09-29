@@ -44,6 +44,7 @@ type ProductEditor = ProductDetail & {
     category_id: number | null;
     garment_model_id: number | null;
     variantReferences: ProductVariantReference[];
+    tagsText: string;
 };
 type CategoryEditor = Partial<ProductCategory> & {
     slug: string;
@@ -55,6 +56,9 @@ type CategoryEditor = Partial<ProductCategory> & {
 const emptyProduct = (): ProductEditor => ({
     id: 0,
     title: '',
+    preset_source: 'garment_buro',
+    tags: [],
+    tagsText: '',
     slug: '',
     category_id: null,
     garment_model_id: null,
@@ -131,7 +135,7 @@ export function AdminProducts() {
     const [stockFilter, setStockFilter] = useState('');
     const [sorting, setSorting] = useState('title:asc');
     const [workspace, setWorkspace] = useState<
-        'overview' | 'blanks' | 'communities'
+        'overview' | 'blanks' | 'communities' | 'users'
     >('overview');
     const [communityId, setCommunityId] = useState<number | null>(null);
     const [editor, setEditor] = useState<ProductEditor | null>(null);
@@ -151,11 +155,13 @@ export function AdminProducts() {
             ? new Set(selectedCommunity.product_ids)
             : null;
         const rows = (products.data ?? []).filter(
-            (product) => !allowedIds || allowedIds.has(product.id),
+            (product) => allowedIds ? allowedIds.has(product.id) :
+                workspace === 'users' ? product.preset_source === 'user' :
+                product.preset_source !== 'user',
         );
         const filtered = (query
             ? rows.filter((product) =>
-                  `${product.title} ${product.slug ?? ''}`
+                  `${product.title} ${product.slug ?? ''} ${(product.tags ?? []).join(' ')}`
                       .toLocaleLowerCase('ru')
                       .includes(query),
               )
@@ -194,6 +200,7 @@ export function AdminProducts() {
         selectedCommunity,
         sorting,
         stockFilter,
+        workspace,
     ]);
     const categoryName = (id: number | null) =>
         categories.data?.find((category) => category.id === id)?.name ??
@@ -228,6 +235,7 @@ export function AdminProducts() {
             );
             setEditor({
                 ...detail,
+                tagsText: (detail.tags ?? []).join(", "),
                 slug: reference.slug ?? '',
                 category_id: reference.category_id,
                 garment_model_id: reference.garment_model_id,
@@ -245,7 +253,7 @@ export function AdminProducts() {
             setFormError(
                 reason instanceof Error
                     ? reason.message
-                    : 'Не удалось открыть товар',
+                    : 'Не удалось открыть пресет',
             );
         } finally {
             setLoadingEditor(false);
@@ -296,6 +304,8 @@ export function AdminProducts() {
         setFormError('');
         const payload = {
             title: editor.title,
+            preset_source: editor.preset_source,
+            tags: editor.tagsText.split(",").map((tag) => tag.trim()).filter(Boolean),
             slug: editor.slug || null,
             category_id: editor.category_id,
             garment_model_id: editor.garment_model_id,
@@ -313,7 +323,7 @@ export function AdminProducts() {
             height: Number(editor.height),
             width: Number(editor.width),
             length: Number(editor.length),
-            stock_quantity: Number(editor.stock_quantity),
+
             video_src: editor.video_src,
             image_left: editor.image_left,
             image_right: editor.image_right,
@@ -339,7 +349,7 @@ export function AdminProducts() {
                     fabric_id: reference?.fabric_id ?? null,
                     color: variant.color,
                     color_hex: variant.color_hex,
-                    stock_quantity: Number(variant.stock_quantity),
+
                     width_cm: variant.width_cm,
                     height_cm: variant.height_cm,
                     preview_image: variant.preview_image,
@@ -359,41 +369,11 @@ export function AdminProducts() {
             setFormError(
                 reason instanceof Error
                     ? reason.message
-                    : 'Не удалось сохранить товар',
+                    : 'Не удалось сохранить пресет',
             );
         } finally {
             setSaving(false);
         }
-    };
-    const updateVariant = (
-        index: number,
-        changes: Partial<ProductDetail['variants'][number]>,
-        referenceChanges?: Partial<ProductVariantReference>,
-    ) => {
-        setEditor((current) => {
-            if (!current) return current;
-            const variants = [...current.variants];
-            variants[index] = { ...variants[index], ...changes };
-            const variantReferences = [...current.variantReferences];
-            const existingReference = variantReferences[index] ?? {
-                id: variants[index].id,
-                sku: null,
-                size: null,
-                garment_size_id: null,
-                fabric_id: null,
-                color: null,
-                stock_quantity: 0,
-            };
-            variantReferences[index] = {
-                ...existingReference,
-                size: changes.size ?? variants[index].size,
-                color: changes.color ?? variants[index].color,
-                stock_quantity:
-                    changes.stock_quantity ?? variants[index].stock_quantity,
-                ...referenceChanges,
-            };
-            return { ...current, variants, variantReferences };
-        });
     };
     const rebuildVariantMatrix = (
         sizeIds: number[],
@@ -467,13 +447,13 @@ export function AdminProducts() {
                 <>
                     <div className={styles.assortmentHeading}>
                         <div>
-                            <h3>Товары</h3>
+                            <h2>Пресеты</h2>
                             <p className={styles.muted}>
-                                Выберите основной каталог или товары конкретного
-                                сообщества.
+                                Бланки Garment Buro, пресеты лендингов и публикации пользователей.
                             </p>
                         </div>
                     </div>
+                    <AssortmentFeedback loading={products.loading || communities.loading} error={products.error || communities.error} empty={false} />
                     <div className={styles.catalogHub}>
                         <button
                             type="button"
@@ -484,8 +464,8 @@ export function AdminProducts() {
                                 <PiTShirt aria-hidden />
                             </span>
                             <span>
-                                <strong>Garment-Buro бланки</strong>
-                                <small>{products.data?.length ?? 0} товаров</small>
+                                <strong>Garment Buro</strong>
+                                <small>Пресетов: {products.data?.filter((item) => item.preset_source !== 'user').length ?? '…'}</small>
                             </span>
                             <PiArrowRight aria-hidden />
                         </button>
@@ -498,11 +478,16 @@ export function AdminProducts() {
                                 <PiUsersThree aria-hidden />
                             </span>
                             <span>
-                                <strong>Сообщества</strong>
+                                <strong>Пресеты по лендингам</strong>
                                 <small>
-                                    {communities.data?.length ?? 0} лендингов
+                                    Лендингов: {communities.data?.length ?? '…'}
                                 </small>
                             </span>
+                            <PiArrowRight aria-hidden />
+                        </button>
+                        <button type="button" className={styles.catalogHubCard} onClick={() => setWorkspace('users')}>
+                            <span className={styles.catalogHubIcon}><PiUsersThree aria-hidden /></span>
+                            <span><strong>Пресеты пользователей</strong><small>Пресетов: {products.data?.filter((item) => item.preset_source === 'user').length ?? '…'}</small></span>
                             <PiArrowRight aria-hidden />
                         </button>
                     </div>
@@ -517,11 +502,11 @@ export function AdminProducts() {
                                 className={styles.workspaceBack}
                                 onClick={() => setWorkspace('overview')}
                             >
-                                <PiArrowLeft aria-hidden /> Все товары
+                                <PiArrowLeft aria-hidden /> Все пресеты
                             </button>
-                            <h3>Сообщества</h3>
+                            <h3>Пресеты по лендингам</h3>
                             <p className={styles.muted}>
-                                Лендинги и товары, которые показываются в каждом из
+                                Лендинги и пресеты, которые показываются в каждом из
                                 них.
                             </p>
                         </div>
@@ -559,7 +544,7 @@ export function AdminProducts() {
                                             <small>/{community.slug}</small>
                                         </span>
                                         <span>
-                                            {community.product_ids.length} товаров
+                                            {community.product_ids.length} пресетов
                                             <PiArrowRight aria-hidden />
                                         </span>
                                     </span>
@@ -569,7 +554,7 @@ export function AdminProducts() {
                     </div>
                 </>
             )}
-            {(workspace === 'blanks' || selectedCommunity) && (
+            {(workspace === 'blanks' || workspace === 'users' || selectedCommunity) && (
                 <>
                     <div className={styles.assortmentHeading}>
                         <div>
@@ -586,16 +571,16 @@ export function AdminProducts() {
                                 }}
                             >
                                 <PiArrowLeft aria-hidden />
-                                {selectedCommunity ? 'Сообщества' : 'Все товары'}
+                                {selectedCommunity ? 'Пресеты по лендингам' : 'Все пресеты'}
                             </button>
                             <h3>
                                 {selectedCommunity?.title ??
-                                    'Garment-Buro бланки'}
+                                    (workspace === 'users' ? 'Пресеты пользователей' : 'Garment Buro')}
                             </h3>
                             <p className={styles.muted}>
                                 {selectedCommunity
                                     ? `${selectedCommunity.partner_name} · /${selectedCommunity.slug}`
-                                    : 'Основной каталог, цены, остатки и варианты товаров.'}
+                                    : 'Пресеты, модели, теги и доступность по ткани.'}
                             </p>
                         </div>
                         {workspace === 'blanks' && (
@@ -618,7 +603,7 @@ export function AdminProducts() {
                                         setEditor(emptyProduct());
                                     }}
                                 >
-                                    <PiPlus aria-hidden /> Добавить товар
+                                    <PiPlus aria-hidden /> Добавить пресет
                                 </button>
                             </div>
                         )}
@@ -626,7 +611,7 @@ export function AdminProducts() {
                     {workspace === 'blanks' && (
                         <div
                             className={styles.chipList}
-                            aria-label="Категории товаров"
+                            aria-label="Категории пресетов"
                         >
                             {(categories.data ?? []).map((category) => (
                                 <button
@@ -642,7 +627,7 @@ export function AdminProducts() {
                     )}
                     <div className={styles.assortmentFilters}>
                         <label className={styles.assortmentSearch}>
-                            Поиск товара
+                            Поиск пресета
                             <input
                                 type="search"
                                 value={search}
@@ -672,7 +657,7 @@ export function AdminProducts() {
                                     key: 'activity',
                                     label: 'Видимость',
                                     options: [
-                                        ['', 'Все товары'],
+                                        ['', 'Все пресеты'],
                                         ['active', 'В продаже'],
                                         ['hidden', 'Скрытые'],
                                     ],
@@ -724,14 +709,14 @@ export function AdminProducts() {
             {formError && !editor && !categoryEditor && (
                 <p className={styles.error}>{formError}</p>
             )}
-            {(workspace === 'blanks' || selectedCommunity) && (
+            {(workspace === 'blanks' || workspace === 'users' || selectedCommunity) && (
                 <AssortmentFeedback
                     loading={products.loading}
                     error={products.error}
                     empty={!products.loading && visibleProducts.length === 0}
                 />
             )}
-            {(workspace === 'blanks' || selectedCommunity) && (
+            {(workspace === 'blanks' || workspace === 'users' || selectedCommunity) && (
                 <div className={styles.productGrid}>
                 {visibleProducts.map((product) => {
                     const image = safeImage(product.image_url);
@@ -781,7 +766,7 @@ export function AdminProducts() {
                                         className={styles.iconButton}
                                         disabled={loadingEditor}
                                         onClick={() => void editProduct(product)}
-                                        aria-label={`Изменить товар ${product.title}`}
+                                        aria-label={`Изменить пресет ${product.title}`}
                                         title="Изменить"
                                     >
                                         <PiPencilSimple aria-hidden />
@@ -796,16 +781,19 @@ export function AdminProducts() {
                                     <span>
                                         {productCommunities.length
                                             ? productCommunities.join(', ')
-                                            : 'Без сообщества'}
+                                            : 'Без лендинга'}
                                     </span>
                                 </p>
+                                {Boolean(product.tags?.length) && (
+                                    <p className={styles.muted}>{product.tags.join(' · ')}</p>
+                                )}
                                 <dl className={styles.productFacts}>
                                     <div>
                                         <dt>Цена</dt>
                                         <dd>{productPrice(product.price)}</dd>
                                     </div>
                                     <div>
-                                        <dt>Остаток</dt>
+                                        <dt>Доступно по ткани</dt>
                                         <dd>{product.stock_quantity} шт.</dd>
                                     </div>
                                     <div>
@@ -900,13 +888,13 @@ export function AdminProducts() {
             )}
             {editor && (
                 <AssortmentDialog
-                    title={editor.id ? 'Изменить товар' : 'Новый товар'}
-                    description="Основные данные каталога и точные производственные ссылки вариантов."
+                    title={editor.id ? 'Изменить пресет' : 'Новый пресет'}
+                    description="Модель, варианты, цена и теги пресета."
                     onClose={() => setEditor(null)}
                 >
                     <form onSubmit={submitProduct}>
                         <fieldset className={styles.formSection}>
-                            <legend>Карточка товара</legend>
+                            <legend>Карточка пресета</legend>
                             <div className={styles.formGrid}>
                                 <label className={styles.fullField}>
                                     Название
@@ -935,6 +923,17 @@ export function AdminProducts() {
                                     />
                                 </label>
                                 <label>
+                                    Источник пресета
+                                    <select value={editor.preset_source} onChange={(event) => setEditor({ ...editor, preset_source: event.target.value as 'garment_buro' | 'user' })}>
+                                        <option value="garment_buro">Garment Buro</option>
+                                        <option value="user">Пресеты пользователей</option>
+                                    </select>
+                                </label>
+                                <label className={styles.fullField}>
+                                    Теги
+                                    <input value={editor.tagsText} onChange={(event) => setEditor({ ...editor, tagsText: event.target.value })} placeholder="спорт, аниме, гриффины" />
+                                </label>
+                                <label>
                                     Категория
                                     <select
                                         value={editor.category_id ?? ''}
@@ -958,6 +957,7 @@ export function AdminProducts() {
                                 <label>
                                     Производственная модель
                                     <select
+                                        required
                                         value={editor.garment_model_id ?? ''}
                                         onChange={(event) =>
                                             setEditor({
@@ -1011,22 +1011,7 @@ export function AdminProducts() {
                                         }
                                     />
                                 </label>
-                                <label>
-                                    Общий остаток
-                                    <input
-                                        type="number"
-                                        min="0"
-                                        value={editor.stock_quantity}
-                                        onChange={(event) =>
-                                            setEditor({
-                                                ...editor,
-                                                stock_quantity: Number(
-                                                    event.target.value,
-                                                ),
-                                            })
-                                        }
-                                    />
-                                </label>
+                                <p className={styles.muted}>Доступность рассчитывается по свободной ткани и норме расхода модели.</p>
                                 <label>
                                     Вес, кг
                                     <input
@@ -1074,7 +1059,7 @@ export function AdminProducts() {
                                             // eslint-disable-next-line @next/next/no-img-element
                                             <img
                                                 src={safeImage(editor.image_left) ?? ''}
-                                                alt="Превью товара"
+                                                alt="Превью пресета"
                                             />
                                         ) : (
                                             <PiImage aria-hidden />
@@ -1270,29 +1255,7 @@ export function AdminProducts() {
                                                                         'Без ткани'}
                                                                 </small>
                                                             </div>
-                                                            <label>
-                                                                Остаток
-                                                                <input
-                                                                    type="number"
-                                                                    min="0"
-                                                                    value={
-                                                                        variant.stock_quantity
-                                                                    }
-                                                                    onChange={(event) =>
-                                                                        updateVariant(
-                                                                            index,
-                                                                            {
-                                                                                stock_quantity:
-                                                                                    Number(
-                                                                                        event
-                                                                                            .target
-                                                                                            .value,
-                                                                                    ),
-                                                                            },
-                                                                        )
-                                                                    }
-                                                                />
-                                                            </label>
+                                                            <span>По ткани модели</span>
                                                         </article>
                                                     ),
                                                 )}
@@ -1311,7 +1274,7 @@ export function AdminProducts() {
                                 className={styles.primaryButton}
                                 disabled={saving || uploading}
                             >
-                                {saving ? 'Сохраняем…' : 'Сохранить товар'}
+                                {saving ? 'Сохраняем…' : 'Сохранить пресет'}
                             </button>
                         </div>
                     </form>

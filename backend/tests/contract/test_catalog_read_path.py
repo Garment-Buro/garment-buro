@@ -185,6 +185,11 @@ def test_catalog_read_path_preserves_legacy_response_contract(tmp_path: Path) ->
     assert listed[0] == {
         "id": 2,
         "title": "Current product",
+        "preset_source": "garment_buro",
+        "tags": [],
+        "slug": None,
+        "category_id": None,
+        "garment_model_id": None,
         "price": 12000.0,
         "old_price": 15000.0,
         "video_src": None,

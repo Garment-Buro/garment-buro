@@ -7,6 +7,7 @@ from urllib.parse import unquote, urlsplit
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
+from app.modules.catalog.availability import load_availability
 from app.modules.catalog.mapper import CatalogResponseMapper
 from app.modules.catalog.models import Product, ProductCategory, ProductVariant
 from app.modules.catalog.repository import CatalogRepository
@@ -74,6 +75,7 @@ class CatalogService:
 
     async def list_products(self, session: AsyncSession) -> list[ProductResponse]:
         products = await self.repository.list_products(session)
+        await load_availability(session, products)
         return [self.mapper.product(product) for product in products]
 
     async def list_categories(self, session: AsyncSession) -> list[ProductCategoryResponse]:
@@ -86,6 +88,8 @@ class CatalogService:
         product_id: int,
     ) -> ProductDetailResponse | None:
         product = await self.repository.get_product(session, product_id)
+        if product is not None:
+            await load_availability(session, [product])
         return self.mapper.product_detail(product) if product is not None else None
 
     async def list_variants(
@@ -93,8 +97,8 @@ class CatalogService:
         session: AsyncSession,
         product_id: int,
     ) -> list[ProductVariantResponse]:
-        variants = await self.repository.list_variants(session, product_id)
-        return [self.mapper.variant(variant) for variant in variants]
+        product = await self.get_product(session, product_id)
+        return product.variants if product else []
 
 
 class CatalogWriteService:
@@ -130,6 +134,7 @@ class CatalogWriteService:
             payload=payload,
             actor_user_id=actor_user_id,
         )
+        await load_availability(session, [product])
         return self.mapper.product_detail(product)
 
     async def update_product(
@@ -144,6 +149,8 @@ class CatalogWriteService:
         if product is None:
             raise CatalogProductNotFoundError(product_id)
         self._ensure_product_unreserved(product)
+        if await self.repository.has_fabric_holds(session, product.id):
+            raise CatalogInventoryReservedError("Preset has active fabric reservations")
         await self._validate_product_references(session, payload)
         media_by_url = await self._resolve_media(session, payload)
         await self.repository.clear_product_children(session, product)
@@ -157,6 +164,7 @@ class CatalogWriteService:
             payload=payload,
             actor_user_id=actor_user_id,
         )
+        await load_availability(session, [product])
         return self.mapper.product_detail(product)
 
     async def delete_product(
@@ -170,6 +178,8 @@ class CatalogWriteService:
         if product is None:
             raise CatalogProductNotFoundError(product_id)
         self._ensure_product_unreserved(product)
+        if await self.repository.has_fabric_holds(session, product.id):
+            raise CatalogInventoryReservedError("Preset has active fabric reservations")
         snapshot = self.mapper.product_detail(product).model_dump(mode="json")
         checksum = self._checksum(snapshot)
         await self.repository.delete_product(session, product)
@@ -196,7 +206,9 @@ class CatalogWriteService:
         variant = await self.repository.get_variant_for_update(session, variant_id)
         if variant is None:
             raise CatalogVariantNotFoundError(variant_id)
-        if variant.reserved_quantity:
+        if variant.reserved_quantity or await self.repository.has_fabric_holds(
+            session, variant.product_id
+        ):
             raise CatalogInventoryReservedError("Catalog variant has active reservations")
         await self._validate_variant_reference(
             session,
@@ -211,7 +223,8 @@ class CatalogWriteService:
         variant.fabric_id = payload.fabric_id
         variant.color = payload.color
         variant.color_hex = payload.color_hex
-        variant.stock_quantity = payload.stock_quantity
+        if variant.product.garment_model_id is None:
+            variant.stock_quantity = payload.stock_quantity
         variant.width_cm = payload.width_cm
         variant.height_cm = payload.height_cm
         self._attach_variant_media(variant, payload, media_by_url)
@@ -230,6 +243,8 @@ class CatalogWriteService:
                 "media_references_count": len(references),
             },
         )
+        product = await self.repository.get_product(session, variant.product_id)
+        await load_availability(session, [product])
         return self.mapper.variant(variant)
 
     async def create_category(
@@ -374,6 +389,10 @@ class CatalogWriteService:
 
     @staticmethod
     def _apply_scalars(product: Product, payload: ProductWriteRequest) -> None:
+        if "preset_source" in payload.model_fields_set or product.id is None:
+            product.preset_source = payload.preset_source
+        if "tags" in payload.model_fields_set or product.id is None:
+            product.tags = payload.tags
         product.title = payload.title
         product.slug = payload.slug
         product.category_id = payload.category_id
@@ -391,7 +410,10 @@ class CatalogWriteService:
         product.height_cm = payload.height
         product.width_cm = payload.width
         product.length_cm = payload.length
-        product.stock_quantity = payload.stock_quantity
+        if payload.garment_model_id is None:
+            product.stock_quantity = payload.stock_quantity
+        elif product.id is None:
+            product.stock_quantity = 0
 
     @staticmethod
     def _apply_category(category: ProductCategory, payload: ProductCategoryWrite) -> None:
@@ -425,7 +447,9 @@ class CatalogWriteService:
                 fabric_id=variant_payload.fabric_id,
                 color=variant_payload.color,
                 color_hex=variant_payload.color_hex,
-                stock_quantity=variant_payload.stock_quantity,
+                stock_quantity=0
+                if payload.garment_model_id is not None
+                else variant_payload.stock_quantity,
                 width_cm=variant_payload.width_cm,
                 height_cm=variant_payload.height_cm,
             )

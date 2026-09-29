@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -59,6 +60,10 @@ class ProductVariantWriteRequest(BaseModel):
 class ProductWriteRequest(BaseModel):
     model_config = ConfigDict(extra="ignore", populate_by_name=True)
 
+    preset_source: Literal["garment_buro", "user"] = "garment_buro"
+    tags: list[Annotated[str, Field(min_length=1, max_length=64)]] = Field(
+        default_factory=list, max_length=50
+    )
     title: str = Field(min_length=1, max_length=255)
     slug: str | None = Field(
         default=None,
@@ -99,6 +104,17 @@ class ProductWriteRequest(BaseModel):
     mobile_size_chart_first: str | None = Field(default=None, max_length=4096)
     variants: list[ProductVariantWriteRequest] = Field(default_factory=list, max_length=200)
 
+    @field_validator("tags", mode="before")
+    @classmethod
+    def normalize_tags(cls, value: object) -> object:
+        if not isinstance(value, list) or not all(isinstance(tag, str) for tag in value):
+            return value
+        return list(
+            dict.fromkeys(
+                " ".join(tag.split()).casefold() if isinstance(tag, str) else tag for tag in value
+            )
+        )
+
     @field_validator("title")
     @classmethod
     def normalize_title(cls, value: str) -> str:
@@ -119,6 +135,10 @@ class ProductWriteRequest(BaseModel):
         return self
 
 
+class PresetWriteRequest(ProductWriteRequest):
+    garment_model_id: int = Field(gt=0)
+
+
 class ProductDeletedResponse(BaseModel):
     status: str = "deleted"
 
@@ -137,6 +157,11 @@ class ProductVariantResponse(BaseModel):
 
 
 class ProductResponse(BaseModel):
+    preset_source: Literal["garment_buro", "user"] = "garment_buro"
+    tags: list[str] = Field(default_factory=list)
+    slug: str | None = None
+    garment_model_id: int | None = None
+    category_id: int | None = None
     id: int
     title: str
     price: float

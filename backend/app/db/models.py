@@ -57,7 +57,7 @@ from app.modules.identity.models import (
     User,
     UserRole,
 )
-from app.modules.inventory.models import InventoryReservation
+from app.modules.inventory.models import InventoryFabricHold, InventoryReservation
 from app.modules.media.models import MediaObject, ProductMedia, ProductVariantMedia
 from app.modules.notifications.models import NotificationDeliveryAttempt, NotificationOutbox
 from app.modules.orders.models import (
@@ -167,6 +167,7 @@ __all__ = [
     "CatalogDocumentRevision",
     "IdentityMigrationRun",
     "InventoryReservation",
+    "InventoryFabricHold",
     "LegacyOrderClaim",
     "LegacyOrderImport",
     "Order",

@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.catalog.availability import available_stock, load_availability
 from app.modules.catalog.mapper import CatalogResponseMapper
 from app.modules.catalog.models import Product
 from app.modules.crm.assortment_models import (
@@ -71,6 +72,8 @@ class CrmAssortmentService:
             active=active,
         )
 
+        await load_availability(session, rows)
+
         def image_url(row: Product) -> str | None:
             if mapper is None:
                 return None
@@ -90,13 +93,15 @@ class CrmAssortmentService:
                 id=row.id,
                 title=row.title,
                 slug=row.slug,
+                preset_source=row.preset_source,
+                tags=row.tags,
                 category_id=row.category_id,
                 garment_model_id=row.garment_model_id,
                 price=row.price,
                 old_price=row.old_price,
                 image_url=image_url(row),
                 is_active=row.is_active,
-                stock_quantity=row.stock_quantity - row.reserved_quantity,
+                stock_quantity=available_stock(row),
                 variants=[
                     CrmCatalogProductVariantReferenceRead(
                         id=variant.id,
@@ -105,7 +110,7 @@ class CrmAssortmentService:
                         garment_size_id=variant.garment_size_id,
                         fabric_id=variant.fabric_id,
                         color=variant.color,
-                        stock_quantity=variant.stock_quantity - variant.reserved_quantity,
+                        stock_quantity=available_stock(variant),
                     )
                     for variant in row.variants
                 ],

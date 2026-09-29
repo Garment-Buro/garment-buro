@@ -17,6 +17,26 @@ from app.modules.media.models import ProductMedia, ProductVariantMedia
 
 class CatalogRepository:
     @staticmethod
+    async def has_fabric_holds(session: AsyncSession, product_id: int) -> bool:
+        from app.modules.inventory.models import InventoryFabricHold, InventoryReservation
+
+        return (
+            await session.scalar(
+                select(InventoryFabricHold.id)
+                .join(
+                    InventoryReservation,
+                    InventoryReservation.id == InventoryFabricHold.reservation_id,
+                )
+                .where(
+                    InventoryReservation.product_id_snapshot == product_id,
+                    InventoryFabricHold.remaining_meters > 0,
+                )
+                .limit(1)
+            )
+            is not None
+        )
+
+    @staticmethod
     async def list_categories(session: AsyncSession) -> list[ProductCategory]:
         return list(await session.scalars(select(ProductCategory).order_by(ProductCategory.name)))
 
@@ -79,7 +99,10 @@ class CatalogRepository:
     async def list_products(self, session: AsyncSession) -> list[Product]:
         result = await session.scalars(
             select(Product)
-            .options(selectinload(Product.media_links).selectinload(ProductMedia.media))
+            .options(
+                selectinload(Product.media_links).selectinload(ProductMedia.media),
+                selectinload(Product.variants),
+            )
             .order_by(Product.id.desc())
         )
         return list(result.unique())

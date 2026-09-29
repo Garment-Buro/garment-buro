@@ -79,6 +79,11 @@ def expected_legacy_contract(
         payload: dict[str, object] = {
             "id": product.id,
             "title": product.title,
+            "preset_source": "garment_buro",
+            "tags": [],
+            "slug": None,
+            "category_id": None,
+            "garment_model_id": None,
             "price": float(product.price),
             "old_price": _optional_float(product.old_price),
             "description": product.description,
