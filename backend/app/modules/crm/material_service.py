@@ -17,6 +17,7 @@ from app.modules.crm.material_models import (
 from app.modules.crm.material_repository import CrmMaterialRepository
 from app.modules.crm.service import CRM_REASON_CODE_PATTERN
 from app.modules.identity.security import ensure_utc
+from app.modules.inventory.fabric_service import transfer_to_production
 
 METER_QUANTUM = Decimal("0.001")
 MAX_METERS = Decimal("99999999999.999")
@@ -127,8 +128,12 @@ class CrmMaterialService:
         )
         if existing is not None:
             raise CrmMaterialConflictError("Production plan already has a fabric reservation")
-        if balance.on_hand_meters - balance.reserved_meters < quantity:
+        transferred = await transfer_to_production(
+            session, plan_revision_id=plan_revision_id, fabric_id=fabric_id, quantity=quantity
+        )
+        if balance.on_hand_meters - balance.reserved_meters + transferred < quantity:
             raise CrmMaterialConflictError("Insufficient available fabric")
+        balance.reserved_meters -= transferred
         reservation = CrmMaterialReservation(
             production_plan_revision_id=plan_revision_id,
             fabric_id=fabric_id,

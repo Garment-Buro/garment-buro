@@ -73,11 +73,10 @@ test('admin exposes one product and warehouse workspace', () => {
         'Ткани',
         'Фурнитура',
         'Коробки',
-        'Товары',
     ]) {
         assert.match(types, new RegExp(label));
     }
-    assert.match(workspace, /aria-label="Разделы товаров и склада"/);
+    assert.match(workspace, /aria-label="Разделы моделей и склада"/);
 });
 
 test('assortment uses the shared production administrator session', () => {
@@ -247,8 +246,8 @@ test('packaging rule explains capacity and selection order', () => {
 });
 
 test('products open as blanks and community landing card workspaces', () => {
-    assert.match(products, /Garment-Buro бланки/);
-    assert.match(products, />Сообщества</);
+    assert.match(products, /Garment Buro/);
+    assert.match(products, />Пресеты по лендингам</);
     assert.match(products, /product-communities/);
     assert.match(products, /className=\{styles\.catalogHubCard\}/);
     assert.match(products, /className=\{styles\.communityCard\}/);

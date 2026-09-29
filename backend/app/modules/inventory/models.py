@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from enum import Enum
 
 from sqlalchemy import (
@@ -9,6 +10,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
     UniqueConstraint,
 )
@@ -67,6 +69,9 @@ class InventoryReservation(Base, IntegerIdMixin, TimestampMixin):
     )
     product_id_snapshot: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     variant_id_snapshot: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    stock_source: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="product", server_default="product"
+    )
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(
         String(32),
@@ -86,3 +91,25 @@ class InventoryReservation(Base, IntegerIdMixin, TimestampMixin):
     )
     resolution_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+
+
+class InventoryFabricHold(Base, IntegerIdMixin):
+    """Fabric held at checkout; transferred to the production ledger when planned."""
+
+    __tablename__ = "inventory_fabric_holds"
+    __table_args__ = (
+        UniqueConstraint("reservation_id", "fabric_id", name="uq_inventory_fabric_hold"),
+        CheckConstraint("requested_meters > 0", name="fabric_hold_requested_positive"),
+        CheckConstraint(
+            "remaining_meters >= 0 AND remaining_meters <= requested_meters",
+            name="fabric_hold_remaining_valid",
+        ),
+    )
+    reservation_id: Mapped[int] = mapped_column(
+        ForeignKey("inventory_reservations.id", ondelete="RESTRICT"), index=True
+    )
+    fabric_id: Mapped[int] = mapped_column(
+        ForeignKey("crm_fabrics.id", ondelete="RESTRICT"), index=True
+    )
+    requested_meters: Mapped[Decimal] = mapped_column(Numeric(14, 3))
+    remaining_meters: Mapped[Decimal] = mapped_column(Numeric(14, 3))

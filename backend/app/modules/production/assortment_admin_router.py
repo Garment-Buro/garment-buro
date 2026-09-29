@@ -11,11 +11,11 @@ from sqlalchemy.exc import IntegrityError
 
 from app.modules.catalog.mapper import CatalogResponseMapper
 from app.modules.catalog.schemas import (
+    PresetWriteRequest,
     ProductCategoryResponse,
     ProductCategoryUpdate,
     ProductCategoryWrite,
     ProductDetailResponse,
-    ProductWriteRequest,
 )
 from app.modules.catalog.service import (
     CatalogInventoryReservedError,
@@ -727,7 +727,7 @@ async def _catalog_write(session: Session, operation: Awaitable[T]) -> T:
 
 @router.post("/products", response_model=ProductDetailResponse, status_code=201)
 async def create_product(
-    payload: ProductWriteRequest,
+    payload: PresetWriteRequest,
     request: Request,
     admin: Admin,
     session: Session,
@@ -746,7 +746,7 @@ async def create_product(
 @router.put("/products/{product_id}", response_model=ProductDetailResponse)
 async def update_product(
     product_id: int,
-    payload: ProductWriteRequest,
+    payload: PresetWriteRequest,
     request: Request,
     admin: Admin,
     session: Session,

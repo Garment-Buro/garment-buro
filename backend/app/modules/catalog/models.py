@@ -80,6 +80,12 @@ class Product(Base, IntegerIdMixin, TimestampMixin):
         CheckConstraint("length_cm >= 0", name="product_length_nonnegative"),
     )
 
+    preset_source: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="garment_buro", server_default="garment_buro"
+    )
+    tags: Mapped[list[str]] = mapped_column(
+        STRING_LIST_TYPE, nullable=False, default=list, server_default="[]"
+    )
     title: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     slug: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
     category_id: Mapped[int | None] = mapped_column(

@@ -4,8 +4,7 @@ export type AssortmentSection =
     | 'techCards'
     | 'fabrics'
     | 'accessories'
-    | 'boxes'
-    | 'products';
+    | 'boxes';
 
 export interface GarmentSize {
     id?: number;
@@ -210,6 +209,8 @@ export interface ProductVariantReference {
 }
 
 export interface ProductReference {
+    preset_source: 'garment_buro' | 'user';
+    tags: string[];
     id: number;
     title: string;
     slug: string | null;
@@ -243,6 +244,8 @@ export interface ProductCommunity {
 }
 
 export interface ProductDetail {
+    preset_source: 'garment_buro' | 'user';
+    tags: string[];
     id: number;
     title: string;
     price: number;
@@ -294,5 +297,4 @@ export const assortmentLabels: Record<AssortmentSection, string> = {
     fabrics: 'Ткани',
     accessories: 'Фурнитура',
     boxes: 'Коробки',
-    products: 'Товары',
 };

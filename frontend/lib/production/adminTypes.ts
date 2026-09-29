@@ -7,6 +7,7 @@ export type AdminSection =
     | 'employees'
     | 'clients'
     | 'assortment'
+    | 'presets'
     | 'problems'
     | 'support';
 export interface Page<T> {
@@ -234,7 +235,8 @@ export const sectionLabels: Record<AdminSection, string> = {
     payouts: 'Заявки на выплаты',
     employees: 'Сотрудники',
     clients: 'Клиенты',
-    assortment: 'Товары и склад',
+    assortment: 'Модели и склад',
+    presets: 'Пресеты',
     problems: 'Проблемы',
     support: 'Поддержка',
 };
@@ -242,6 +244,7 @@ export const systemAdminSections: AdminSection[] = [
     'stats',
     'employees',
     'assortment',
+    'presets',
     'orders',
     'clients',
     'problems',

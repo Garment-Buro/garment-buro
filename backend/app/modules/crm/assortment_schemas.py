@@ -38,6 +38,8 @@ class CrmCatalogProductVariantReferenceRead(BaseModel):
 
 
 class CrmCatalogProductReferenceRead(BaseModel):
+    preset_source: Literal["garment_buro", "user"] = "garment_buro"
+    tags: list[str] = Field(default_factory=list)
     id: int
     title: str
     slug: str | None
