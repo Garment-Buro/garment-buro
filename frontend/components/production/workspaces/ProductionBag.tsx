@@ -58,42 +58,11 @@ export function ProductionBag({
         station === 'tech' || station === 'dtf' || station === 'packing';
     const localStations = canAct(employee.stations, station) ? [station] : [];
     const qr = `/api/qr-code?surface=production&size=256&path=${encodeURIComponent(project.public_token ? `/production/label?token=${project.public_token}` : `/production?project=${project.project_id}`)}`;
-    const orderComments = project.units.flatMap((unit) => {
-        const raw = unit.source.customization?.comment;
-        const comment = typeof raw === 'string' ? raw.trim() : '';
-        return comment
-            ? [{ unitId: unit.id, title: unit.source.title, comment }]
-            : [];
-    });
     return (
         <div className={styles.bagBody}>
             <div className={styles.bagSummary}>
                 <div>
                     <h2>Мешок {project.customer}</h2>
-                    <div
-                        className={styles.bagComment}
-                        data-empty={!orderComments.length}
-                    >
-                        <PiChatCircleDots aria-hidden />
-                        <div>
-                            <strong>Комментарий к заказу</strong>
-                            {orderComments.length ? (
-                                orderComments.map((item) => (
-                                    <p key={item.unitId}>
-                                        {project.units_count > 1 && (
-                                            <b>{item.title}: </b>
-                                        )}
-                                        {item.comment}
-                                    </p>
-                                ))
-                            ) : (
-                                <p>Комментарий не оставлен</p>
-                            )}
-                        </div>
-                    </div>
-                    {project.is_demo && (
-                        <p>Тестовый заказ. Не производить и не отправлять.</p>
-                    )}
                     <p>
                         Заказ №{project.order_id} ·{' '}
                         {thingsCount(project.units_count)}
@@ -165,18 +134,9 @@ export function ProductionBag({
                     участка.
                 </p>
             )}
-            {station === 'tech' && (
-                <BagActions
-                    key={`${project.project_id}-${station}`}
-                    project={project}
-                    stations={localStations}
-                    send={send}
-                    busy={busy || blocked}
-                    print={() => print('bag')}
-                    printing={printing}
-                />
-            )}
-            {project.units.map((unit) => {
+            {project.units.filter(unit => station !== 'dtf' || Boolean(unit.specification?.print_file_ids.length)).map((unit) => {
+                const rawComment = unit.source.customization?.comment;
+                const comment = typeof rawComment === 'string' ? rawComment.trim() : '';
                 const stage = currentStage(unit);
                 const image = safeImage(unit.source.image);
                 const isOpen = opened === unit.id;
@@ -235,8 +195,15 @@ export function ProductionBag({
                             </span>
                             <PiCaretDown aria-hidden />
                         </button>
+                        <div className={styles.bagComment} data-empty={!comment}>
+                            <PiChatCircleDots aria-hidden />
+                            <div>
+                                <strong>Комментарий к вещи</strong>
+                                <p>{comment || 'Комментарий не оставлен'}</p>
+                            </div>
+                        </div>
                         {isOpen && (
-                            <div className={styles.itemBody} data-wide={wide}>
+                            <div className={styles.itemBody} data-wide={wide && station !== 'tech'}>
                                 {wide ? (
                                     <>
                                         <ProductionUnit
@@ -249,13 +216,13 @@ export function ProductionBag({
                                             busy={busy || blocked}
                                             print={print}
                                         />
-                                        <ProductionViews
+                                        {station !== 'tech' && <ProductionViews
                                             unit={unit}
                                             compact={
                                                 station === 'dtf'
                                             }
                                             station={station}
-                                        />
+                                        />}
                                     </>
                                 ) : (
                                     <>
@@ -276,7 +243,7 @@ export function ProductionBag({
                     </section>
                 );
             })}
-            {['dtf', 'kit', 'packing', 'shipping'].includes(station) && (
+            {['tech', 'dtf', 'kit', 'packing', 'shipping'].includes(station) && (
                 <BagActions
                     key={`${project.project_id}-${station}`}
                     project={project}

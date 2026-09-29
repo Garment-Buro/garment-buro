@@ -1,17 +1,18 @@
 import type { ReactNode } from 'react';
-import Image from 'next/image';
 import { PiPackage } from 'react-icons/pi';
 import styles from './ProductionFlow.module.css';
 
 export function ProductionMark() {
     return (
         <span className={styles.brandMark} aria-hidden="true">
-            <Image
-                src="/production/production-mark.svg"
-                alt=""
+            <video
+                src="/logo_anim.mp4"
                 width={48}
                 height={48}
-                priority
+                autoPlay
+                muted
+                loop
+                playsInline
             />
         </span>
     );

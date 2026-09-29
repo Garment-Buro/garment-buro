@@ -2,6 +2,7 @@
 import { useRef } from 'react';
 import { PiArrowLeft } from 'react-icons/pi';
 import { labels, type Unit } from '@/lib/production/types';
+import { visibleInstructions } from '@/lib/production/workflow';
 import { OrderEvidence } from '../OrderEvidence';
 import { ProductionViews } from './ProductionViews';
 import styles from './ProductionFlow.module.css';
@@ -46,7 +47,9 @@ export function ProductionTechCard({ unit }: { unit: Unit }) {
                                 Спецификация #{unit.specification_id} · версия{' '}
                                 {unit.revision}
                             </p>
-                            <p>{unit.specification.instructions}</p>
+                            {visibleInstructions(unit.specification.instructions) && (
+                                <p>{visibleInstructions(unit.specification.instructions)}</p>
+                            )}
                             <ol className={styles.cardRoute}>
                                 {unit.specification.route.map(
                                     (stage, index) => (

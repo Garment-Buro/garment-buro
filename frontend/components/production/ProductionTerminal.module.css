@@ -965,3 +965,48 @@
         white-space: pre-wrap;
     }
 }
+
+.orderInfo {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 10px;
+    margin: 16px 0;
+}
+.orderInfo > p,
+.orderInfo > button {
+    margin: 0;
+    padding: 14px;
+    border: 1px solid transparent;
+    border-radius: 14px;
+    text-align: left;
+    font-size: 14px;
+    color: #34303f;
+}
+.orderInfo strong, .orderInfo small { display: block; margin-top: 5px; }
+.orderInfo [data-tone='blue'] { background: #edf5ff; border-color: #d3e4f7; }
+.orderInfo [data-tone='purple'] { background: #f1ecff; border-color: #ded4fa; }
+.orderInfo [data-tone='yellow'], .statusGrid [data-tone='yellow'] { background: #fff6d9; border-color: #ead797; }
+.statusGrid [data-tone='green'] { background: #edf6e9; border-color: #c9dfcf; }
+.unitQrCard[data-ready='false'] { background: #fff6d9; border-color: #ead797; grid-template-columns: 1fr; }
+.unitQrCard[data-ready='false'] > div svg { color: #977312; }
+.techCardDialog {
+    width: min(900px, calc(100vw - 24px));
+    max-height: calc(100dvh - 32px);
+    padding: 24px;
+    border: 1px solid #ded4fa;
+    border-radius: 20px;
+    background: white;
+    color: #24212a;
+    overflow-y: auto;
+}
+.techCardDialog::backdrop { background: #17132380; }
+.techCardDialog > header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.techCardDialog > header h2 { margin: 0; }
+@media (max-width: 560px) {
+    .orderInfo { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .techCardDialog { padding: 14px; }
+}
+
+.terminal .orderInfo > button { display: block; width: 100%; text-align: left; }
+.techCardDialog { margin: auto; }
+:global(body):has(.techCardDialog[open]) { overflow: hidden; }

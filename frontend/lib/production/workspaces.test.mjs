@@ -99,12 +99,14 @@ test('terminal queue respects display states and station counters', () => {
         flow_version: 2,
         stage_counts: { workshop: 2, waiting_dtf: 1 },
         dtf_pending: 1,
+        requires_dtf: true,
     };
     assert.equal(queueItemMatchesPocket(item, 'done'), true);
     assert.equal(queueItemMatchesPocket(item, 'holds'), true);
     assert.equal(queueItemMatchesStation(item, 'workshop'), true);
     assert.equal(queueItemMatchesStation(item, 'dtf'), true);
     assert.equal(queueItemMatchesStation(item, 'packing'), false);
+    assert.equal(queueItemMatchesStation({ ...item, state: 'inbox', requires_dtf: false, dtf_pending: 0 }, 'dtf'), false);
     assert.equal(
         queueItemMatchesStation(
             { ...item, state: 'inbox', stage_counts: {}, dtf_pending: 0, dtf_approved: false },
