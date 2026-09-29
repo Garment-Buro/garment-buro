@@ -293,6 +293,7 @@ class ProductionService:
                 raise ProductionConflict("Сначала заполните спецификации всех вещей")
             if any(not row.documents_confirmed or row.issue for row in work):
                 raise ProductionConflict("Технолог должен подтвердить техкарты и лекала всех вещей")
+            requires_dtf = any(spec.specification["print_file_ids"] for spec in specs.values())
             now = datetime.now(timezone.utc)
             if "tech" in stations:
                 if bag.tech_approved_at is not None:
@@ -300,11 +301,15 @@ class ProductionService:
                 bag.tech_approved_by_user_id = actor
                 bag.tech_approved_at = now
             else:
+                if not requires_dtf:
+                    raise ProductionConflict("В заказе нет нанесений DTF")
                 if bag.dtf_approved_at is not None:
                     raise ProductionConflict("DTF уже подтвердил заказ")
                 bag.dtf_approved_by_user_id = actor
                 bag.dtf_approved_at = now
-            if bag.tech_approved_at is not None and bag.dtf_approved_at is not None:
+            if bag.tech_approved_at is not None and (
+                not requires_dtf or bag.dtf_approved_at is not None
+            ):
                 bag.public_token = bag.public_token or secrets.token_urlsafe(32)
             return
         if bag.flow_version == 2 and await apply_unit_flow(
@@ -557,5 +562,12 @@ class ProductionService:
         bag.public_token = None
 
     async def _require_order_approvals(self, session, bag):
-        if bag.tech_approved_at is None or bag.dtf_approved_at is None or not bag.public_token:
+        work = await self.repository.work(session, bag.id)
+        specs = await self.repository.specifications(session, work)
+        requires_dtf = any(spec.specification["print_file_ids"] for spec in specs.values())
+        if (
+            bag.tech_approved_at is None
+            or (requires_dtf and bag.dtf_approved_at is None)
+            or not bag.public_token
+        ):
             raise ProductionConflict("Нужны подтверждения технолога и DTF до выпуска заказа")

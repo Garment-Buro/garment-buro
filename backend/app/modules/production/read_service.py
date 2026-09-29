@@ -176,6 +176,7 @@ class ProductionReadService:
         # One bounded batch for the page, not one request per bag or station.
         stage_counts = {}
         dtf_counts = {}
+        dtf_required_bags = set()
         purchase_counts = {}
         overdue_dtf_counts = {}
         now = datetime.now(timezone.utc)
@@ -190,6 +191,8 @@ class ProductionReadService:
                 .where(ProductionWorkItem.bag_id.in_(bag_ids))
             )
             for work, spec in work_rows:
+                if spec.specification["print_file_ids"]:
+                    dtf_required_bags.add(work.bag_id)
                 route = spec.specification["route"]
                 counts = stage_counts.setdefault(work.bag_id, {})
                 if work.stage_index < len(route):
@@ -223,6 +226,7 @@ class ProductionReadService:
                     ),
                     "version": bag.version if bag else 0,
                     "stage_counts": stage_counts.get(bag.id, {}) if bag else {},
+                    "requires_dtf": bool(bag and bag.id in dtf_required_bags),
                     "dtf_pending": dtf_counts.get(bag.id, 0) if bag else 0,
                     "dtf_overdue": overdue_dtf_counts.get(bag.id, 0) if bag else 0,
                     "purchase_pending": purchase_counts.get(bag.id, 0) if bag else 0,

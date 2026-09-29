@@ -5,7 +5,6 @@ import { productionApi } from '@/lib/api/production';
 import { useProductionAuthStore } from '@/store/productionAuthStore';
 import type {
     Command,
-    Employee,
     Project,
     Queue,
     Station,
@@ -14,13 +13,15 @@ import { resolveEmployeeStation } from '@/lib/production/workspaces';
 
 export function useProductionTerminal(station?: Station) {
     const run = useProductionAuthStore((state) => state.runAuthenticated);
-    const userId = useProductionAuthStore((state) => state.user?.id);
-    const [employee, setEmployee] = useState<Employee | null>(null);
+    const employee = useProductionAuthStore((state) => state.user);
+    const userId = employee?.id;
     const [queue, setQueue] = useState<Queue>({ items: [], next_cursor: null });
     const [project, setProject] = useState<Project | null>(null);
     const [selected, setSelected] = useState<number | null>(null);
     const [focusedUnit, setFocusedUnit] = useState<number | null>(null);
-    const [loading, setLoading] = useState(true);
+    const [queueLoading, setQueueLoading] = useState(true);
+    const [detailLoading, setDetailLoading] = useState(false);
+    const loading = queueLoading || detailLoading;
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState('');
     const [notice, setNotice] = useState('');
@@ -40,50 +41,50 @@ export function useProductionTerminal(station?: Station) {
         if (Number.isSafeInteger(unit) && unit > 0) setFocusedUnit(unit);
     }, []);
     useEffect(() => {
+        if (!userId) return;
         const controller = new AbortController();
-        setLoading(true);
+        setQueueLoading(true);
+        void run((token) => productionApi.queue(token, undefined, controller.signal))
+            .then((list) => {
+                if (!controller.signal.aborted) setQueue(list);
+            })
+            .catch((error) => {
+                if (!controller.signal.aborted) {
+                    setError(error instanceof Error ? error.message : 'Не удалось загрузить список');
+                }
+            })
+            .finally(() => {
+                if (!controller.signal.aborted) setQueueLoading(false);
+            });
+        return () => controller.abort();
+    }, [run, userId, refresh]);
+
+    const activeStation = resolveEmployeeStation(station, employee?.stations ?? []);
+    useEffect(() => {
+        const controller = new AbortController();
         setProject(null);
         setError('');
-        void (async () => {
-            try {
-                const me = await run((token) =>
-                    productionApi.me(token, controller.signal),
-                );
-                const list = await run((token) =>
-                    productionApi.queue(token, undefined, controller.signal),
-                );
-                const detail = selected
-                    ? await run((token) =>
-                          productionApi.project(
-                              token,
-                              selected,
-                              controller.signal,
-                              resolveEmployeeStation(station, me.stations),
-                          ),
-                      )
-                    : null;
-                if (controller.signal.aborted) return;
-                setEmployee(me);
-                setQueue(list);
-                setProject(detail);
-            } catch (error) {
+        if (!userId || !selected || !activeStation) {
+            setDetailLoading(false);
+            return () => controller.abort();
+        }
+        setDetailLoading(true);
+        void run((token) => productionApi.project(token, selected, controller.signal, activeStation))
+            .then((detail) => {
+                if (!controller.signal.aborted) setProject(detail);
+            })
+            .catch((error) => {
                 if (!controller.signal.aborted) {
-                    setProject(null);
-                    setEmployee(null);
-                    setQueue({ items: [], next_cursor: null });
-                    setError(
-                        error instanceof Error
-                            ? error.message
-                            : 'Не удалось загрузить терминал',
-                    );
+                    setError(error instanceof Error ? error.message : 'Не удалось загрузить мешок');
                 }
-            } finally {
-                if (!controller.signal.aborted) setLoading(false);
-            }
-        })();
+            })
+            .finally(() => {
+                if (!controller.signal.aborted) setDetailLoading(false);
+            });
         return () => controller.abort();
-    }, [run, userId, selected, refresh, station]);
+    }, [run, userId, selected, refresh, activeStation]);
     useEffect(() => {
+        const controller = new AbortController();
         const refreshQueue = async () => {
             if (
                 document.visibilityState !== 'visible' ||
@@ -96,13 +97,13 @@ export function useProductionTerminal(station?: Station) {
             polling.current = true;
             try {
                 const [list, detail] = await Promise.all([
-                    run((token) => productionApi.queue(token, undefined)),
+                    run((token) => productionApi.queue(token, undefined, controller.signal)),
                     selected
                         ? run((token) =>
                               productionApi.project(
                                   token,
                                   selected,
-                                  undefined,
+                                  controller.signal,
                                   resolveEmployeeStation(
                                       station,
                                       employee?.stations ?? [],
@@ -111,6 +112,7 @@ export function useProductionTerminal(station?: Station) {
                           )
                         : Promise.resolve(null),
                 ]);
+                if (controller.signal.aborted) return;
                 if (detail) setProject(detail);
                 setQueue((current) => {
                     if (current.items.length <= list.items.length) return list;
@@ -139,6 +141,7 @@ export function useProductionTerminal(station?: Station) {
         const refreshOnReturn = () => void refreshQueue();
         document.addEventListener('visibilitychange', refreshOnReturn);
         return () => {
+            controller.abort();
             window.clearInterval(timer);
             document.removeEventListener('visibilitychange', refreshOnReturn);
         };
@@ -148,7 +151,7 @@ export function useProductionTerminal(station?: Station) {
         if (locked.current) return;
         setSelected(id);
         setFocusedUnit(unit ?? null);
-        reload();
+        if (id === selected && id !== null) reload();
         setNotice('');
         setProject(null);
         window.history.replaceState(
@@ -180,7 +183,7 @@ export function useProductionTerminal(station?: Station) {
                 ),
             );
             setNotice('Действие сохранено в журнале');
-            setLoading(true);
+            setDetailLoading(true);
             reload();
             return true;
         } catch (error) {

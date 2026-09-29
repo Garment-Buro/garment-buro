@@ -543,6 +543,12 @@ def test_api_denies_customers_and_hides_delivery(tmp_path):
                 assert (await client.get("/api/production/me")).status_code == 403
                 assert (await client.get("/api/production/orders/1/project")).status_code == 403
                 current = people[2]
+                current.first_name = " Анна "
+                current.last_name = " Иванова "
+                assert (await client.get("/api/production/me")).json()["name"] == "Анна Иванова"
+                current.first_name = None
+                current.last_name = None
+                assert (await client.get("/api/production/me")).json()["name"] == "Сотрудник"
                 lookup = await client.get("/api/production/orders/1/project")
                 assert lookup.status_code == 200
                 assert lookup.json() == {"project_id": 1}

@@ -160,8 +160,8 @@ export function ProductionViews({
     station?: Station;
 }) {
     const [view, setView] = useState<string>('front');
-    const [openingFile, setOpeningFile] = useState<number | null>(null);
-    const [fileError, setFileError] = useState('');
+    const [openingFiles, setOpeningFiles] = useState<Set<string>>(new Set());
+    const [fileErrors, setFileErrors] = useState<Record<string, string>>({});
     const run = useProductionAuthStore((state) => state.runAuthenticated);
     const raw = unit.source.customization?.modelImages;
     const images =
@@ -185,9 +185,10 @@ export function ProductionViews({
     const patternFiles = unit.files.filter((file) =>
         patternIds.includes(file.id),
     );
-    const openPattern = async (id: number) => {
-        setOpeningFile(id);
-        setFileError('');
+    const openPattern = async (id: number, side: string) => {
+        const buttonKey = `${side}-${id}`;
+        setOpeningFiles((current) => new Set(current).add(buttonKey));
+        setFileErrors((current) => ({ ...current, [side]: '' }));
         try {
             const file = await run((token) =>
                 productionApi.download(token, id, station, true),
@@ -198,11 +199,16 @@ export function ProductionViews({
             link.rel = 'noopener noreferrer';
             link.click();
         } catch (error) {
-            setFileError(
-                error instanceof Error ? error.message : 'Файл недоступен',
-            );
+            setFileErrors((current) => ({
+                ...current,
+                [side]: error instanceof Error ? error.message : 'Файл недоступен',
+            }));
         } finally {
-            setOpeningFile(null);
+            setOpeningFiles((current) => {
+                const next = new Set(current);
+                next.delete(buttonKey);
+                return next;
+            });
         }
     };
     return (
@@ -280,16 +286,17 @@ export function ProductionViews({
                                                     type="button"
                                                     key={file.id}
                                                     disabled={
-                                                        openingFile !== null
+                                                        openingFiles.has(`${key}-${file.id}`)
                                                     }
                                                     onClick={() =>
                                                         void openPattern(
                                                             file.id,
+                                                            key,
                                                         )
                                                     }
                                                 >
                                                     <PiArrowSquareOut aria-hidden />
-                                                    {openingFile === file.id
+                                                    {openingFiles.has(`${key}-${file.id}`)
                                                         ? 'Открываем…'
                                                         : patternFiles.length ===
                                                             1
@@ -302,12 +309,12 @@ export function ProductionViews({
                                                 Оригинал лекала не прикреплён
                                             </button>
                                         )}
-                                        {fileError && (
+                                        {fileErrors[key] && (
                                             <p
                                                 className={styles.error}
                                                 role="alert"
                                             >
-                                                {fileError}
+                                                {fileErrors[key]}
                                             </p>
                                         )}
                                     </div>

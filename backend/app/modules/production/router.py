@@ -85,7 +85,10 @@ async def me(auth: Auth, request: Request, session: Session):
     administers = manager or (station == "admin" and await can_administer(session, user.id))
     return {
         "id": user.id,
-        "name": user.first_name or user.email or "Сотрудник",
+        "name": " ".join(
+            part.strip() for part in (user.first_name, user.last_name) if part and part.strip()
+        )
+        or "Сотрудник",
         "stations": stations,
         "is_demo": await is_demo_employee(session, user.id),
         "can_administer": administers,

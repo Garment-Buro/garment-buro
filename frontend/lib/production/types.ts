@@ -41,7 +41,7 @@ export const labels: Record<Station, string> = {
     shipping: 'Отправка',
 };
 export const stateLabels: Record<string, string> = {
-    inbox: 'Подготовка',
+    inbox: 'Ожидает выпуска в работу',
     kitting: 'Комплектовка',
     workshop: 'В цехе',
     waiting_dtf: 'Ожидает DTF',
@@ -143,6 +143,7 @@ export interface Unit {
     } | null;
 }
 export interface QueueItem {
+    requires_dtf?: boolean;
     display_state?: string;
     is_demo?: boolean;
     stage_counts?: Partial<Record<Station | 'waiting_dtf', number>>;

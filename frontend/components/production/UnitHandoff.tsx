@@ -15,29 +15,9 @@ export function UnitHandoff({
     busy: boolean;
 }) {
     const [checks, setChecks] = useState<number[]>([]);
-    const [now] = useState(() => Date.now());
     const quality = unit.specification?.quality_checks ?? [];
     return (
         <section className={styles.section}>
-            {unit.requires_dtf && (
-                <p>
-                    DTF:{' '}
-                    {unit.dtf_ready
-                        ? 'Доставлено — можно вложить в мешок изделия'
-                        : 'Ожидается доставка'}
-                    {unit.dtf_due_at && (
-                        <strong>
-                            {' '}
-                            · Срок:{' '}
-                            {new Date(unit.dtf_due_at).toLocaleString('ru-RU')}
-                            {!unit.dtf_ready &&
-                            new Date(unit.dtf_due_at).getTime() < now
-                                ? ' · Просрочено'
-                                : ''}
-                        </strong>
-                    )}
-                </p>
-            )}
             {station === 'cut' &&
                 !unit.public_token &&
                 ['cut', 'kit', 'waiting_dtf'].includes(unit.lane ?? '') && (

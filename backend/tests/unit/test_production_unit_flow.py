@@ -327,3 +327,48 @@ def test_current_role_controls_contact_access_and_revocation(tmp_path):
                 ).status_code == 403
 
     asyncio.run(scenario())
+
+
+def test_order_without_print_skips_dtf_approval_and_handoff(tmp_path):
+    async def scenario():
+        async with setup(tmp_path) as (db, service, spec):
+            people = await workers(db)
+            plain = spec | {"route": ["cut", "sewing", "qc", "packing"], "print_file_ids": []}
+            await execute(db, service, "plan", unit_id=1, specification=plain)
+            await execute(db, service, "confirm_documents", unit_id=1)
+            await execute(db, service, "approve_order")
+            async with db.session() as session:
+                bag = await session.scalar(select(ProductionBag))
+                assert bag.public_token and bag.tech_approved_at
+                assert bag.dtf_approved_at is None
+                queue = await ProductionReadService().queue(session)
+                assert queue["items"][0]["requires_dtf"] is False
+            await execute(db, service, "release")
+            await execute(
+                db,
+                service,
+                "complete_stage",
+                actor=people["cut"],
+                unit_id=1,
+                stage="cut",
+                note="Крой готов",
+            )
+            async with db.session() as session:
+                item = await session.scalar(select(ProductionWorkItem))
+                assert item.lane == "kit"
+            for component in plain["components"]:
+                await execute(
+                    db,
+                    service,
+                    "check_component",
+                    actor=people["kit"],
+                    unit_id=1,
+                    component_key=component["key"],
+                    checked=True,
+                )
+            await execute(db, service, "send_unit", actor=people["kit"], unit_id=1)
+            async with db.session() as session:
+                item = await session.scalar(select(ProductionWorkItem))
+                assert item.lane == "workshop" and not item.dtf_inserted
+
+    asyncio.run(scenario())
