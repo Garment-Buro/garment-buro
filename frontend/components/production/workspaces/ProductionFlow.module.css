@@ -1041,7 +1041,7 @@
         border: 0;
     }
 }
-@media (max-width: 900px) {
+@media (max-width: 1366px) {
     .navigation {
         grid-template-columns: 1fr;
     }
@@ -1062,6 +1062,22 @@
         display: inline-flex !important;
         margin: 12px 12px 0;
     }
+    .processNav {
+        flex-wrap: wrap;
+    }
+    .flow.flow button,
+    .flow.flow input:not([type='checkbox']),
+    .flow.flow select,
+    .flow.flow summary {
+        min-height: 48px;
+    }
+    .flow input,
+    .flow select,
+    .flow textarea {
+        font-size: 16px;
+    }
+}
+@media (max-width: 900px) {
     .cycleGrid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
@@ -1267,18 +1283,14 @@
 .views[data-tech='true'] { min-width: 0; margin: 20px 0; }
 .views[data-tech='true'] .viewGrid {
     display: grid;
-    grid-template-columns: none;
-    grid-auto-flow: column;
-    grid-auto-columns: minmax(220px, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
-    overflow-x: auto;
-    padding-bottom: 8px;
-    scroll-snap-type: x proximity;
+    overflow: visible;
 }
 .views[data-tech='true'] .viewGrid figure {
     display: block;
     min-width: 0;
-    scroll-snap-align: start;
+
 }
 .views[data-tech='true'] .visualComparison { grid-template-columns: 1fr; }
 .views[data-tech='true'] .visualCard > strong { min-height: 0; }
@@ -1289,3 +1301,10 @@
 .checkpointList li { padding: 12px 0; border-bottom: 1px solid #e6dfef; }
 .checkpointList small { display: block; margin-top: 6px; color: #625a70; }
 .cardText { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
+
+.views[data-tech='true'] .constructorCanvas { max-height: none; }
+@media (max-width: 600px) {
+    .views[data-tech='true'] .viewGrid { grid-template-columns: minmax(0, 1fr); }
+}
+
+.views[data-tech='true'] .patternPreview { aspect-ratio: auto; min-height: 140px; }
