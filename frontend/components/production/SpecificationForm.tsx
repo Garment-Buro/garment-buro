@@ -120,7 +120,7 @@ export function SpecificationForm({
     return (
         <section className={styles.section}>
             <h3>
-                Спецификация технолога
+                Задание на вещь
                 {unit.revision ? ` · версия ${unit.revision}` : ''}
             </h3>
             <form
@@ -134,12 +134,12 @@ export function SpecificationForm({
                 }}
             >
                 <p>
-                    Сверьте конструкцию, мерки и все нанесения с заказом. После
+                    Техкарта модели здесь не редактируется. Выберите её опубликованную версию и уточните задание на эту вещь. После
                     выпуска в работу эта версия фиксируется.
                 </p>
                 <div className={styles.grid2}>
                     <label>
-                        Опубликованная техкарта
+                        Опубликованная техкарта модели
                         <select
                             required
                             value={value.tech_card_revision_id || ''}

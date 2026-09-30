@@ -59,8 +59,10 @@ test('bag history, order comments and cutting data follow role rules', () => {
     assert.doesNotMatch(unit, /Комплектность/);
     assert.match(views, /Макет заказчика/);
     assert.match(views, /Наложение на лекало/);
-    assert.match(views, /Открыть оригинал лекала/);
-    assert.match(views, /productionApi\.download\(token, id, station, true\)/);
+    assert.doesNotMatch(views, /Открыть оригинал лекала/);
+    assert.match(unit, /patternsDialog.current\?\.showModal/);
+    assert.match(unit, /Открыть оригинал лекала/);
+    assert.match(unit, /productionApi\.download\(token, id, station, true\)/);
     assert.match(views, /data-tech=\{station === 'tech'\}/);
     assert.match(bag, /station === 'dtf'/);
     assert.match(unit, /QR изделия готов/);

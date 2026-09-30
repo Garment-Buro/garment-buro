@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from sqlalchemy import or_, select
+from sqlalchemy.orm import selectinload
 
 from app.modules.catalog.models import ProductVariant
 from app.modules.crm.assortment_models import (
@@ -30,6 +31,27 @@ from app.modules.production.models import (
 )
 from app.modules.production.projections import bag_display_state, floor_customization, project_unit
 from app.modules.production.repository import ProductionRepository
+
+
+def _tech_card_view(card):
+    return {
+        "id": card.id,
+        "name": card.name_snapshot,
+        "revision": card.revision_number,
+        "description": card.description_snapshot,
+        "checkpoints": [
+            {
+                "position": point.position,
+                "name": point.name,
+                "description": point.description,
+                "stage_code": point.stage_code,
+                "standard_minutes": (
+                    str(point.standard_minutes) if point.standard_minutes is not None else None
+                ),
+            }
+            for point in card.checkpoints
+        ],
+    }
 
 
 def floor_evidence(item):
@@ -284,9 +306,10 @@ class ProductionReadService:
                     )
                 ]
                 cards = [
-                    {"id": x.id, "name": x.name_snapshot, "revision": x.revision_number}
+                    _tech_card_view(x)
                     for x in await session.scalars(
                         select(CrmTechCardRevision)
+                        .options(selectinload(CrmTechCardRevision.checkpoints))
                         .join(CrmTechCard, CrmTechCard.id == CrmTechCardRevision.tech_card_id)
                         .where(
                             CrmTechCard.garment_model_id == garment_model_id,
@@ -297,6 +320,22 @@ class ProductionReadService:
                 ]
             elif not spec:
                 blockers.append("Модель каталога не связана с производственной моделью")
+            assigned_card = next(
+                (
+                    card
+                    for card in cards
+                    if spec and card["id"] == spec.specification["tech_card_revision_id"]
+                ),
+                None,
+            )
+            if spec and assigned_card is None:
+                revision = await session.scalar(
+                    select(CrmTechCardRevision)
+                    .options(selectinload(CrmTechCardRevision.checkpoints))
+                    .where(CrmTechCardRevision.id == spec.specification["tech_card_revision_id"])
+                )
+                if revision:
+                    assigned_card = _tech_card_view(revision)
             files = list(
                 (
                     await session.execute(
@@ -305,6 +344,8 @@ class ProductionReadService:
                         .where(
                             or_(
                                 CrmFileAttachment.production_unit_id == unit.id,
+                                CrmFileAttachment.tech_card_revision_id
+                                == (spec.specification["tech_card_revision_id"] if spec else -1),
                                 CrmFileAttachment.tech_card_revision_id.in_(
                                     [x["id"] for x in cards]
                                 ),
@@ -338,6 +379,7 @@ class ProductionReadService:
                     "blockers": blockers,
                     "sizes": sizes,
                     "cards": cards,
+                    "tech_card": assigned_card,
                     "files": [
                         {
                             "id": a.id,

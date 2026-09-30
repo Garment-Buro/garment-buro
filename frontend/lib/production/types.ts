@@ -126,7 +126,8 @@ export interface Unit {
     issue: string | null;
     blockers: string[];
     sizes: { id: number; code: string }[];
-    cards: { id: number; name: string; revision: number }[];
+    cards: TechCard[];
+    tech_card?: TechCard | null;
     files: ProductionFile[];
     cutting: {
         pattern_code: string | null;
@@ -233,3 +234,17 @@ export interface Command {
     due_at?: string;
 }
 export type SendCommand = (command: Command) => Promise<boolean>;
+
+export type TechCard = {
+    id: number;
+    name: string;
+    revision: number;
+    description?: string | null;
+    checkpoints?: {
+        position: number;
+        name: string;
+        description: string | null;
+        stage_code: string;
+        standard_minutes: string | null;
+    }[];
+};

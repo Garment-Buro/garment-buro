@@ -623,3 +623,30 @@ def test_postgres_duplicate_commands_and_competing_versions(tmp_path):
                 assert await session.scalar(select(func.count()).select_from(ProductionEvent)) == 2
 
     asyncio.run(scenario())
+
+
+def test_terminal_reads_pinned_model_card_even_after_archiving(tmp_path):
+    from app.modules.crm.reference_models import CrmTechCardRevision
+
+    async def scenario():
+        async with setup(tmp_path) as (db, service, spec):
+            await execute(db, service, "plan", unit_id=1, specification=spec)
+            async with db.session() as session:
+                revision = await session.get(CrmTechCardRevision, spec["tech_card_revision_id"])
+                revision.description_snapshot = "Model assembly instructions"
+                revision.status = "archived"
+                await session.commit()
+            async with db.session() as session:
+                detail = await ProductionReadService().detail(
+                    session, project_id=1, stations=["tech"]
+                )
+                unit = detail["units"][0]
+                card = unit["tech_card"]
+                assert card["id"] == spec["tech_card_revision_id"]
+                assert card["description"] == "Model assembly instructions"
+                assert card["checkpoints"][0]["name"]
+                assert card["checkpoints"][0]["position"] == 1
+                assert "labor_cost" not in card["checkpoints"][0]
+                assert card["id"] not in [item["id"] for item in unit["cards"]]
+
+    asyncio.run(scenario())
