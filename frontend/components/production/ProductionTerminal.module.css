@@ -801,7 +801,7 @@
     color: #000;
     background: #fff;
 }
-@media (max-width: 1000px) {
+@media (max-width: 1366px) {
     .componentForm {
         grid-template-columns: 1fr 1fr;
     }
@@ -1010,3 +1010,13 @@
 .terminal .orderInfo > button { display: block; width: 100%; text-align: left; }
 .techCardDialog { margin: auto; }
 :global(body):has(.techCardDialog[open]) { overflow: hidden; }
+
+@media (min-width: 601px) and (max-width: 1366px) {
+    .orderInfo { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .cuttingGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .cuttingGrid > div:nth-child(2) { grid-column: auto; }
+}
+.terminal summary { cursor: pointer; }
+.terminal label:has(input[type='checkbox']) { min-height: 48px; }
+.terminal input[type='checkbox'] { width: 22px; height: 22px; flex-shrink: 0; }
+.techCardDialog > header { position: sticky; top: -1px; z-index: 2; padding: 8px 0; background: #fff; }
