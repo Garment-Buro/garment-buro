@@ -1282,3 +1282,10 @@
 }
 .views[data-tech='true'] .visualComparison { grid-template-columns: 1fr; }
 .views[data-tech='true'] .visualCard > strong { min-height: 0; }
+
+.modelTechCard { padding: 18px; border: 1px solid #ded4fa; border-radius: 14px; background: #faf8ff; margin: 20px 0; }
+.modelTechCard h2 { margin-top: 0; }
+.checkpointList { padding-left: 24px; list-style: decimal; }
+.checkpointList li { padding: 12px 0; border-bottom: 1px solid #e6dfef; }
+.checkpointList small { display: block; margin-top: 6px; color: #625a70; }
+.cardText { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
