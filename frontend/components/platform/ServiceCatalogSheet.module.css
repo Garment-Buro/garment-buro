@@ -1,0 +1,42 @@
+.dialog {
+    --sheet-bottom: max(86px, calc(var(--cart-action-bar-bottom, 5px) + 81px), calc(env(safe-area-inset-bottom) + 81px));
+    position: fixed;
+    inset: auto 0 var(--sheet-bottom);
+    width: min(calc(100% - 20px), 760px);
+    max-width: none;
+    max-height: calc(100dvh - var(--sheet-bottom) - max(24px, env(safe-area-inset-top)));
+    margin: 0 auto;
+    padding: 0;
+    overflow: visible;
+    border: 0;
+    color: #fff;
+    background: transparent;
+    font-family: var(--font-manrope), sans-serif;
+}
+.dialog[open] { display: flex; flex-direction: column; }
+.dialog::backdrop { background: rgb(0 0 0 / 15%); }
+.handle { display: flex; height: 20px; width: 100%; flex: none; align-items: center; justify-content: center; cursor: pointer; touch-action: none; }
+.handle::after { content: ''; width: 50px; height: 3px; border-radius: 15px; background: #d5d5d5; box-shadow: inset .5px .5px 1px rgb(0 0 0 / 25%); }
+.panel {
+    display: flex;
+    height: var(--sheet-height, clamp(280px, 55.76dvh, 620px));
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+    flex-direction: column;
+    border: .5px solid rgb(238 238 238 / 65%);
+    border-radius: 15px;
+    background: var(--sheet-background, linear-gradient(110deg, rgb(175 170 115 / 88%), rgb(175 170 115 / 96%) 55%, rgb(175 170 115 / 92%)));
+    box-shadow: 0 4px 16.8px -1px rgb(0 0 0 / 25%);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+}
+.header { display: flex; height: var(--sheet-header-height, 52px); flex: none; padding-top: 8px; padding-inline: 20px; align-items: center; justify-content: space-between; gap: 16px; font-size: 16px; font-weight: 600; line-height: 1; }
+.header h2 { font: inherit; }
+.header span { font-variant-numeric: tabular-nums; }
+.dialog button:focus-visible { outline: 2px solid #fff; outline-offset: -3px; border-radius: 8px; }
+@media (min-width: 600px) {
+    .dialog { width: min(calc(100% - 48px), 760px); }
+    .panel { border-radius: 20px; }
+    .header { height: var(--sheet-header-height, 58px); padding-inline: 24px; }
+}

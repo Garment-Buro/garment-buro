@@ -221,13 +221,15 @@
 .personDetails p { font-size: 11px; font-weight: 500; line-height: 1.2; }
 .personPreview { position: relative; height: min(100cqh, 66px); flex: 0 0 min(100cqh, 66px); overflow: hidden; border: 1px solid rgb(255 255 255 / 25%); border-radius: 11px; }
 .personPreview .manPortrait { width: 128.34%; height: 149.65%; top: -11.65%; left: -28.24%; object-fit: cover; transform: scaleX(-1); }
-.emptyState { flex-shrink: 0; padding: 8px 20px; font-size: 14px; text-align: center; }
 .createPanel { display: flex; min-height: 74px; flex-shrink: 0; margin-top: 5px; align-items: center; justify-content: center; }
 .createButton { display: flex; width: 80px; height: 54px; align-items: center; justify-content: center; border: .5px solid rgb(238 238 238 / 70%); border-radius: 26px; box-shadow: 0 4px 16.8px -1px rgb(0 0 0 / 25%); transition: background-color 150ms ease; }
 .createButton span { margin-top: -4px; font-size: 48px; font-weight: 500; line-height: 1; letter-spacing: .02em; }
 .createButton:hover { background: rgb(255 255 255 / 12%); }
 .createButton:active { background: rgb(255 255 255 / 20%); }
 .createButton:focus-visible { outline: 2px solid #fff; outline-offset: 4px; }
+
+.pageSearch .header { flex-basis: 48px; }
+.pageSearch .content { gap: 6px; }
 
 @media (min-width: 600px) {
     .page { --rail-inset: 24px; --panel-radius: 20px; padding-inline: 24px; padding-top: max(clamp(24px, 6.25dvh, 64px), env(safe-area-inset-top)); }
