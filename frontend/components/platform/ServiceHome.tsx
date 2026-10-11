@@ -94,78 +94,77 @@ export function ServiceHome() {
                                             />
                                             {community.id === 'boxing' && <span className={styles.boxingName} aria-hidden="true">BOX<br />CLUB</span>}
                                         </>
-                                );
+                                    );
 
-                                return 'href' in community ? (
-                                    <Link key={community.id} href={community.href} className={`${styles.community} ${styles[community.id]}`}>
-                                        {artwork}
-                                    </Link>
-                                ) : (
-                                    <div key={community.id} className={`${styles.community} ${styles[community.id]}`}>
-                                        {artwork}
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </section>
-
-                    <section className={styles.clothing} aria-labelledby="home-clothing">
-                        <h2 id="home-clothing" className={styles.sectionTitle}>ОДЕЖДА</h2>
-                        <div className={`${styles.rail} ${styles.clothingRail}`} tabIndex={0} role="group" aria-label="Одежда — прокрутка по горизонтали">
-                            {visibleClothing.map(item => (
-                                <article key={item.id} className={styles.clothingCard}>
-                                    <div className={styles.productFrame}>
-                                        <div className={`${styles.productCrop} ${styles[item.id]}`}>
-                                            <Image
-                                                src={item.image}
-                                                alt={item.name}
-                                                loading="eager"
-                                                unoptimized
-                                                className={styles.cropImage}
-                                            />
+                                    return 'href' in community ? (
+                                        <Link key={community.id} href={community.href} className={`${styles.community} ${styles[community.id]}`}>
+                                            {artwork}
+                                        </Link>
+                                    ) : (
+                                        <div key={community.id} className={`${styles.community} ${styles[community.id]}`}>
+                                            {artwork}
                                         </div>
-                                    </div>
-                                    <h3>{item.name}</h3>
-                                </article>
-                            ))}
-                        </div>
-                    </section>
+                                    );
+                                })}
+                            </div>
+                        </section>
 
-                    <section className={styles.people} aria-labelledby="home-people">
-                        <h2 id="home-people" className={styles.sectionTitle}>ЛЮДИ</h2>
-                        <div className={`${styles.rail} ${styles.peopleRail}`} tabIndex={0} role="group" aria-label="Люди — прокрутка по горизонтали">
-                            {showLiza && (
-                                <article className={styles.personCard}>
-                                    <Image src={personLiza} alt="" loading="eager" unoptimized className={`${styles.cropImage} ${styles.personBackdrop}`} />
-                                    <div className={styles.personPortrait}>
-                                        <Image src={personLiza} alt="Лиза Кухарская" loading="eager" unoptimized className={`${styles.cropImage} ${styles.lizaPortrait}`} />
-                                    </div>
-                                    <div className={styles.personDetails}>
-                                        <h3>LIZA<br />KUKHARSKAIA</h3>
-                                        <p>@moeimyaliza</p>
-                                    </div>
-                                </article>
-                            )}
-                            {showSecondPerson && (
-                                <div className={styles.personPreview}>
-                                    <Image src={personMan} alt="Участник сообщества" loading="eager" unoptimized className={`${styles.cropImage} ${styles.manPortrait}`} />
-                                </div>
-                            )}
-                        </div>
-                    </section>
+                        <section className={styles.clothing} aria-labelledby="home-clothing">
+                            <h2 id="home-clothing" className={styles.sectionTitle}>ОДЕЖДА</h2>
+                            <div className={`${styles.rail} ${styles.clothingRail}`} tabIndex={0} role="group" aria-label="Одежда — прокрутка по горизонтали">
+                                {visibleClothing.map(item => (
+                                    <article key={item.id} className={styles.clothingCard}>
+                                        <div className={styles.productFrame}>
+                                            <div className={`${styles.productCrop} ${styles[item.id]}`}>
+                                                <Image
+                                                    src={item.image}
+                                                    alt={item.name}
+                                                    loading="eager"
+                                                    unoptimized
+                                                    className={styles.cropImage}
+                                                />
+                                            </div>
+                                        </div>
+                                        <h3>{item.name}</h3>
+                                    </article>
+                                ))}
+                            </div>
+                        </section>
 
-                    {!hasResults && <p className={styles.emptyState} role="status">Ничего не найдено</p>}
-                </div>
+                        <section className={styles.people} aria-labelledby="home-people">
+                            <h2 id="home-people" className={styles.sectionTitle}>ЛЮДИ</h2>
+                            <div className={`${styles.rail} ${styles.peopleRail}`} tabIndex={0} role="group" aria-label="Люди — прокрутка по горизонтали">
+                                {showLiza && (
+                                    <article className={styles.personCard}>
+                                        <Image src={personLiza} alt="" loading="eager" unoptimized className={`${styles.cropImage} ${styles.personBackdrop}`} />
+                                        <div className={styles.personPortrait}>
+                                            <Image src={personLiza} alt="Лиза Кухарская" loading="eager" unoptimized className={`${styles.cropImage} ${styles.lizaPortrait}`} />
+                                        </div>
+                                        <div className={styles.personDetails}>
+                                            <h3>LIZA<br />KUKHARSKAIA</h3>
+                                            <p>@moeimyaliza</p>
+                                        </div>
+                                    </article>
+                                )}
+                                {showSecondPerson && (
+                                    <div className={styles.personPreview}>
+                                        <Image src={personMan} alt="Участник сообщества" loading="eager" unoptimized className={`${styles.cropImage} ${styles.manPortrait}`} />
+                                    </div>
+                                )}
+                            </div>
+                        </section>
 
-                <div className={styles.createPanel}>
-                    <Link href="/constructor" className={styles.createButton} aria-label="Создать своё изделие">
-                        <span aria-hidden="true">+</span>
-                    </Link>
+                        {!hasResults && <p className={styles.emptyState} role="status">Ничего не найдено</p>}
+                    </div>
+
+                    <div className={styles.createPanel}>
+                        <Link href="/constructor" className={styles.createButton} aria-label="Создать своё изделие">
+                            <span aria-hidden="true">+</span>
+                        </Link>
+                    </div>
                 </div>
             </div>
-
-        </div>
-        <ServiceHomeCart />
+            <ServiceHomeCart />
         </>
     );
 }
