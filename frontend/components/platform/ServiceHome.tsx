@@ -44,54 +44,56 @@ export function ServiceHome() {
     const hasResults = visibleCommunities.length > 0 || visibleClothing.length > 0 || showLiza || showSecondPerson;
 
     return (
-        <div className={styles.page}>
-            <div className={styles.backdrop} aria-hidden="true">
-                <Image
-                    src={`${ASSETS}/background.webp`}
-                    alt=""
-                    fill
-                    preload
-                    unoptimized
-                    className={styles.backgroundImage}
-                />
-            </div>
-
-            <header className={styles.header}>
-                <h1 className={styles.wordmark} aria-label="Garment Buro">
-                    <span>GARMENT</span><span>BURO</span>
-                </h1>
-            </header>
-
-            <div className={styles.content}>
-                <label className={styles.search}>
-                    <Image src={`${ASSETS}/search.svg`} alt="" width={8.839} height={12.239} className={styles.searchIcon} />
-                    <input
-                        type="search"
-                        aria-label="Поиск сообществ, одежды и людей"
-                        placeholder="А"
-                        value={query}
-                        onChange={event => setQuery(event.target.value)}
-                        autoComplete="off"
-                        spellCheck={false}
+        <>
+            <div className={styles.page}>
+                <div className={styles.backdrop} aria-hidden="true">
+                    <Image
+                        src={`${ASSETS}/background.webp`}
+                        alt=""
+                        fill
+                        preload
+                        unoptimized
+                        className={styles.backgroundImage}
                     />
-                </label>
+                </div>
 
-                <div className={styles.panel}>
-                    <section className={styles.communities} aria-labelledby="home-communities">
-                        <h2 id="home-communities" className={styles.sectionTitle}>СООБЩЕСТВА</h2>
-                        <div className={`${styles.rail} ${styles.communityRail}`} tabIndex={0} role="group" aria-label="Сообщества — прокрутка по горизонтали">
-                            {visibleCommunities.map(community => {
-                                const artwork = (
-                                    <>
-                                        <Image
-                                            src={community.image}
-                                            alt={community.name}
-                                            loading="eager"
-                                            unoptimized
-                                            className={`${styles.cropImage} ${styles[`${community.id}Image`]}`}
-                                        />
-                                        {community.id === 'boxing' && <span className={styles.boxingName} aria-hidden="true">BOX<br />CLUB</span>}
-                                    </>
+                {/* The cart measures the site header; this decorative wordmark is page content. */}
+                <div className={styles.header}>
+                    <h1 className={styles.wordmark} aria-label="Garment Buro">
+                        <span>GARMENT</span><span>BURO</span>
+                    </h1>
+                </div>
+
+                <div className={styles.content}>
+                    <label className={styles.search}>
+                        <Image src={`${ASSETS}/search.svg`} alt="" width={8.839} height={12.239} className={styles.searchIcon} />
+                        <input
+                            type="search"
+                            aria-label="Поиск сообществ, одежды и людей"
+                            placeholder="А"
+                            value={query}
+                            onChange={event => setQuery(event.target.value)}
+                            autoComplete="off"
+                            spellCheck={false}
+                        />
+                    </label>
+
+                    <div className={styles.panel}>
+                        <section className={styles.communities} aria-labelledby="home-communities">
+                            <h2 id="home-communities" className={styles.sectionTitle}>СООБЩЕСТВА</h2>
+                            <div className={`${styles.rail} ${styles.communityRail}`} tabIndex={0} role="group" aria-label="Сообщества — прокрутка по горизонтали">
+                                {visibleCommunities.map(community => {
+                                    const artwork = (
+                                        <>
+                                            <Image
+                                                src={community.image}
+                                                alt={community.name}
+                                                loading="eager"
+                                                unoptimized
+                                                className={`${styles.cropImage} ${styles[`${community.id}Image`]}`}
+                                            />
+                                            {community.id === 'boxing' && <span className={styles.boxingName} aria-hidden="true">BOX<br />CLUB</span>}
+                                        </>
                                 );
 
                                 return 'href' in community ? (
@@ -162,7 +164,8 @@ export function ServiceHome() {
                 </div>
             </div>
 
-            <ServiceHomeCart />
         </div>
+        <ServiceHomeCart />
+        </>
     );
 }
