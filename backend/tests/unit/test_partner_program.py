@@ -53,7 +53,7 @@ def settings(tmp_path) -> Settings:
 
 
 def test_partner_attribution_security_rejects_tampering() -> None:
-    now = datetime(2026, 9, 4, tzinfo=timezone.utc)
+    now = datetime.now(timezone.utc)
     security = PartnerAttributionSecurity(SECRET, lifetime=timedelta(days=30))
     token, _ = security.create_token(partner_id=7, landing_id=11, now=now)
 
