@@ -35,8 +35,8 @@ test("presentation implementation is retained while the catalog surface is pause
     assert.match(catalogOverlaySource, /useSearchParams/);
     assert.match(catalogOverlaySource, /searchParams\.get\("presentation"\) !== "open"/);
     assert.match(catalogOverlaySource, /<PresentationSurface isOverlay \/>/);
-    assert.match(presentationPageSource, /PUBLIC_CATALOG_ENABLED/);
-    assert.match(presentationPageSource, /notFound\(\)/);
+    assert.match(presentationPageSource, /<PresentationSurface \/>/);
+    assert.doesNotMatch(presentationPageSource, /notFound\(\)/);
     assert.doesNotMatch(homeSource, /CatalogPresentationOverlay|LandingPage/);
 });
 

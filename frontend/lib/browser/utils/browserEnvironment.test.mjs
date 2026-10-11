@@ -24,7 +24,8 @@ test('browser surface keeps PWA, Safari 26, legacy Safari and other browsers dis
 });
 
 test('page chrome maps routes to reusable page variants', () => {
-    assert.equal(getPageChrome('/').page, 'presentation');
+    assert.equal(getPageChrome('/').page, 'home');
+    assert.equal(getPageChrome('/index').page, 'home');
     assert.equal(getPageChrome('/presentation').page, 'presentation');
     assert.equal(getPageChrome('/product/1').page, 'product');
     assert.equal(getPageChrome('/constructor').pageColor, '#FFFFFF');

@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 import { PlatformEntry } from '@/components/platform/PlatformEntry';
 
 export const metadata: Metadata = {
-  title: 'Совместные коллекции',
+  title: 'Главная',
   description: 'Платформа GARMENT BURO для совместных коллекций, кастомизации, производства и доставки.',
 };
 

@@ -76,6 +76,8 @@ export const PAGE_CHROME: PageChromeConfig[] = [
 
 const SITE_CHROME_HIDDEN_ROUTES = new Set([
     '/',
+    '/index',
+    '/presentation',
     '/checkout',
     '/constructor',
     '/unfinished',
@@ -97,7 +99,8 @@ export const isSiteChromeHidden = (pathname: string | null) => (
 
 export const getPageChrome = (pathname: string | null): PageChromeConfig => {
     if (pathname?.startsWith('/production')) return { ...DEFAULT_PAGE_CHROME, page: 'production', topColor: '#f2f0ef', pageColor: '#f2f0ef' };
-    if (pathname === '/' || pathname === '/presentation') return PAGE_CHROME[8];
+    if (pathname === '/' || pathname === '/index') return { ...DEFAULT_PAGE_CHROME, page: 'home', topColor: '#77745A', pageColor: '#77745A' };
+    if (pathname === '/presentation') return PAGE_CHROME[8];
     if (pathname?.startsWith('/constructor')) return PAGE_CHROME[1];
     if (pathname?.startsWith('/product')) return PAGE_CHROME[2];
     if (pathname?.startsWith('/unfinished')) return PAGE_CHROME[3];

@@ -42,7 +42,7 @@ export function AppEnvironmentProvider({ children }: AppEnvironmentProviderProps
         const metaThemeColor = document.querySelector('meta[name="theme-color"]') as HTMLMetaElement | null;
         const previousThemeMedia = metaThemeColor?.getAttribute('media');
         const usesNativeSafariColor = surface === 'safari26'
-            && ['nikitamoiseev', 'light-running', 'presentation'].includes(pageChrome.page);
+            && ['home', 'nikitamoiseev', 'light-running', 'presentation'].includes(pageChrome.page);
         let secondThemeRefreshId: number | undefined;
 
         const syncPageChrome = () => {

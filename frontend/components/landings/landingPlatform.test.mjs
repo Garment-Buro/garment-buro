@@ -18,9 +18,8 @@ const adminSource = read('components', 'admin', 'AdminPartnersScreen.tsx');
 
 test('the public home is platform first and no longer renders the catalog', () => {
     assert.match(homeSource, /PlatformEntry/);
-    assert.match(platformEntrySource, /PartnerLandingDesktopGate/);
-    assert.match(platformEntrySource, /PresentationSurface/);
-    assert.match(platformEntrySource, /matchMedia/);
+    assert.match(platformEntrySource, /ServiceHome/);
+    assert.doesNotMatch(platformEntrySource, /PartnerLandingDesktopGate|PresentationSurface|matchMedia/);
     assert.doesNotMatch(homeSource, /CatalogScreen|LandingPage|CatalogPresentationOverlay|getCatalogData/);
     assert.match(publicCatalogSource, /PUBLIC_CATALOG_ENABLED = false/);
 });
