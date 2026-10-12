@@ -48,8 +48,8 @@ export function ServiceHome() {
 
     return (
         <>
-            <div className={`${styles.page} ${isSearching ? styles.pageSearch : ''}`}>
-                <div className={styles.backdrop} aria-hidden="true">
+            {/* Outside the clipped content so the artwork continues into safe areas. */}
+            <div className={styles.backdrop} aria-hidden="true">
                     <Image
                         src={`${ASSETS}/background.webp`}
                         alt=""
@@ -58,7 +58,8 @@ export function ServiceHome() {
                         unoptimized
                         className={styles.backgroundImage}
                     />
-                </div>
+            </div>
+            <div className={`${styles.page} ${isSearching ? styles.pageSearch : ''}`}>
 
                 {/* The cart measures the site header; this decorative wordmark is page content. */}
                 <div className={styles.header}>

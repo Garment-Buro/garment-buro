@@ -1,6 +1,8 @@
 export const SPLASH_SESSION_KEY = 'p2o_splash_session';
 export const SPLASH_APP_RUN_KEY = '__p2oSplashHandledThisAppRun';
 export const PWA_REFRESH_SPLASH_SKIP_KEY = 'p2o_skip_splash_once';
+// Temporarily paused. Keep the animation and session logic ready to re-enable.
+export const SPLASH_ENABLED = false;
 
 export const SPLASH_HIDDEN_ROUTES = new Set([
     '/checkout',

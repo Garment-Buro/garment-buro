@@ -7,6 +7,7 @@ import {
     PWA_REFRESH_SPLASH_SKIP_KEY,
     SPLASH_APP_RUN_KEY,
     SPLASH_SESSION_KEY,
+    SPLASH_ENABLED,
 } from '@/lib/browser/utils/splash';
 import { useVideoQueue } from '@/store/videoQueueStore';
 import { playSplashVideo } from '@/lib/browser/utils/splashPlayback';
@@ -16,7 +17,7 @@ type SplashWindow = Window & { [SPLASH_APP_RUN_KEY]?: boolean };
 export const useSplashController = () => {
     const pathname = usePathname();
     const isOfferRoute = pathname === '/offer';
-    const isHiddenRoute = isSplashHiddenRoute(pathname);
+    const isHiddenRoute = isSplashHiddenRoute(pathname) || !SPLASH_ENABLED;
     const [show, setShow] = useState(false);
     const [revealed, setRevealed] = useState(false);
     const [exiting, setExiting] = useState(false);
@@ -28,6 +29,10 @@ export const useSplashController = () => {
 
     useEffect(() => {
         if (isHiddenRoute) {
+            if (!SPLASH_ENABLED) {
+                sessionStorage.setItem(SPLASH_SESSION_KEY, 'done');
+                window.dispatchEvent(new Event('p2o_splash_done'));
+            }
             if (isOfferRoute) {
                 const splashWindow = window as SplashWindow;
                 splashWindow[SPLASH_APP_RUN_KEY] = true;

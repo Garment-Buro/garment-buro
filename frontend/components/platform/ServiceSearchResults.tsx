@@ -43,31 +43,26 @@ function Icon({ name, width, height }: { name: string; width: number; height: nu
 
 type Product = typeof products[number];
 
-function ProductGrid({ items, favorites, onFavorite, onShare, label }: {
+function ProductGrid({ items, favorites, onFavorite, onShare, label, expandedId, onToggleExpanded }: {
     items: readonly Product[];
     favorites: readonly string[];
     onFavorite: (id: string) => void;
     onShare: (title: string) => void;
     label: string;
+    expandedId: string | null;
+    onToggleExpanded: (id: string) => void;
 }) {
     const columnCount = useSyncExternalStore(subscribeToWidth, getColumnCount, getServerColumnCount);
-    const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
     const gridId = useId();
     const columns = Array.from({ length: columnCount }, (_, column) => (
         items.filter((_, index) => index % columnCount === column)
     ));
-    const toggleExpanded = (id: string) => setExpanded(previous => {
-        const next = new Set(previous);
-        if (next.has(id)) next.delete(id);
-        else next.add(id);
-        return next;
-    });
 
     return <div className={styles.scroller} tabIndex={0} role="group" aria-label={label}>
         {items.length ? <div className={styles.columns}>
             {columns.map((column, index) => <div className={styles.column} key={index} data-search-column={index}>
                 {column.map(product => {
-                    const isExpanded = expanded.has(product.id);
+                    const isExpanded = expandedId === product.id;
                     const isFavorite = favorites.includes(product.id);
                     const actionsId = `${gridId}-actions-${product.id}`;
                     const favoriteLabel = `${product.title}: ${isFavorite ? 'убрать из избранного' : 'в избранное'}`;
@@ -75,7 +70,7 @@ function ProductGrid({ items, favorites, onFavorite, onShare, label }: {
                         <div className={styles.cardBackdrop} aria-hidden="true">
                             <Image src={`${ASSETS}/search-${product.backdrop}.webp`} alt="" width={640} height={product.backdrop === 'person-liza' ? 800 : 773} unoptimized className={product.backdrop === 'person-liza' ? styles.lizaBackdrop : styles.manBackdrop} />
                         </div>
-                        <button type="button" className={styles.summary} aria-label={`${product.title}: ${isExpanded ? 'свернуть' : 'раскрыть'} карточку`} aria-expanded={isExpanded} aria-controls={actionsId} onClick={() => toggleExpanded(product.id)}>
+                        <button type="button" className={styles.summary} aria-label={`${product.title}: ${isExpanded ? 'свернуть' : 'раскрыть'} карточку`} aria-expanded={isExpanded} aria-controls={actionsId} onClick={() => onToggleExpanded(product.id)}>
                             <span className={styles.media}>
                                 <span className={`${styles.crop} ${styles[product.artwork]}`}>
                                     <Image src={`${ASSETS}/search-${product.artwork}.webp`} alt={product.title} width={640} height={product.artwork === 'hoodie' ? 800 : product.artwork === 'shoes' ? 456 : 640} unoptimized />
@@ -106,6 +101,8 @@ export function ServiceSearchResults({ query, onBack }: { query: string; onBack:
     const [favoritesOpen, setFavoritesOpen] = useState(false);
     const [filtersOpen, setFiltersOpen] = useState(false);
     const [filters, setFilters] = useState<CatalogFilters>(defaultFilters);
+    const [expandedId, setExpandedId] = useState<string | null>(null);
+    const toggleExpanded = (id: string) => setExpandedId(previous => previous === id ? null : id);
     const [announcement, setAnnouncement] = useState('');
     const visibleProducts = products.filter(product => matchesQuery(product.title, query));
     const orderedProducts = filterCatalog(visibleProducts, filters);
@@ -134,13 +131,13 @@ export function ServiceSearchResults({ query, onBack }: { query: string; onBack:
                     <Icon name="sort-up" width={8.57895} height={11.7368} />
                     <span className={styles.sortDown}><Icon name="sort-down" width={8.57895} height={11.7368} /></span>
                 </button>
-                <button type="button" aria-label="Открыть избранное" aria-haspopup="dialog" aria-expanded={favoritesOpen} onClick={() => setFavoritesOpen(true)}><Icon name="favorites" width={12} height={12} /></button>
+                <button type="button" aria-label="Открыть избранное" aria-haspopup="dialog" aria-expanded={favoritesOpen} onClick={() => { setExpandedId(null); setFavoritesOpen(true); }}><Icon name="favorites" width={12} height={12} /></button>
             </div>
-            <ProductGrid items={orderedProducts} favorites={favorites} onFavorite={toggleFavorite} onShare={title => void share(title)} label="Результаты поиска одежды" />
+            <ProductGrid items={orderedProducts} favorites={favorites} onFavorite={toggleFavorite} onShare={title => void share(title)} label="Результаты поиска одежды" expandedId={favoritesOpen ? null : expandedId} onToggleExpanded={toggleExpanded} />
         </section>
         {filtersOpen && <ServiceFiltersSheet value={filters} onClose={() => setFiltersOpen(false)} onApply={next => { setFilters(next); setFiltersOpen(false); }} />}
-        {favoritesOpen && <ServiceFavoritesSheet count={favoriteProducts.length} onClose={() => setFavoritesOpen(false)}>
-            <ProductGrid items={favoriteProducts} favorites={favorites} onFavorite={toggleFavorite} onShare={title => void share(title)} label="Избранные товары" />
+        {favoritesOpen && <ServiceFavoritesSheet count={favoriteProducts.length} onClose={() => { setExpandedId(null); setFavoritesOpen(false); }}>
+            <ProductGrid items={favoriteProducts} favorites={favorites} onFavorite={toggleFavorite} onShare={title => void share(title)} label="Избранные товары" expandedId={expandedId} onToggleExpanded={toggleExpanded} />
             <span className="sr-only" role="status">{announcement}</span>
         </ServiceFavoritesSheet>}
         <span className="sr-only" role="status">{favoritesOpen ? '' : announcement}</span>

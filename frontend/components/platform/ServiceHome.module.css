@@ -19,10 +19,10 @@
 .backdrop {
     position: fixed;
     z-index: -1;
-    top: 0;
+    top: calc(-24px - env(safe-area-inset-top));
     left: -20%;
     width: 140%;
-    height: max(100lvh, 836px);
+    height: calc(max(100lvh, 836px) + 48px + env(safe-area-inset-top) + env(safe-area-inset-bottom));
     overflow: hidden;
     background: #77745a;
     filter: blur(11.4px);
@@ -94,6 +94,12 @@
 .search input::placeholder { color: #fff; opacity: 1; }
 .search input::-webkit-search-cancel-button { cursor: pointer; }
 .search:focus-within { outline: 2px solid rgb(255 255 255 / 75%); outline-offset: 3px; }
+
+@media (hover: none) and (pointer: coarse) {
+    /* Avoid iOS zooming and shifting the viewport when the search is focused. */
+    .search input { font-size: 16px; }
+}
+
 .panel,
 .createPanel {
     border: .5px solid rgb(238 238 238 / 65%);

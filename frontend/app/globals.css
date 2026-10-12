@@ -143,6 +143,50 @@ html[data-browser-surface="safari18"] {
   }
 }
 
+/* The service home is a viewport app; only its panels may scroll. Override
+   min-h-screen (100vh), which exceeds 100dvh with mobile browser bars visible. */
+html[data-app-page="home"],
+html[data-app-page="home"] body {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+html[data-app-page="home"] {
+  --cart-action-bar-bottom: max(5px, env(safe-area-inset-bottom));
+  background: #77745A url('/service-home/background.webp') center top / 140% max(100lvh, 836px) no-repeat;
+}
+
+html[data-app-page="home"] body {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  background: transparent;
+}
+
+html[data-app-page="home"] .appPageShell {
+  isolation: isolate;
+  flex: none;
+  height: 100%;
+  min-height: 0;
+  padding-bottom: 0;
+  background: transparent;
+}
+
+html[data-app-page="home"][data-browser-surface="pwa"],
+html[data-app-page="home"][data-browser-surface="safari26"],
+html[data-app-page="home"][data-browser-surface="safari18"] {
+  --cart-action-bar-bottom: max(20px, env(safe-area-inset-bottom));
+}
+
+@media (display-mode: standalone) {
+  html[data-app-page="home"],
+  html[data-app-page="home"] body {
+    --cart-action-bar-bottom: max(20px, env(safe-area-inset-bottom));
+  }
+}
+
 .viewportOverlayRoot {
   position: fixed;
   inset: 0;
