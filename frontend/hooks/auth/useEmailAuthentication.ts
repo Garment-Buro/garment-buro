@@ -9,12 +9,11 @@ import {
 
 import { requestAuthEmailCode, verifyAuthEmailCode } from '@/lib/api/auth';
 import { normalizeOtpDigit } from '@/lib/auth/utils/auth';
-import type { AuthMethod, AuthStep, AuthUser } from '@/lib/auth/types';
+import type { AuthStep, AuthUser } from '@/lib/auth/types';
 
 type SetAuth = (token: string, user: AuthUser) => void;
 
 export const useEmailAuthentication = (setAuth: SetAuth) => {
-    const [method, setMethod] = useState<AuthMethod>('email');
     const [step, setStep] = useState<AuthStep>('input');
     const [email, setEmail] = useState('');
     const [code, setCode] = useState(['', '', '', '']);
@@ -96,8 +95,6 @@ export const useEmailAuthentication = (setAuth: SetAuth) => {
     const showInputStep = () => setStep('input');
 
     return {
-        method,
-        setMethod,
         step,
         showInputStep,
         email,

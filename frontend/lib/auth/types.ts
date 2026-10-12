@@ -9,7 +9,6 @@ export interface AuthUser {
     phone?: string;
 }
 
-export type AuthMethod = 'email' | 'telegram';
 export type AuthStep = 'input' | 'verify';
 export type DashboardTab = 'profile' | 'orders' | 'settings';
 export type EmailLinkStep = 'start' | 'input' | 'verify';

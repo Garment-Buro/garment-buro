@@ -2,15 +2,18 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.modules.identity.models import (
     SYSTEM_ROLE_PERMISSIONS,
+    ExternalAuthIdentity,
     OtpChallenge,
+    OtpMethod,
     OtpPurpose,
+    PasswordCredential,
     Permission,
     PermissionCode,
     RefreshSession,
@@ -33,6 +36,18 @@ class IdentityRepository:
         for_update: bool = False,
     ) -> User | None:
         statement = select(User).where(User.email_normalized == email_normalized)
+        if for_update:
+            statement = statement.with_for_update()
+        return await session.scalar(statement)
+
+    async def get_user_by_phone(
+        self,
+        session: AsyncSession,
+        phone_normalized: str,
+        *,
+        for_update: bool = False,
+    ) -> User | None:
+        statement = select(User).where(User.phone_normalized == phone_normalized)
         if for_update:
             statement = statement.with_for_update()
         return await session.scalar(statement)
@@ -86,6 +101,119 @@ class IdentityRepository:
         await session.flush()
         return user
 
+    async def get_password_credential(
+        self,
+        session: AsyncSession,
+        *,
+        user_id: int,
+        for_update: bool = False,
+    ) -> PasswordCredential | None:
+        statement = select(PasswordCredential).where(PasswordCredential.user_id == user_id)
+        if for_update:
+            statement = statement.with_for_update()
+        return await session.scalar(statement)
+
+    async def get_external_identity(
+        self,
+        session: AsyncSession,
+        *,
+        provider: str,
+        subject: str,
+        for_update: bool = False,
+    ) -> ExternalAuthIdentity | None:
+        statement = select(ExternalAuthIdentity).where(
+            ExternalAuthIdentity.provider == provider,
+            ExternalAuthIdentity.subject == subject,
+        )
+        if for_update:
+            statement = statement.with_for_update()
+        return await session.scalar(statement)
+
+    async def create_external_customer(
+        self,
+        session: AsyncSession,
+        *,
+        provider: str,
+        subject: str,
+        first_name: str | None,
+        last_name: str | None,
+        username: str | None,
+        verified_at: datetime,
+    ) -> User:
+        role = await session.scalar(select(Role).where(Role.name == RoleName.CUSTOMER.value))
+        if role is None:
+            raise RuntimeError("System customer role is missing")
+        user = User(
+            primary_auth_provider=provider,
+            primary_auth_subject=subject,
+            telegram_id=subject if provider == "telegram" else None,
+            first_name=first_name,
+            last_name=last_name,
+            username=username,
+        )
+        session.add(user)
+        await session.flush()
+        session.add_all(
+            [
+                UserRole(user_id=user.id, role_id=role.id),
+                ExternalAuthIdentity(
+                    user_id=user.id,
+                    provider=provider,
+                    subject=subject,
+                    verified_at=verified_at,
+                ),
+            ]
+        )
+        await session.flush()
+        return user
+
+    async def get_or_create_external_customer(
+        self,
+        session: AsyncSession,
+        *,
+        provider: str,
+        subject: str,
+        first_name: str | None,
+        last_name: str | None,
+        username: str | None,
+        verified_at: datetime,
+    ) -> User:
+        identity = await self.get_external_identity(
+            session,
+            provider=provider,
+            subject=subject,
+            for_update=True,
+        )
+        if identity is not None:
+            user = await self.get_user(session, identity.user_id, for_update=True)
+            if user is None:
+                raise RuntimeError("External identity points to a missing user") from None
+            return user
+        try:
+            async with session.begin_nested():
+                return await self.create_external_customer(
+                    session,
+                    provider=provider,
+                    subject=subject,
+                    first_name=first_name,
+                    last_name=last_name,
+                    username=username,
+                    verified_at=verified_at,
+                )
+        except IntegrityError:
+            identity = await self.get_external_identity(
+                session,
+                provider=provider,
+                subject=subject,
+                for_update=True,
+            )
+            if identity is None:
+                raise
+            user = await self.get_user(session, identity.user_id, for_update=True)
+            if user is None:
+                raise RuntimeError("External identity points to a missing user") from None
+            return user
+
     async def get_or_create_customer(
         self,
         session: AsyncSession,
@@ -117,18 +245,60 @@ class IdentityRepository:
                 raise
             return user
 
+    async def create_phone_customer(
+        self,
+        session: AsyncSession,
+        *,
+        phone: str,
+        phone_normalized: str,
+    ) -> User:
+        role = await session.scalar(select(Role).where(Role.name == RoleName.CUSTOMER.value))
+        if role is None:
+            raise RuntimeError("System customer role is missing")
+        user = User(phone=phone, phone_normalized=phone_normalized)
+        session.add(user)
+        await session.flush()
+        session.add(UserRole(user_id=user.id, role_id=role.id))
+        await session.flush()
+        return user
+
+    async def get_or_create_phone_customer(
+        self,
+        session: AsyncSession,
+        *,
+        phone: str,
+        phone_normalized: str,
+    ) -> User:
+        user = await self.get_user_by_phone(session, phone_normalized, for_update=True)
+        if user is not None:
+            return user
+        try:
+            async with session.begin_nested():
+                return await self.create_phone_customer(
+                    session,
+                    phone=phone,
+                    phone_normalized=phone_normalized,
+                )
+        except IntegrityError:
+            user = await self.get_user_by_phone(session, phone_normalized, for_update=True)
+            if user is None:
+                raise
+            return user
+
     async def latest_challenge(
         self,
         session: AsyncSession,
         *,
         target_email_normalized: str,
         purpose: OtpPurpose,
+        method: OtpMethod = OtpMethod.EMAIL,
     ) -> OtpChallenge | None:
         return await session.scalar(
             select(OtpChallenge)
             .where(
                 OtpChallenge.target_email_normalized == target_email_normalized,
                 OtpChallenge.purpose == purpose.value,
+                OtpChallenge.method == method.value,
             )
             .order_by(OtpChallenge.created_at.desc(), OtpChallenge.id.desc())
             .limit(1)
@@ -141,12 +311,14 @@ class IdentityRepository:
         target_email_normalized: str,
         requested_ip_digest: str | None,
         since: datetime,
+        method: OtpMethod = OtpMethod.EMAIL,
     ) -> int:
         email_count = await session.scalar(
             select(func.count())
             .select_from(OtpChallenge)
             .where(
                 OtpChallenge.target_email_normalized == target_email_normalized,
+                OtpChallenge.method == method.value,
                 OtpChallenge.created_at >= since,
             )
         )
@@ -188,8 +360,9 @@ class IdentityRepository:
         *,
         user_id: int,
         purpose: OtpPurpose,
+        method: OtpMethod = OtpMethod.EMAIL,
     ) -> OtpChallenge | None:
-        active_key = self.active_challenge_key(user_id, purpose)
+        active_key = self.active_challenge_key(user_id, purpose, method=method)
         return await session.scalar(
             select(OtpChallenge).where(OtpChallenge.active_key == active_key).with_for_update()
         )
@@ -262,6 +435,19 @@ class IdentityRepository:
                 OtpChallenge.invalidated_at.is_(None),
             )
             .values(active_key=None, invalidated_at=invalidated_at)
+        )
+
+    async def delete_user_auth_credentials(
+        self,
+        session: AsyncSession,
+        *,
+        user_id: int,
+    ) -> None:
+        await session.execute(
+            delete(ExternalAuthIdentity).where(ExternalAuthIdentity.user_id == user_id)
+        )
+        await session.execute(
+            delete(PasswordCredential).where(PasswordCredential.user_id == user_id)
         )
 
     async def active_session_count(
@@ -447,5 +633,12 @@ class IdentityRepository:
         await session.flush()
 
     @staticmethod
-    def active_challenge_key(user_id: int, purpose: OtpPurpose) -> str:
+    def active_challenge_key(
+        user_id: int,
+        purpose: OtpPurpose,
+        *,
+        method: OtpMethod = OtpMethod.EMAIL,
+    ) -> str:
+        if method is not OtpMethod.EMAIL:
+            return f"{purpose.value}:{method.value}:{user_id}"
         return f"{purpose.value}:{user_id}"

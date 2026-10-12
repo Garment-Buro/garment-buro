@@ -10,7 +10,12 @@ from app.modules.notifications.service import (
     NotificationOutboxService,
     NotificationPolicy,
 )
-from app.modules.notifications.transport import SmtpEmailTransport
+from app.modules.notifications.transport import (
+    DisabledPhoneTransport,
+    NotificationTransportRegistry,
+    SmtpEmailTransport,
+    TelegramBotTransport,
+)
 
 
 def build_notification_codec(settings: Settings) -> NotificationPayloadCodec:
@@ -50,8 +55,17 @@ def build_notification_outbox_service(settings: Settings) -> NotificationOutboxS
 
 
 def build_notification_dispatcher(settings: Settings) -> NotificationDispatcher:
+    transports = [SmtpEmailTransport(settings), DisabledPhoneTransport()]
+    telegram_token = Settings.secret_value(settings.telegram_bot_token)
+    if settings.notification_telegram_enabled and telegram_token:
+        transports.append(
+            TelegramBotTransport(
+                bot_token=telegram_token,
+                api_url=settings.telegram_api_url,
+            )
+        )
     return NotificationDispatcher(
         build_notification_codec(settings),
-        SmtpEmailTransport(settings),
+        NotificationTransportRegistry(transports),
         policy=build_notification_policy(settings),
     )
