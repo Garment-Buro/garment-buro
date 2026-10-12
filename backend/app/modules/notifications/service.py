@@ -20,13 +20,29 @@ from app.modules.notifications.models import (
 from app.modules.notifications.rendering import (
     InvalidNotificationPayloadError,
     NotificationRenderer,
+    RenderedEmail,
+    RenderedNotification,
     UnsupportedNotificationTemplateError,
 )
 from app.modules.notifications.repository import NotificationRepository
 from app.modules.notifications.transport import (
     EmailTransport,
+    NotificationChannelUnavailableError,
     NotificationDeliveryError,
+    NotificationTransportRegistry,
 )
+
+
+class _LegacyEmailTransportAdapter:
+    channel = NotificationChannel.EMAIL.value
+
+    def __init__(self, transport: EmailTransport) -> None:
+        self.transport = transport
+
+    async def send(self, message: RenderedNotification) -> str | None:
+        if not isinstance(message, RenderedEmail):
+            raise NotificationDeliveryError("Email transport received a non-email message")
+        return await self.transport.send(message)
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,6 +92,7 @@ class NotificationOutboxService:
         deduplication_key: str,
         now: datetime,
         discard_after: datetime | None = None,
+        channel: NotificationChannel = NotificationChannel.EMAIL,
     ) -> NotificationOutbox:
         encrypted = self.codec.encrypt(
             {
@@ -86,7 +103,7 @@ class NotificationOutboxService:
             }
         )
         notification = NotificationOutbox(
-            channel=NotificationChannel.EMAIL.value,
+            channel=channel.value,
             template=NotificationTemplate.AUTH_OTP.value,
             payload_ciphertext=encrypted.ciphertext,
             payload_nonce=encrypted.nonce,
@@ -165,14 +182,19 @@ class NotificationDispatcher:
     def __init__(
         self,
         codec: NotificationPayloadCodec,
-        transport: EmailTransport,
+        transport: NotificationTransportRegistry | EmailTransport,
         *,
         repository: NotificationRepository | None = None,
         renderer: NotificationRenderer | None = None,
         policy: NotificationPolicy | None = None,
     ) -> None:
         self.codec = codec
-        self.transport = transport
+        if isinstance(transport, NotificationTransportRegistry):
+            self.transports = transport
+        else:
+            self.transports = NotificationTransportRegistry(
+                [_LegacyEmailTransportAdapter(transport)]
+            )
         self.repository = repository or NotificationRepository()
         self.renderer = renderer or NotificationRenderer()
         self.policy = policy or NotificationPolicy()
@@ -215,8 +237,12 @@ class NotificationDispatcher:
                     key_version=notification.encryption_key_version,
                 )
             )
-            message = self.renderer.render_email(notification.template, payload)
-            provider_reference = await self.transport.send(message)
+            message = self.renderer.render(
+                notification.channel,
+                notification.template,
+                payload,
+            )
+            provider_reference = await self.transports.get(notification.channel).send(message)
         except PayloadDecryptionError:
             return await self._fail(
                 session,
@@ -235,13 +261,26 @@ class NotificationDispatcher:
                 error_code="template_invalid",
                 permanent=True,
             )
+        except NotificationChannelUnavailableError:
+            return await self._fail(
+                session,
+                notification,
+                attempt,
+                now=now,
+                error_code="channel_unavailable",
+                permanent=True,
+            )
         except NotificationDeliveryError:
             return await self._fail(
                 session,
                 notification,
                 attempt,
                 now=now,
-                error_code="smtp_delivery",
+                error_code=(
+                    "smtp_delivery"
+                    if notification.channel == NotificationChannel.EMAIL.value
+                    else f"{notification.channel}_delivery"
+                ),
                 permanent=False,
             )
         except Exception:  # noqa: BLE001 - one bad delivery must not stop the worker

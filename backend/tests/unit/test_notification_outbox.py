@@ -19,6 +19,7 @@ from app.modules.notifications.crypto import (
 from app.modules.notifications.factory import build_notification_codec
 from app.modules.notifications.models import (
     DeliveryAttemptStatus,
+    NotificationChannel,
     NotificationDeliveryAttempt,
     NotificationOutbox,
     NotificationStatus,
@@ -29,7 +30,11 @@ from app.modules.notifications.service import (
     NotificationOutboxService,
     NotificationPolicy,
 )
-from app.modules.notifications.transport import NotificationDeliveryError
+from app.modules.notifications.transport import (
+    DisabledPhoneTransport,
+    NotificationDeliveryError,
+    NotificationTransportRegistry,
+)
 
 
 def encoded_key(byte: bytes = b"k") -> str:
@@ -46,6 +51,82 @@ class FlakyEmailTransport:
         if len(self.messages) <= self.failures:
             raise NotificationDeliveryError("simulated SMTP failure")
         return f"provider-{len(self.messages)}"
+
+
+class CaptureTelegramTransport:
+    channel = NotificationChannel.TELEGRAM.value
+
+    def __init__(self) -> None:
+        self.messages = []
+
+    async def send(self, message):
+        self.messages.append(message)
+        return "telegram-message-1"
+
+
+def test_dispatcher_routes_telegram_and_disables_phone_permanently() -> None:
+    async def scenario() -> None:
+        settings = Settings(
+            _env_file=None,
+            app_env=AppEnvironment.TEST,
+            database_enabled=True,
+            database_url="sqlite+aiosqlite:///:memory:",
+        )
+        database = DatabaseManager(settings)
+        codec = NotificationPayloadCodec.from_base64_key(encoded_key(b"m"))
+        outbox = NotificationOutboxService(codec)
+        telegram = CaptureTelegramTransport()
+        dispatcher = NotificationDispatcher(
+            codec,
+            NotificationTransportRegistry([telegram, DisabledPhoneTransport()]),
+        )
+        now = datetime.now(timezone.utc).replace(microsecond=0)
+        await database.startup()
+        async with database.engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+
+        async with database.session() as session:
+            await outbox.enqueue_auth_otp(
+                session,
+                recipient="987654321",
+                code="1234",
+                purpose="login",
+                expires_minutes=10,
+                deduplication_key="telegram:otp:1",
+                now=now,
+                channel=NotificationChannel.TELEGRAM,
+            )
+            await session.commit()
+        async with database.session() as session:
+            sent = await dispatcher.dispatch_once(session, now=now, worker_id="worker-tg")
+        assert sent is not None
+        assert sent.status == NotificationStatus.SENT.value
+        assert "1234" in telegram.messages[0].text
+
+        async with database.session() as session:
+            await outbox.enqueue_auth_otp(
+                session,
+                recipient="+79991234567",
+                code="5678",
+                purpose="login",
+                expires_minutes=10,
+                deduplication_key="phone:otp:1",
+                now=now + timedelta(seconds=1),
+                channel=NotificationChannel.PHONE,
+            )
+            await session.commit()
+        async with database.session() as session:
+            failed = await dispatcher.dispatch_once(
+                session,
+                now=now + timedelta(seconds=1),
+                worker_id="worker-phone",
+            )
+        assert failed is not None
+        assert failed.status == NotificationStatus.DEAD.value
+        assert failed.error_code == "channel_unavailable"
+        await database.shutdown()
+
+    asyncio.run(scenario())
 
 
 def test_notification_payload_is_authenticated_and_not_plaintext() -> None:
