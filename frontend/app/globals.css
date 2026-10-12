@@ -155,15 +155,21 @@ html[data-app-page="home"] body {
 
 html[data-app-page="home"] {
   --cart-action-bar-bottom: max(5px, env(safe-area-inset-bottom));
-  background: #77745A url('/service-home/background.webp') center top / 140% max(100lvh, 836px) no-repeat;
+  background: transparent url('/service-home/background.webp') center top / 140% max(100lvh, 836px) no-repeat;
 }
 
 html[data-app-page="home"] body {
+  background: transparent;
+}
+
+/* iOS may move the root viewport even with overflow:hidden. Pin only the
+   catalog shell; its product list keeps its own touch scrolling. */
+html[data-app-page="home"]:has([data-service-view="catalog"]) body {
   position: fixed;
   inset: 0;
   width: 100%;
-  background: transparent;
 }
+
 
 html[data-app-page="home"] .appPageShell {
   isolation: isolate;

@@ -49,6 +49,10 @@ export const metadata: Metadata = {
   },
   description: "Совместные коллекции, конструктор одежды, производство и доставка GARMENT BURO.",
   manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: "Garment Buro",
+  },
   icons: {
     icon: "/favicon.ico",
     apple: "/apple-touch-icon.png",

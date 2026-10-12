@@ -37,8 +37,6 @@
 .hoodie { width: 85.898%; aspect-ratio: 131.424 / 143.021; transform: rotate(2.47deg) translateY(-2px); }
 .hoodie img { width: 128.24%; height: 147.3%; left: -13.38%; top: -24.32%; }
 .cardFavorite { position: absolute; top: 5px; right: 5px; display: flex; width: 28px; height: 28px; align-items: center; justify-content: center; border-radius: 50%; cursor: pointer; }
-.cardFavorite img { opacity: .45; }
-.cardFavorite[aria-pressed=true] img { opacity: 1; }
 .cardFavorite:focus-visible, .card button:focus-visible, .card a:focus-visible { outline: 2px solid #afaa73; outline-offset: -2px; }
 .meta { display: flex; height: 20px; width: 100%; min-width: 0; padding-inline: 7px 5px; align-items: center; justify-content: space-between; gap: 5px; color: #fff; font-size: clamp(9px, 2.7vw, 12px); font-weight: 500; line-height: 1.2; }
 .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -55,7 +53,6 @@
 .actions { display: flex; height: 35px; padding: 4px 5px; align-items: center; justify-content: space-between; gap: 5px; }
 .actions button, .actions a { display: flex; height: 27px; align-items: center; justify-content: center; border-radius: 13px; }
 .like, .share { width: 30px; flex: none; }
-.like[aria-pressed=true] { background: rgb(255 255 255 / 30%); }
 .add { width: 55px; flex: 0 1 55px; background: rgb(0 0 0 / 44%); }
 .empty { padding: 30px 12px; text-align: center; font-size: 14px; }
 .results button { cursor: pointer; }

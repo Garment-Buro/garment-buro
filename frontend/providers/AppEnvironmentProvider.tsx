@@ -41,8 +41,9 @@ export function AppEnvironmentProvider({ children }: AppEnvironmentProviderProps
         const body = document.body;
         const metaThemeColor = document.querySelector('meta[name="theme-color"]') as HTMLMetaElement | null;
         const previousThemeMedia = metaThemeColor?.getAttribute('media');
-        const usesNativeSafariColor = surface === 'safari26'
-            && ['home', 'nikitamoiseev', 'light-running', 'presentation'].includes(pageChrome.page);
+        const usesNativeSafariColor = (surface === 'safari26'
+            && ['home', 'nikitamoiseev', 'light-running', 'presentation'].includes(pageChrome.page))
+            || (surface === 'pwa' && pageChrome.page === 'home');
         let secondThemeRefreshId: number | undefined;
 
         const syncPageChrome = () => {

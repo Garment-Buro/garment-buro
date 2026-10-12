@@ -134,10 +134,10 @@ test("product page uses the shared top substrate in PWA and Safari", () => {
 
 test("pwa manifest exposes installable icons for launchers and apple devices", () => {
     assert.match(manifestSource, /id:\s*"\/constructor"/);
-    assert.match(manifestSource, /start_url:\s*"\/constructor\?source=pwa"/);
+    assert.match(manifestSource, /start_url:\s*"\/\?source=pwa"/);
     assert.match(manifestSource, /scope:\s*"\/"/);
-    assert.match(manifestSource, /background_color:\s*"#F2F2F2"/);
-    assert.match(manifestSource, /theme_color:\s*"#F2F2F2"/);
+    assert.match(manifestSource, /background_color:\s*"#77745A"/);
+    assert.doesNotMatch(manifestSource, /theme_color:/);
     assert.match(layoutSource, /manifest:\s*"\/manifest\.webmanifest"/);
     assert.match(layoutSource, /icon:\s*"\/favicon\.ico"/);
     assert.match(layoutSource, /apple:\s*"\/apple-touch-icon\.png"/);

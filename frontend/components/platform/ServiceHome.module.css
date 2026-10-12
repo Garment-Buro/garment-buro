@@ -1,7 +1,8 @@
 .page {
     --home-width: 760px;
     --panel-radius: 15px;
-    --rail-inset: 18px;
+    --home-unit: clamp(.65px, min(calc((100vw - 20px) / 350), calc((100dvh - 300px - env(safe-area-inset-top) - env(safe-area-inset-bottom)) / 440)), 2.17px);
+    --rail-inset: calc(18 * var(--home-unit));
 
     position: relative;
     isolation: isolate;
@@ -10,21 +11,21 @@
     min-height: 0;
     overflow: hidden;
     flex-direction: column;
-    padding: max(clamp(16px, 7.23dvh, 58px), env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(100px, calc(var(--cart-action-bar-bottom, 5px) + 80px), calc(env(safe-area-inset-bottom) + 80px)) max(10px, env(safe-area-inset-left));
+    justify-content: center;
+    padding: max(20px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(100px, calc(var(--cart-action-bar-bottom, 5px) + 80px), calc(env(safe-area-inset-bottom) + 80px)) max(10px, env(safe-area-inset-left));
     color: #fff;
     font-family: var(--font-manrope), sans-serif;
 }
 
 /* Only decorative layers and image crops are taken out of the document flow. */
 .backdrop {
-    position: fixed;
+    position: absolute;
     z-index: -1;
     top: calc(-24px - env(safe-area-inset-top));
     left: -20%;
     width: 140%;
     height: calc(max(100lvh, 836px) + 48px + env(safe-area-inset-top) + env(safe-area-inset-bottom));
     overflow: hidden;
-    background: #77745a;
     filter: blur(11.4px);
     pointer-events: none;
 }
@@ -34,7 +35,8 @@
     display: flex;
     width: min(100% - 40px, var(--home-width));
     min-height: 48px;
-    flex: 0 1 clamp(48px, calc(100dvh - 670px), 132px);
+    flex: none;
+    margin-bottom: clamp(16px, 3dvh, 32px);
     margin-inline: auto;
     justify-content: center;
 }
@@ -60,10 +62,10 @@
     width: 100%;
     max-width: var(--home-width);
     min-height: 0;
-    flex: 1;
+    flex: 0 1 auto;
     margin-inline: auto;
     flex-direction: column;
-    gap: 10px;
+    gap: clamp(8px, calc(10 * var(--home-unit)), 16px);
 }
 
 .search {
@@ -109,40 +111,43 @@
     display: flex;
     min-width: 0;
     min-height: 0;
-    flex: 1;
-    overflow: hidden;
-    padding-block: 3px 17px;
+    flex: 0 1 auto;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    padding-block: calc(8 * var(--home-unit)) calc(17 * var(--home-unit));
     flex-direction: column;
     background: radial-gradient(ellipse at 50% 45%, #afaa73 30%, rgb(175 170 115 / 35%) 100%);
 }
 .communities,
 .clothing,
 .people { display: flex; min-width: 0; min-height: 0; flex-direction: column; }
-.communities { flex: 90; gap: 12px; }
-.clothing { flex: 114; margin-top: 28px; gap: 10px; }
-.people { flex: 104; margin-top: 20px; gap: 8px; }
-.sectionTitle { flex-shrink: 0; padding-inline: 20px; font-size: 16px; font-weight: 500; line-height: 22px; letter-spacing: .02em; }
+.communities { flex: none; gap: calc(12 * var(--home-unit)); }
+.clothing { flex: none; margin-top: calc(28 * var(--home-unit)); gap: calc(10 * var(--home-unit)); }
+.people { flex: none; margin-top: calc(20 * var(--home-unit)); gap: calc(8 * var(--home-unit)); }
+.sectionTitle { flex-shrink: 0; padding-inline: 20px; font-size: clamp(14px, calc(16 * var(--home-unit)), 24px); font-weight: 500; line-height: 1.375; letter-spacing: .02em; }
 .rail {
     container-type: size;
     display: flex;
     min-width: 0;
     min-height: 0;
-    flex: 1;
+    flex: none;
     overflow-x: auto;
     overflow-y: hidden;
     padding-inline: var(--rail-inset);
     align-items: center;
     overscroll-behavior-x: contain;
-    scroll-snap-type: x proximity;
+    /* Continuous preview motion must not snap back between animation frames. */
+    scroll-snap-type: none;
     scroll-padding-inline: var(--rail-inset);
 }
 
 .rail:focus-visible { outline: 1px solid #fff; outline-offset: -1px; }
 .rail > * { scroll-snap-align: start; }
-.communityRail { --rail-inset: 10px; }
+.communityRail { --rail-inset: calc(10 * var(--home-unit)); height: calc(56 * var(--home-unit)); }
 .community {
     position: relative;
-    flex: 0 0 calc(min(100cqh, 56px) * 144 / 56);
+    flex: 0 0 calc(100cqh * 144 / 56);
     aspect-ratio: 144 / 56;
     overflow: hidden;
     background: #000;
@@ -150,35 +155,35 @@
     mask: url('/service-home/community-mask.svg') center / 100% 100% no-repeat;
 }
 
-.community + .community { margin-left: -6px; }
+.community + .community { margin-left: calc(-6 * var(--home-unit)); }
 .cropImage { position: absolute; max-width: none; }
 .community:focus-visible { background: #555; }
 .community img { object-fit: cover; }
 .community .runnersImage { width: 82%; height: auto; top: 0; left: 9%; }
 .community .heartImage { width: 109%; height: auto; top: -120%; left: -3%; }
 .community.boxing {
-    flex-basis: calc(min(100cqh, 56px) * 123 / 56);
+    flex-basis: calc(100cqh * 123 / 56);
     aspect-ratio: 123 / 56;
     -webkit-mask-image: url('/service-home/boxing-mask.svg');
     mask-image: url('/service-home/boxing-mask.svg');
 }
 .community .boxingImage { width: 116%; height: auto; top: -42%; left: -8%; }
-.boxingName { position: relative; display: block; width: fit-content; margin: 19% 0 0 29%; font-family: var(--font-inter), sans-serif; font-size: min(12.553px, 22.4cqh); font-weight: 800; line-height: 1.2; }
+.boxingName { position: relative; display: block; width: fit-content; margin: 19% 0 0 29%; font-family: var(--font-inter), sans-serif; font-size: 22.4cqh; font-weight: 800; line-height: 1.2; }
 .clothingRail {
-    gap: 13px;
+    height: max(calc(84 * var(--home-unit)), calc(72 * var(--home-unit) + 10.5px));
+    gap: calc(13 * var(--home-unit));
 }
 .clothingCard {
     display: flex;
     min-width: 0;
-    /* Fit both the three-column width and the available row height. */
-    flex: 0 0 min(calc((100cqw - 26px) / 3), calc((100cqh - 18px) * 90 / 65 + 6px));
-    padding: 3px 3px 2px;
+    flex: 0 0 calc(96 * var(--home-unit));
+    padding: calc(3 * var(--home-unit)) calc(3 * var(--home-unit)) calc(2 * var(--home-unit));
     flex-direction: column;
-    border-radius: 12.526px;
+    border-radius: calc(12.526 * var(--home-unit));
     background: rgb(21 21 21 / 70%);
 }
 
-.productFrame { display: flex; overflow: hidden; aspect-ratio: 90 / 65; align-items: center; justify-content: center; border-radius: 10.806px; background: #f2f2f2; }
+.productFrame { display: flex; overflow: hidden; aspect-ratio: 90 / 65; align-items: center; justify-content: center; border-radius: calc(10.806 * var(--home-unit)); background: #f2f2f2; }
 .productCrop { position: relative; overflow: hidden; flex: none; }
 .productCrop img { object-fit: cover; }
 .shoes { width: 80%; aspect-ratio: 71.969 / 39.574; }
@@ -187,101 +192,70 @@
 .cap img { width: 184.31%; height: 167.86%; top: -37.5%; left: -45.1%; }
 .top { width: 58.13%; aspect-ratio: 52.313 / 57.62; }
 .top img { width: 145.95%; height: 131.71%; top: -15.73%; left: -23.65%; }
+.hoodie { width: 85.898%; aspect-ratio: 131.424 / 143.021; }
+.hoodie img { width: 128.24%; height: 147.3%; left: -13.38%; top: -24.32%; }
 .clothingCard h3 {
     overflow: hidden;
-    padding: 1px 3px 0;
+    padding: calc(1 * var(--home-unit)) calc(3 * var(--home-unit)) 0;
     color: #cdcdcd;
-    font-size: clamp(7px, 2.16vw, 11px);
+    font-size: max(7px, calc(8 * var(--home-unit)));
     font-weight: 500;
-    line-height: 12px;
+    line-height: 1.5;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-.peopleRail { --rail-inset: 20px; gap: 10px; }
+.peopleRail { --rail-inset: calc(20 * var(--home-unit)); height: calc(74 * var(--home-unit)); gap: calc(10 * var(--home-unit)); }
 .personCard {
     position: relative;
     isolation: isolate;
     display: flex;
-    height: min(100cqh, 74px);
-    flex: 0 0 calc(min(100cqh, 74px) * 248 / 74);
+    height: 100%;
+    flex: 0 0 calc(248 * var(--home-unit));
     overflow: hidden;
     padding: 1px;
     align-items: stretch;
-    gap: 16px;
-    border-radius: 12px;
+    gap: calc(16 * var(--home-unit));
+    border-radius: calc(12 * var(--home-unit));
     background: rgb(0 0 0 / 10%);
     box-shadow: inset 0 0 0 .5px rgb(255 255 255 / 70%);
 }
 
 .personCard .personBackdrop { z-index: -1; height: 333.57%; width: 103.89%; top: -20.03%; left: -4.27%; filter: blur(8px); object-fit: cover; }
-.personPortrait { position: relative; height: 100%; aspect-ratio: 1; flex: none; overflow: hidden; border-radius: 11px; }
+.personPortrait { position: relative; height: 100%; aspect-ratio: 1; flex: none; overflow: hidden; border-radius: calc(11 * var(--home-unit)); }
 .personPortrait .lizaPortrait { width: 160.46%; height: 159.5%; top: -.34%; left: -22.13%; object-fit: cover; }
-.personDetails { display: flex; min-width: 0; padding-block: min(10px, 10cqh); flex-direction: column; justify-content: space-between; }
-.personDetails h3 { font-size: 12px; font-weight: 600; line-height: 1.082; }
-.personDetails p { font-size: 11px; font-weight: 500; line-height: 1.2; }
-.personPreview { position: relative; height: min(100cqh, 66px); flex: 0 0 min(100cqh, 66px); overflow: hidden; border: 1px solid rgb(255 255 255 / 25%); border-radius: 11px; }
-.personPreview .manPortrait { width: 128.34%; height: 149.65%; top: -11.65%; left: -28.24%; object-fit: cover; transform: scaleX(-1); }
-.createPanel { display: flex; min-height: 74px; flex-shrink: 0; margin-top: 5px; align-items: center; justify-content: center; }
+.personDetails { display: flex; min-width: 0; padding-block: calc(10 * var(--home-unit)); flex-direction: column; justify-content: space-between; }
+.personDetails h3 { max-width: 13ch; font-size: max(10px, calc(12 * var(--home-unit))); font-weight: 600; line-height: 1.082; }
+.personDetails p { font-size: max(8px, calc(11 * var(--home-unit))); font-weight: 500; line-height: 1.2; }
+.personPortrait .manPortrait { width: 128.34%; height: 149.65%; top: -11.65%; left: -28.24%; object-fit: cover; transform: scaleX(-1); }
+.createPanel { display: flex; min-height: clamp(60px, calc(74 * var(--home-unit)), 100px); flex-shrink: 0; margin-top: 5px; align-items: center; justify-content: center; }
 .createButton { display: flex; width: 80px; height: 54px; align-items: center; justify-content: center; border: .5px solid rgb(238 238 238 / 70%); border-radius: 26px; box-shadow: 0 4px 16.8px -1px rgb(0 0 0 / 25%); transition: background-color 150ms ease; }
 .createButton span { margin-top: -4px; font-size: 48px; font-weight: 500; line-height: 1; letter-spacing: .02em; }
 .createButton:hover { background: rgb(255 255 255 / 12%); }
 .createButton:active { background: rgb(255 255 255 / 20%); }
 .createButton:focus-visible { outline: 2px solid #fff; outline-offset: 4px; }
 
-.pageSearch .header { flex-basis: 48px; }
+.pageSearch .header { margin-bottom: 16px; }
+.pageSearch .content { flex: 1; }
 .pageSearch .content { gap: 6px; }
 
 @media (min-width: 600px) {
-    .page { --rail-inset: 24px; --panel-radius: 20px; padding-inline: 24px; padding-top: max(clamp(24px, 6.25dvh, 64px), env(safe-area-inset-top)); }
-    .header { flex-basis: clamp(48px, calc(100dvh - 830px), 190px); width: min(100% - 48px, 640px); }
-    .content { gap: 16px; }
+    .page {
+        --home-unit: clamp(.65px, min(calc(min(100vw - 48px, 760px) / 350), calc((100dvh - 300px - env(safe-area-inset-top) - env(safe-area-inset-bottom)) / 440)), 2.17px);
+        --panel-radius: 20px;
+        padding-inline: max(24px, env(safe-area-inset-left)) max(24px, env(safe-area-inset-right));
+    }
     .search { height: 38px; margin-inline: 32px; padding-inline: 14px; }
-    .search input { font-size: 16px; }
-    .panel { padding-block: 14px 24px; }
-    .sectionTitle { padding-inline: 24px; font-size: 18px; line-height: 26px; }
-    .communities { gap: 16px; }
-    .clothing { margin-top: 32px; gap: 14px; }
-    .people { margin-top: 28px; gap: 12px; }
-    .communityRail { --rail-inset: 14px; }
-    .community { flex-basis: calc(min(100cqh, clamp(70px, 12vw, 96px)) * 144 / 56); }
-    .community.boxing { flex-basis: calc(min(100cqh, clamp(70px, 12vw, 96px)) * 123 / 56); }
-    .boxingName { font-size: min(16px, 22.4cqh); }
-    .clothingRail { gap: 20px; }
-    .clothingCard { flex-basis: min(calc((100cqw - 40px) / 3), calc((100cqh - 26px) * 90 / 65 + 8px)); padding: 4px 4px 3px; border-radius: 16px; }
-    .productFrame { border-radius: 12px; }
-    .clothingCard h3 { padding-top: 3px; font-size: 11px; line-height: 16px; }
-    .peopleRail { --rail-inset: 24px; gap: 16px; }
-    .personCard { height: min(100cqh, 92px); flex-basis: calc(min(100cqh, 92px) * 310 / 92); gap: 20px; border-radius: 15px; }
-    .personPortrait { border-radius: 14px; }
-    .personDetails { padding-block: min(12px, 10cqh); }
-    .personDetails h3 { font-size: clamp(11px, 18cqh, 15px); }
-    .personDetails p { font-size: 13px; }
-    .personPreview { height: min(100cqh, 82px); flex-basis: min(100cqh, 82px); border-radius: 14px; }
-    .createPanel { min-height: 88px; margin-top: 0; }
     .createButton { width: 96px; height: 60px; border-radius: 30px; }
 }
 
-@media (max-height: 700px) {
-    .page { padding-top: max(16px, env(safe-area-inset-top)); }
-    .header { flex-basis: 48px; }
-    .content { gap: 8px; }
-    .panel { padding-block: 6px 8px; }
-    .communities, .clothing, .people { gap: 6px; }
-    .clothing, .people { margin-top: 10px; }
-    .sectionTitle { font-size: 14px; line-height: 20px; }
+@media (max-height: 600px) {
+    .page { padding-top: max(12px, env(safe-area-inset-top)); }
+    .header { min-height: 36px; margin-bottom: 12px; }
+    .content { flex: 1; gap: 8px; }
+    .panel { flex: 1; }
     .createPanel { min-height: 60px; margin-top: 0; }
     .createButton { height: 46px; }
-}
-
-/* Keep the page and actions fixed when a keyboard or a short landscape viewport
-   leaves too little room for three readable rows. Only the results can scroll. */
-@media (max-height: 500px) {
-    .panel { overflow-y: auto; }
-    .communities, .clothing, .people { flex: none; }
-    .communityRail { flex: none; height: 48px; }
-    .clothingRail { flex: none; height: 82px; }
-    .peopleRail { flex: none; height: 74px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

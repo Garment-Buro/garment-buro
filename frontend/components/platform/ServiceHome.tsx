@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useState } from 'react';
 
 import { ServiceHomeCart } from './ServiceHomeCart';
+import { ServicePersonCard, type ServicePerson } from './ServicePersonCard';
+import { ServicePreviewRail } from './ServicePreviewRail';
 import { hasServiceSearchProducts, ServiceSearchResults } from './ServiceSearchResults';
 import styles from './ServiceHome.module.css';
 
@@ -17,11 +19,12 @@ const communityBoxing = asset('community-boxing.webp', 640, 773);
 const clothingShoes = asset('clothing-shoes.webp', 384, 273);
 const clothingCap = asset('clothing-cap.webp', 384, 384);
 const clothingTop = asset('clothing-top.webp', 384, 384);
+const clothingHoodie = asset('search/search-hoodie.webp', 640, 800);
 const personLiza = asset('person-liza.webp', 512, 512);
 const personMan = asset('person-man.webp', 320, 400);
 
 const communities = [
-    { id: 'runners', name: 'Light Running', image: communityRunners, href: '/light-running' },
+    { id: 'runners', name: 'Light Running', image: communityRunners },
     { id: 'heart', name: 'Сообщество с сердцем', image: communityHeart },
     { id: 'boxing', name: 'Box Club', image: communityBoxing },
 ] as const;
@@ -30,7 +33,13 @@ const clothing = [
     { id: 'shoes', name: 'Кеды OG Run', image: clothingShoes },
     { id: 'cap', name: 'Кепка RGM+', image: clothingCap },
     { id: 'top', name: 'Майка Horse Com', image: clothingTop },
+    { id: 'hoodie', name: 'Худи', image: clothingHoodie },
 ] as const;
+
+const people: ServicePerson[] = [
+    { id: 'liza', name: 'LIZA KUKHARSKAIA', subtitle: '@moeimyaliza', image: personLiza, portrait: 'lizaPortrait' },
+    { id: 'member', name: 'УЧАСТНИК СООБЩЕСТВА', subtitle: 'Garment Buro', image: personMan, portrait: 'manPortrait' },
+];
 
 const matchesSearch = (name: string, query: string) => (
     name.toLocaleLowerCase('ru').includes(query.trim().toLocaleLowerCase('ru'))
@@ -41,9 +50,8 @@ export function ServiceHome() {
     const isSearching = query.trim().length > 0;
     const visibleCommunities = communities.filter(item => matchesSearch(item.name, query));
     const visibleClothing = clothing.filter(item => matchesSearch(item.name, query));
-    const showLiza = matchesSearch('Liza Kukharskaia @moeimyaliza Лиза Кухарская', query);
-    const showSecondPerson = query.trim() === '';
-    const hasResults = visibleCommunities.length > 0 || visibleClothing.length > 0 || showLiza || showSecondPerson;
+    const visiblePeople = people.filter(person => matchesSearch(`${person.name} ${person.subtitle} ${person.id === 'liza' ? 'Лиза Кухарская' : ''}`, query));
+    const hasResults = visibleCommunities.length > 0 || visibleClothing.length > 0 || visiblePeople.length > 0;
     const showProductResults = isSearching && (hasServiceSearchProducts(query) || !hasResults);
 
     return (
@@ -59,7 +67,7 @@ export function ServiceHome() {
                         className={styles.backgroundImage}
                     />
             </div>
-            <div className={`${styles.page} ${isSearching ? styles.pageSearch : ''}`}>
+            <div className={`${styles.page} ${isSearching ? styles.pageSearch : ''}`} data-service-view={showProductResults ? 'catalog' : 'home'}>
 
                 {/* The cart measures the site header; this decorative wordmark is page content. */}
                 <div className={styles.header}>
@@ -85,37 +93,19 @@ export function ServiceHome() {
                         <div className={styles.panel}>
                             <section className={styles.communities} aria-labelledby="home-communities">
                                 <h2 id="home-communities" className={styles.sectionTitle}>СООБЩЕСТВА</h2>
-                                <div className={`${styles.rail} ${styles.communityRail}`} tabIndex={0} role="group" aria-label="Сообщества — прокрутка по горизонтали">
-                                    {visibleCommunities.map(community => {
-                                        const artwork = (
-                                            <>
-                                                <Image
-                                                    src={community.image}
-                                                    alt={community.name}
-                                                    loading="eager"
-                                                    unoptimized
-                                                    className={`${styles.cropImage} ${styles[`${community.id}Image`]}`}
-                                                />
-                                                {community.id === 'boxing' && <span className={styles.boxingName} aria-hidden="true">BOX<br />CLUB</span>}
-                                            </>
-                                        );
-
-                                        return 'href' in community ? (
-                                            <Link key={community.id} href={community.href} className={`${styles.community} ${styles[community.id]}`}>
-                                                {artwork}
-                                            </Link>
-                                        ) : (
-                                            <div key={community.id} className={`${styles.community} ${styles[community.id]}`}>
-                                                {artwork}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
+                                <ServicePreviewRail className={styles.communityRail} label="Сообщества — прокрутка по горизонтали">
+                                    {visibleCommunities.map(community => (
+                                        <div key={community.id} className={`${styles.community} ${styles[community.id]}`}>
+                                            <Image src={community.image} alt={community.name} loading="eager" unoptimized className={`${styles.cropImage} ${styles[`${community.id}Image`]}`} />
+                                            {community.id === 'boxing' && <span className={styles.boxingName} aria-hidden="true">BOX<br />CLUB</span>}
+                                        </div>
+                                    ))}
+                                </ServicePreviewRail>
                             </section>
 
                             <section className={styles.clothing} aria-labelledby="home-clothing">
                                 <h2 id="home-clothing" className={styles.sectionTitle}>ОДЕЖДА</h2>
-                                <div className={`${styles.rail} ${styles.clothingRail}`} tabIndex={0} role="group" aria-label="Одежда — прокрутка по горизонтали">
+                                <ServicePreviewRail className={styles.clothingRail} label="Одежда — прокрутка по горизонтали">
                                     {visibleClothing.map(item => (
                                         <article key={item.id} className={styles.clothingCard}>
                                             <div className={styles.productFrame}>
@@ -132,30 +122,14 @@ export function ServiceHome() {
                                             <h3>{item.name}</h3>
                                         </article>
                                     ))}
-                                </div>
+                                </ServicePreviewRail>
                             </section>
 
                             <section className={styles.people} aria-labelledby="home-people">
                                 <h2 id="home-people" className={styles.sectionTitle}>ЛЮДИ</h2>
-                                <div className={`${styles.rail} ${styles.peopleRail}`} tabIndex={0} role="group" aria-label="Люди — прокрутка по горизонтали">
-                                    {showLiza && (
-                                        <article className={styles.personCard}>
-                                            <Image src={personLiza} alt="" loading="eager" unoptimized className={`${styles.cropImage} ${styles.personBackdrop}`} />
-                                            <div className={styles.personPortrait}>
-                                                <Image src={personLiza} alt="Лиза Кухарская" loading="eager" unoptimized className={`${styles.cropImage} ${styles.lizaPortrait}`} />
-                                            </div>
-                                            <div className={styles.personDetails}>
-                                                <h3>LIZA<br />KUKHARSKAIA</h3>
-                                                <p>@moeimyaliza</p>
-                                            </div>
-                                        </article>
-                                    )}
-                                    {showSecondPerson && (
-                                        <div className={styles.personPreview}>
-                                            <Image src={personMan} alt="Участник сообщества" loading="eager" unoptimized className={`${styles.cropImage} ${styles.manPortrait}`} />
-                                        </div>
-                                    )}
-                                </div>
+                                <ServicePreviewRail className={styles.peopleRail} label="Люди — прокрутка по горизонтали">
+                                    {visiblePeople.map(person => <ServicePersonCard key={person.id} person={person} />)}
+                                </ServicePreviewRail>
                             </section>
 
                         </div>

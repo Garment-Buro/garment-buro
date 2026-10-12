@@ -684,7 +684,7 @@ test("catalog and drafts use the guarded constructor route", () => {
 });
 
 test("guarded constructor route lets the production root index render the catalog", () => {
-    assert.match(constructorRouteSource, /import Home from "\.\.\/page"/);
+    assert.match(constructorRouteSource, /import Home(?:, \{ metadata as homeMetadata \})? from "\.\.\/page"/);
     assert.match(constructorRouteSource, /constructorRoute === "index"/);
     assert.match(constructorRouteSource, /return <Home \/>/);
 });

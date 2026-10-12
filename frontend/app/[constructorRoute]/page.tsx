@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import ConstructorPage from "@/components/constructor/ConstructorPage";
 import { PwaInstallGate } from "@/components/pwa/PwaInstallGate";
-import Home from "../page";
+import Home, { metadata as homeMetadata } from "../page";
 
 type ConstructorRoutePageProps = {
     params: Promise<{
@@ -28,6 +28,7 @@ export async function generateMetadata({ params }: ConstructorRoutePageProps): P
     const { constructorRoute } = await params;
 
     return {
+        ...(constructorRoute === "index" ? homeMetadata : {}),
         title: constructorRoute === "index" ? "Главная" : "Конструктор",
     };
 }

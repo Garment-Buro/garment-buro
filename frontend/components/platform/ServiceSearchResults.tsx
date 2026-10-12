@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useId, useState, useSyncExternalStore } from 'react';
 
 import { useServiceFavoritesStore } from '@/store/serviceFavoritesStore';
+import { ServiceCatalogIcon as Icon } from './ServiceCatalogIcon';
 import { ServiceFavoritesSheet } from './ServiceFavoritesSheet';
 import { ServiceFiltersSheet } from './ServiceFiltersSheet';
 import { defaultFilters, filterCatalog, hasActiveFilters, type CatalogFilters } from './serviceCatalog';
@@ -36,10 +37,6 @@ const subscribeToWidth = (callback: () => void) => {
 const getColumnCount = () => window.matchMedia('(min-width: 900px)').matches
     ? 4 : window.matchMedia('(min-width: 600px)').matches ? 3 : 2;
 const getServerColumnCount = () => 2;
-
-function Icon({ name, width, height }: { name: string; width: number; height: number }) {
-    return <Image src={`${ASSETS}/search-${name}.svg`} alt="" width={width} height={height} unoptimized />;
-}
 
 type Product = typeof products[number];
 
@@ -78,12 +75,12 @@ function ProductGrid({ items, favorites, onFavorite, onShare, label, expandedId,
                             </span>
                             <span className={styles.meta}><span className={styles.title}>{product.title}</span><span className={styles.price}>{product.price}₽</span></span>
                         </button>
-                        <button type="button" className={styles.cardFavorite} aria-label={favoriteLabel} aria-pressed={isFavorite} onClick={() => onFavorite(product.id)}>
+                        {isFavorite && <button type="button" className={styles.cardFavorite} aria-label={favoriteLabel} aria-pressed={isFavorite} onClick={() => onFavorite(product.id)}>
                             <Icon name="card-favorite" width={12} height={12} />
-                        </button>
+                        </button>}
                         <div id={actionsId} className={styles.actionsReveal} inert={!isExpanded} aria-hidden={!isExpanded}>
                             <div className={styles.actionsClip}><div className={styles.actions}>
-                                <button type="button" className={styles.like} aria-label={favoriteLabel} aria-pressed={isFavorite} onClick={() => onFavorite(product.id)}><Icon name="like" width={19} height={19} /></button>
+                                <button type="button" className={styles.like} aria-label={favoriteLabel} aria-pressed={isFavorite} onClick={() => onFavorite(product.id)}><Icon name="like" width={19} height={19} filled={isFavorite} /></button>
                                 <Link href="/constructor" className={styles.add} aria-label={`${product.title}: создать изделие`}><Icon name="plus" width={17} height={17} /></Link>
                                 <button type="button" className={styles.share} aria-label={`${product.title}: поделиться`} onClick={() => onShare(product.title)}><Icon name="share" width={17} height={17} /></button>
                             </div></div>
@@ -110,7 +107,10 @@ export function ServiceSearchResults({ query, onBack }: { query: string; onBack:
 
     const share = async (title: string) => {
         try {
-            if (navigator.share) await navigator.share({ title, url: window.location.href });
+            // Call synchronously from the click: iOS requires transient user activation.
+            if (typeof navigator.share === 'function') {
+                await navigator.share({ title, text: title, url: window.location.href });
+            }
             else {
                 await navigator.clipboard.writeText(window.location.href);
                 setAnnouncement('Ссылка скопирована');
