@@ -88,13 +88,12 @@ export const PwaInstallGate = ({
         if (choice.outcome === 'accepted') setMode('installed');
     }, [installPrompt]);
 
+    if (mode === 'checking') return null;
     if (mode === 'standalone') return children;
 
-    const title = mode === 'checking'
-        ? 'Проверяем запуск'
-        : mode === 'installed'
-            ? 'Приложение установлено'
-            : 'Конструктор работает в приложении';
+    const title = mode === 'installed'
+        ? 'Приложение установлено'
+        : 'Конструктор работает в приложении';
 
     return (
         <main className={styles.screen} aria-live="polite">
@@ -110,9 +109,7 @@ export const PwaInstallGate = ({
                 <p className={styles.eyebrow}>Garment Buro</p>
                 <h1 id="pwa-gate-title">{title}</h1>
 
-                {mode === 'checking' ? (
-                    <p className={styles.copy}>Секунду — определяем, открыто ли приложение.</p>
-                ) : mode === 'installed' ? (
+                {mode === 'installed' ? (
                     <p className={styles.copy}>
                         Откройте Garment Buro с домашнего экрана.
                     </p>
@@ -141,11 +138,9 @@ export const PwaInstallGate = ({
                     </>
                 )}
 
-                {mode !== 'checking' && (
-                    <Link href={returnHref} className={styles.returnLink}>
-                        Вернуться к коллекции
-                    </Link>
-                )}
+                <Link href={returnHref} className={styles.returnLink}>
+                    Вернуться к коллекции
+                </Link>
             </section>
         </main>
     );

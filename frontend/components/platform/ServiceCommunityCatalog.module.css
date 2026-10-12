@@ -1,0 +1,17 @@
+.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; column-gap: 0; row-gap: 15px; }
+.card { min-width: 0; }
+.summary { display: block; width: 100%; cursor: pointer; }
+.artwork { display: block; width: 100%; height: auto; aspect-ratio: 166.9 / 90; }
+.summary:focus-visible { outline: 2px solid #fff; outline-offset: -3px; border-radius: 6px; }
+.actionsReveal { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 200ms ease, opacity 200ms ease; }
+.actionsReveal[data-expanded=true] { grid-template-rows: 1fr; opacity: 1; }
+.actionsClip { min-height: 0; overflow: hidden; }
+.favorite { display: flex; width: calc(100% - 16px); min-height: 30px; margin-left: 4px; align-items: center; justify-content: center; gap: 6px; border-radius: 0 0 6px 6px; background: rgb(21 21 21 / 70%); color: #fff; font-size: 10px; }
+.sortOptions { display: flex; flex: none; flex-wrap: wrap; gap: 8px 16px; margin: 0 10px 12px; padding: 10px; border: .5px solid rgb(255 255 255 / 40%); border-radius: 10px; font-size: 12px; }
+.sortOptions label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
+.sortOptions input { accent-color: #fff; }
+.favoritesContent { min-height: 0; overflow-y: auto; padding: 0 10px 16px; }
+.empty { grid-column: 1 / -1; padding: 24px 12px; text-align: center; font-size: 14px; }
+@media (min-width: 600px) { .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 900px) { .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (prefers-reduced-motion: reduce) { .actionsReveal { transition: none; } }

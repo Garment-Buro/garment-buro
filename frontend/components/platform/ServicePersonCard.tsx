@@ -10,7 +10,7 @@ export type ServicePerson = {
     portrait: 'lizaPortrait' | 'manPortrait';
 };
 
-export function ServicePersonCard({ person }: { person: ServicePerson }) {
+export function ServicePersonCard({ person, onOpen }: { person: ServicePerson; onOpen?: () => void }) {
     return <article className={styles.personCard}>
         <Image src={person.image} alt="" loading="eager" unoptimized className={`${styles.cropImage} ${styles.personBackdrop}`} />
         <div className={styles.personPortrait}>
@@ -20,5 +20,6 @@ export function ServicePersonCard({ person }: { person: ServicePerson }) {
             <h3>{person.name}</h3>
             <p>{person.subtitle}</p>
         </div>
+        {onOpen && <button type="button" className={styles.cardOpen} aria-label={`${person.name}: открыть каталог людей`} onClick={onOpen} />}
     </article>;
 }

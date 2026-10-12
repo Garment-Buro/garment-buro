@@ -9,26 +9,12 @@ import { ServiceCatalogIcon as Icon } from './ServiceCatalogIcon';
 import { ServiceFavoritesSheet } from './ServiceFavoritesSheet';
 import { ServiceFiltersSheet } from './ServiceFiltersSheet';
 import { defaultFilters, filterCatalog, hasActiveFilters, type CatalogFilters } from './serviceCatalog';
+import { serviceProducts as products } from './serviceHomeData';
+import { rankServiceItems } from './serviceSearch';
 
 import styles from './ServiceSearchResults.module.css';
 
 const ASSETS = '/service-home/search';
-const products = [
-    { id: 'top', title: 'Майка Horse Com', artwork: 'top', backdrop: 'person-liza', price: 8000, category: 'Майки', color: 'Чёрный', source: 'user', createdOrder: 6 },
-    { id: 'shoes', title: 'Кеды OG Run', artwork: 'shoes', backdrop: 'person-man', price: 8000, category: 'Аксессуары', color: 'Чёрный', source: 'community', createdOrder: 5 },
-    { id: 'cap', title: 'Кепка RGM+', artwork: 'cap', backdrop: 'person-liza', price: 8000, category: 'Аксессуары', color: 'Серый', source: 'user', createdOrder: 4 },
-    { id: 'hoodie', title: 'Худи', artwork: 'hoodie', backdrop: 'person-man', price: 8000, category: 'Худи', color: 'Чёрный', source: 'community', createdOrder: 3 },
-    { id: 'top-second', title: 'Майка Horse Com', artwork: 'top', backdrop: 'person-liza', price: 8000, category: 'Майки', color: 'Чёрный', source: 'user', createdOrder: 2 },
-    { id: 'top-third', title: 'Майка Horse Com', artwork: 'top', backdrop: 'person-man', price: 8000, category: 'Майки', color: 'Чёрный', source: 'community', createdOrder: 1 },
-] as const;
-
-// These are the same preview products as the home artwork, pending catalog integration.
-const matchesQuery = (title: string, query: string) => (
-    `${title} garment одежда`.toLocaleLowerCase('ru').includes(query.trim().toLocaleLowerCase('ru'))
-);
-
-export const hasServiceSearchProducts = (query: string) => products.some(product => matchesQuery(product.title, query));
-
 const subscribeToWidth = (callback: () => void) => {
     const queries = [window.matchMedia('(min-width: 600px)'), window.matchMedia('(min-width: 900px)')];
     queries.forEach(query => query.addEventListener('change', callback));
@@ -62,18 +48,18 @@ function ProductGrid({ items, favorites, onFavorite, onShare, label, expandedId,
                     const isExpanded = expandedId === product.id;
                     const isFavorite = favorites.includes(product.id);
                     const actionsId = `${gridId}-actions-${product.id}`;
-                    const favoriteLabel = `${product.title}: ${isFavorite ? 'убрать из избранного' : 'в избранное'}`;
+                    const favoriteLabel = `${product.name}: ${isFavorite ? 'убрать из избранного' : 'в избранное'}`;
                     return <article key={product.id} className={styles.card} data-expanded={isExpanded} data-search-product={product.id}>
                         <div className={styles.cardBackdrop} aria-hidden="true">
                             <Image src={`${ASSETS}/search-${product.backdrop}.webp`} alt="" width={640} height={product.backdrop === 'person-liza' ? 800 : 773} unoptimized className={product.backdrop === 'person-liza' ? styles.lizaBackdrop : styles.manBackdrop} />
                         </div>
-                        <button type="button" className={styles.summary} aria-label={`${product.title}: ${isExpanded ? 'свернуть' : 'раскрыть'} карточку`} aria-expanded={isExpanded} aria-controls={actionsId} onClick={() => onToggleExpanded(product.id)}>
+                        <button type="button" className={styles.summary} aria-label={`${product.name}: ${isExpanded ? 'свернуть' : 'раскрыть'} карточку`} aria-expanded={isExpanded} aria-controls={actionsId} onClick={() => onToggleExpanded(product.id)}>
                             <span className={styles.media}>
                                 <span className={`${styles.crop} ${styles[product.artwork]}`}>
-                                    <Image src={`${ASSETS}/search-${product.artwork}.webp`} alt={product.title} width={640} height={product.artwork === 'hoodie' ? 800 : product.artwork === 'shoes' ? 456 : 640} unoptimized />
+                                    <Image src={`${ASSETS}/search-${product.artwork}.webp`} alt={product.name} width={640} height={product.artwork === 'hoodie' ? 800 : product.artwork === 'shoes' ? 456 : 640} unoptimized />
                                 </span>
                             </span>
-                            <span className={styles.meta}><span className={styles.title}>{product.title}</span><span className={styles.price}>{product.price}₽</span></span>
+                            <span className={styles.meta}><span className={styles.title}>{product.name}</span><span className={styles.price}>{product.price}₽</span></span>
                         </button>
                         {isFavorite && <button type="button" className={styles.cardFavorite} aria-label={favoriteLabel} aria-pressed={isFavorite} onClick={() => onFavorite(product.id)}>
                             <Icon name="card-favorite" width={12} height={12} />
@@ -81,8 +67,8 @@ function ProductGrid({ items, favorites, onFavorite, onShare, label, expandedId,
                         <div id={actionsId} className={styles.actionsReveal} inert={!isExpanded} aria-hidden={!isExpanded}>
                             <div className={styles.actionsClip}><div className={styles.actions}>
                                 <button type="button" className={styles.like} aria-label={favoriteLabel} aria-pressed={isFavorite} onClick={() => onFavorite(product.id)}><Icon name="like" width={19} height={19} filled={isFavorite} /></button>
-                                <Link href="/constructor" className={styles.add} aria-label={`${product.title}: создать изделие`}><Icon name="plus" width={17} height={17} /></Link>
-                                <button type="button" className={styles.share} aria-label={`${product.title}: поделиться`} onClick={() => onShare(product.title)}><Icon name="share" width={17} height={17} /></button>
+                                <Link href="/constructor" className={styles.add} aria-label={`${product.name}: создать изделие`}><Icon name="plus" width={17} height={17} /></Link>
+                                <button type="button" className={styles.share} aria-label={`${product.name}: поделиться`} onClick={() => onShare(product.name)}><Icon name="share" width={17} height={17} /></button>
                             </div></div>
                         </div>
                     </article>;
@@ -101,8 +87,7 @@ export function ServiceSearchResults({ query, onBack }: { query: string; onBack:
     const [expandedId, setExpandedId] = useState<string | null>(null);
     const toggleExpanded = (id: string) => setExpandedId(previous => previous === id ? null : id);
     const [announcement, setAnnouncement] = useState('');
-    const visibleProducts = products.filter(product => matchesQuery(product.title, query));
-    const orderedProducts = filterCatalog(visibleProducts, filters);
+    const orderedProducts = rankServiceItems(filterCatalog(products, filters), query);
     const favoriteProducts = products.filter(product => favorites.includes(product.id));
 
     const share = async (title: string) => {
