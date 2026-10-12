@@ -74,7 +74,6 @@ export function ServiceHome() {
                         <input
                             type="search"
                             aria-label="Поиск сообществ, одежды и людей"
-                            placeholder="А"
                             value={query}
                             onChange={event => setQuery(event.target.value)}
                             autoComplete="off"

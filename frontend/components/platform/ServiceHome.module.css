@@ -88,17 +88,12 @@
     outline: none;
     background: transparent;
     color: #fff;
-    font: 600 14px / 1 var(--font-manrope), sans-serif;
+    /* Keep iOS from auto-zooming on focus, regardless of pointer detection. */
+    font: 600 16px / 1 var(--font-manrope), sans-serif;
 }
 
-.search input::placeholder { color: #fff; opacity: 1; }
 .search input::-webkit-search-cancel-button { cursor: pointer; }
 .search:focus-within { outline: 2px solid rgb(255 255 255 / 75%); outline-offset: 3px; }
-
-@media (hover: none) and (pointer: coarse) {
-    /* Avoid iOS zooming and shifting the viewport when the search is focused. */
-    .search input { font-size: 16px; }
-}
 
 .panel,
 .createPanel {
