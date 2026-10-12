@@ -270,6 +270,43 @@
     .createButton { height: 46px; }
 }
 
+/* A rotated phone has desktop width but only enough height for one row. */
+@media (orientation: landscape) and (min-width: 480px) and (max-height: 500px) {
+    .page {
+        --home-unit: 1px;
+        padding-top: 92px;
+        padding-bottom: max(70px, calc(var(--cart-action-bar-bottom, 5px) + 55px), calc(env(safe-area-inset-bottom) + 55px));
+    }
+    .wordmark { font-size: 32px; }
+    .content {
+        display: grid;
+        height: 100%;
+        grid-template-columns: minmax(0, 1fr) 64px;
+        grid-template-rows: 29px minmax(0, 1fr);
+        gap: 8px;
+    }
+    .search { grid-column: 1 / -1; height: 29px; }
+    .panel {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        padding-block: 8px;
+    }
+    .communities, .clothing, .people {
+        display: grid;
+        grid-template-rows: 20px 84px;
+        margin-top: 0;
+        gap: 8px;
+        align-content: safe center;
+    }
+    .sectionTitle { padding-inline: 12px; font-size: 14px; }
+    .rail { --rail-inset: 12px; align-self: center; }
+    .createPanel { min-height: 0; }
+    .createButton { width: 44px; height: 44px; border-radius: 22px; }
+    .createButton span { font-size: 38px; }
+    .pageCatalog .content { display: flex; }
+}
+
 @media (prefers-reduced-motion: reduce) {
     .content, .createButton { transition: none; }
 }
