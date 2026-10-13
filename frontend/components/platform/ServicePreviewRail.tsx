@@ -53,7 +53,8 @@ function PreviewRail({ children, className, label, autoPlay = true }: PreviewRai
             if (interacted || reducedMotion.matches) return;
             const railStyle = getComputedStyle(rail);
             const width = rail.clientWidth - parseFloat(railStyle.paddingLeft) - parseFloat(railStyle.paddingRight);
-            const pan = getPreviewPan(width, track.offsetWidth);
+            // WebKit can size max-content flex tracks smaller than their overflowing cards.
+            const pan = getPreviewPan(width, track.scrollWidth);
             if (!pan) return;
             track.style.willChange = 'transform';
             animation = track.animate([
