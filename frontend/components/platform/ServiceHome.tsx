@@ -84,7 +84,7 @@ export function ServiceHome() {
 
                                 <section className={styles.clothing} aria-labelledby="home-clothing">
                                     <h2 id="home-clothing" className={styles.sectionTitle}><button type="button" onClick={() => setCategory('clothing')}>ОДЕЖДА</button></h2>
-                                    <ServicePreviewRail resetKey={query} autoPlay={!query.trim()} className={styles.clothingRail} label="Одежда — прокрутка по горизонтали">
+                                    <ServicePreviewRail resetKey={query} autoPlay={!query.trim()} direction="right" className={styles.clothingRail} label="Одежда — прокрутка по горизонтали">
                                         {visibleClothing.map(item => (
                                             <article key={item.id} className={styles.clothingCard}>
                                                 <div className={styles.productFrame}>
