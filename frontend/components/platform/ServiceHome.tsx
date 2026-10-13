@@ -72,7 +72,7 @@ export function ServiceHome() {
                             <div className={styles.panel}>
                                 <section className={styles.communities} aria-labelledby="home-communities">
                                     <h2 id="home-communities" className={styles.sectionTitle}><button type="button" onClick={() => setCategory('communities')}>СООБЩЕСТВА</button></h2>
-                                    <ServicePreviewRail resetKey={query} className={styles.communityRail} label="Сообщества — прокрутка по горизонтали">
+                                    <ServicePreviewRail resetKey={query} autoPlay={!query.trim()} className={styles.communityRail} label="Сообщества — прокрутка по горизонтали">
                                         {visibleCommunities.map(community => (
                                             <button type="button" key={community.id} className={`${styles.community} ${styles[community.id]}`} aria-label={`${community.name}: открыть каталог сообществ`} onClick={() => setCategory('communities')}>
                                                 <Image src={community.image} alt={community.name} loading="eager" unoptimized className={`${styles.cropImage} ${styles[`${community.id}Image`]}`} />
@@ -84,7 +84,7 @@ export function ServiceHome() {
 
                                 <section className={styles.clothing} aria-labelledby="home-clothing">
                                     <h2 id="home-clothing" className={styles.sectionTitle}><button type="button" onClick={() => setCategory('clothing')}>ОДЕЖДА</button></h2>
-                                    <ServicePreviewRail resetKey={query} className={styles.clothingRail} label="Одежда — прокрутка по горизонтали">
+                                    <ServicePreviewRail resetKey={query} autoPlay={!query.trim()} className={styles.clothingRail} label="Одежда — прокрутка по горизонтали">
                                         {visibleClothing.map(item => (
                                             <article key={item.id} className={styles.clothingCard}>
                                                 <div className={styles.productFrame}>
@@ -107,7 +107,7 @@ export function ServiceHome() {
 
                                 <section className={styles.people} aria-labelledby="home-people">
                                     <h2 id="home-people" className={styles.sectionTitle}><button type="button" onClick={() => setCategory('people')}>ЛЮДИ</button></h2>
-                                    <ServicePreviewRail resetKey={query} className={styles.peopleRail} label="Люди — прокрутка по горизонтали">
+                                    <ServicePreviewRail resetKey={query} autoPlay={!query.trim()} className={styles.peopleRail} label="Люди — прокрутка по горизонтали">
                                         {visiblePeople.map(person => <ServicePersonCard key={person.id} person={person} onOpen={() => setCategory('people')} />)}
                                     </ServicePreviewRail>
                                 </section>

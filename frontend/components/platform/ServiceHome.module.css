@@ -158,6 +158,7 @@
 
 .rail:focus-visible { outline: 1px solid #fff; outline-offset: -1px; }
 .rail > * { scroll-snap-align: start; }
+.railTrack { display: flex; width: max-content; min-width: 100%; height: 100%; flex: none; gap: inherit; align-items: center; }
 .communityRail { --rail-inset: calc(10 * var(--home-unit)); height: calc(56 * var(--home-unit)); }
 .community {
     position: relative;
