@@ -35,7 +35,9 @@ jobs:
   backend:
     name: Backend
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # The complete PostgreSQL/MinIO suite exceeds 30 minutes on hosted runners.
+    # Keep all tests and the no-skips gate; allow enough time for the full run.
+    timeout-minutes: 60
     services:
       postgres:
         image: postgres:17-alpine
