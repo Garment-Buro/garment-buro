@@ -15,6 +15,10 @@ on:
         description: Install and exercise the public maintenance gate using temporary root access
         type: boolean
         default: false
+      prepare_application:
+        description: Preserve the running storage image in production configuration before application release
+        type: boolean
+        default: false
   push:
     branches:
       - main
@@ -35,7 +39,7 @@ env:
 
 jobs:
   production-preflight:
-    name: ${{ inputs.prepare_public_proxy && 'Prepare public production proxy' || 'Read-only production preflight' }}
+    name: ${{ (inputs.prepare_public_proxy || inputs.prepare_application) && 'Prepare production prerequisites' || 'Read-only production preflight' }}
     if: github.event_name == 'workflow_dispatch' && inputs.preflight_only
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -63,6 +67,7 @@ jobs:
       - name: Inspect access and release metadata only
         env:
           ROOT_PREFLIGHT: ${{ inputs.root_preflight }}
+          PREPARE_APPLICATION: ${{ inputs.prepare_application }}
           SSHPASS: ${{ inputs.root_preflight && secrets.ROOT_BOOTSTRAP_PASSWORD || '' }}
         shell: bash
         run: |
@@ -77,7 +82,7 @@ jobs:
             connection=(sshpass -e ssh -o PubkeyAuthentication=no -o PreferredAuthentications=password -o NumberOfPasswordPrompts=1 -o ConnectTimeout=15 -o StrictHostKeyChecking=yes -p "$DEPLOY_PORT")
             target="root@$DEPLOY_HOST"
           fi
-          "${connection[@]}" "$target" 'bash -s' <<'REMOTE'
+          "${connection[@]}" "$target" 'bash -s' -- "$PREPARE_APPLICATION" <<'REMOTE'
           set -euo pipefail
           printf 'deploy_uid=%s\n' "$(id -u)"
           if sudo -n true >/dev/null 2>&1; then echo sudo_without_password=yes; else echo sudo_without_password=no; fi
@@ -96,6 +101,37 @@ jobs:
           if test -d /srv/garment-buro/maintenance; then
             stat -c '%a %U %n' /srv/garment-buro/maintenance
             find /srv/garment-buro/maintenance -maxdepth 1 -type f -name '*.active' -printf '%f\n'
+          fi
+          if test "$(id -u)" = 1000; then
+            python3 - "$1" <<'PY'
+          import datetime, fcntl, json, os, pathlib, re, secrets, subprocess, tempfile
+          root = pathlib.Path('/srv/garment-buro')
+          with (root / '.deploy.lock').open('a') as lock:
+              fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+              path = root / 'production/.env'
+              source = path.read_text()
+              values = dict(line.split('=', 1) for line in source.splitlines() if line and not line.startswith('#') and '=' in line)
+              flags = {key: values.get(key, '<unset>').strip().strip('"\'') for key in ['DATABASE_ENABLED', 'MINIO_ENABLED', 'IDENTITY_API_ENABLED', 'CATALOG_READS_ENABLED', 'CATALOG_WRITES_ENABLED', 'CARTS_V2_ENABLED', 'ORDER_READS_ENABLED', 'CHECKOUT_V2_ENABLED', 'PARTNER_PROGRAM_ENABLED']}
+              assert all(value.lower() in ['true', 'false', '1', '0', '<unset>'] for value in flags.values())
+              image = subprocess.check_output(['docker', 'inspect', '--format', '{{.Image}}', 'garment-buro-production-minio-1'], text=True).strip()
+              assert re.fullmatch(r'sha256:[a-f0-9]{64}', image)
+              prepared = False
+              if __import__('sys').argv[1] == 'true' and not values.get('MINIO_IMAGE'):
+                  backup = path.with_name('.env.before-foundation-' + datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '-' + secrets.token_hex(4))
+                  backup.write_text(source)
+                  backup.chmod(0o600)
+                  descriptor, temporary = tempfile.mkstemp(prefix='.env.prepare-', dir=path.parent)
+                  with os.fdopen(descriptor, 'w') as stream:
+                      stream.write(source.rstrip('\n') + '\nMINIO_IMAGE=' + image + '\n')
+                      stream.flush()
+                      os.fsync(stream.fileno())
+                  os.chmod(temporary, 0o600)
+                  os.replace(temporary, path)
+                  prepared = True
+              schema = subprocess.check_output(['docker', 'exec', 'garment-buro-production-postgres-1', 'sh', '-ec', 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "select version_num from alembic_version"'], text=True).strip()
+              assert re.fullmatch(r'[A-Za-z0-9_\n]+', schema)
+              print(json.dumps({'coreFlags': flags, 'schema': schema, 'runningStorageImage': image, 'storageImageAlreadyConfigured': bool(values.get('MINIO_IMAGE')), 'storagePinPrepared': prepared, 'applicationContainersChanged': False}))
+          PY
           fi
           if test "$(id -u)" = 0; then
             python3 - <<'PY'
