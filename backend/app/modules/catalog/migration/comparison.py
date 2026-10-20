@@ -30,7 +30,9 @@ class CatalogContractComparator:
         for product_id in sorted(expected_details):
             detail = await self.service.get_product(session, product_id)
             if detail is not None:
-                actual_details[product_id] = detail.model_dump()
+                # Version and media IDs are new server metadata, absent from the legacy
+                # contract. Keep comparing every migrated field strictly.
+                actual_details[product_id] = detail.model_dump(exclude={"media_assets", "version"})
 
         mismatches: list[str] = []
         _compare_values(expected_list, actual_list, path="list", mismatches=mismatches)
@@ -79,6 +81,11 @@ def expected_legacy_contract(
         payload: dict[str, object] = {
             "id": product.id,
             "title": product.title,
+            "preset_source": "garment_buro",
+            "tags": [],
+            "slug": None,
+            "category_id": None,
+            "garment_model_id": None,
             "price": float(product.price),
             "old_price": _optional_float(product.old_price),
             "description": product.description,

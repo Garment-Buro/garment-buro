@@ -10,12 +10,14 @@ import { PartnerPayoutHistory } from '@/components/partner/PartnerPayoutHistory'
 import { PartnerRequisitesCard } from '@/components/partner/PartnerRequisitesCard';
 import { PartnerResources } from '@/components/partner/PartnerResources';
 import { usePartnerCabinet } from '@/hooks/partner/usePartnerCabinet';
+import { useLandingEditor } from '@/hooks/partner/useLandingEditor';
 import { formatPartnerPercent } from '@/lib/partners/format';
 
 import styles from './PartnerDashboard.module.css';
 
 export const PartnerDashboard = () => {
     const cabinet = usePartnerCabinet();
+    const landings = useLandingEditor();
     const [payoutOpen, setPayoutOpen] = useState(false);
     const [requisitesOpen, setRequisitesOpen] = useState(false);
     const requisitesRef = useRef<HTMLDivElement>(null);
@@ -34,7 +36,8 @@ export const PartnerDashboard = () => {
             <div className={styles.statePage}>
                 <section className={styles.stateCard}>
                     <h1>Доступ пока не открыт</h1>
-                    <p>{cabinet.error}</p>
+                    <p>{cabinet.readError}</p>
+                    <button type="button" className={styles.primaryButton} onClick={() => void cabinet.refreshDashboard()}>Повторить загрузку кабинета</button>
                     <button
                         type="button"
                         className={styles.primaryButton}
@@ -54,7 +57,7 @@ export const PartnerDashboard = () => {
             </a>
             <PartnerCabinetHeader
                 partner={cabinet.dashboard.partner}
-                backgroundSrc={cabinet.landings.find(landing => landing.image_url)?.image_url}
+                backgroundSrc={landings.state?.items.find(landing => landing.image_url)?.image_url ?? undefined}
             />
 
             <section className={styles.sheet} id="partner-cabinet-content">
@@ -74,6 +77,9 @@ export const PartnerDashboard = () => {
                         {cabinet.notice}
                     </p>
                 )}
+                {cabinet.readError && <p className={styles.error} role="alert">
+                    {cabinet.readError}{' '}<button type="button" className={styles.secondaryButton} disabled={cabinet.refreshing} onClick={() => void cabinet.refreshDashboard()}>Обновить сводку</button>
+                </p>}
                 {cabinet.error && (
                     <p className={styles.error} role="alert">
                         <PiWarningCircle size={18} aria-hidden="true" />
@@ -83,7 +89,8 @@ export const PartnerDashboard = () => {
 
                 <PartnerFinanceCard
                     dashboard={cabinet.dashboard}
-                    hasRequisites={Boolean(cabinet.requisites)}
+                    hasRequisites={cabinet.dashboard.has_requisites}
+                    payoutUnavailable={cabinet.refreshing || Boolean(cabinet.readError)}
                     payoutAmount={cabinet.payoutAmount}
                     payoutPending={cabinet.payoutPending}
                     payoutOpen={payoutOpen}
@@ -98,14 +105,15 @@ export const PartnerDashboard = () => {
                     onRequisitesRequired={openRequisites}
                 />
 
-                <div className={styles.contentGrid}>
+                <div className={styles.payoutSection}>
                     <PartnerPayoutHistory payouts={cabinet.payouts} />
-                    <PartnerLandingsCard landings={cabinet.landings} />
                 </div>
+                <PartnerLandingsCard editor={landings} />
 
                 <div className={styles.requisitesSection} ref={requisitesRef}>
                     <PartnerRequisitesCard
-                        cabinet={cabinet}
+                        hasRequisites={cabinet.dashboard.has_requisites}
+                        onSaved={() => { void cabinet.refreshDashboard(); }}
                         open={requisitesOpen}
                         onToggle={() => setRequisitesOpen(value => !value)}
                     />

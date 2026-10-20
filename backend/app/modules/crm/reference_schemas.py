@@ -6,6 +6,8 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+GARMENT_MODEL_SIZE_LIMIT = 100
+
 REFERENCE_CODE_PATTERN = re.compile(r"^[A-Z0-9][A-Z0-9_-]{0,63}$")
 SIZE_CODE_PATTERN = re.compile(r"^[A-Z0-9][A-Z0-9_+./-]{0,31}$")
 STAGE_CODE_PATTERN = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
@@ -150,7 +152,9 @@ class CrmGarmentModelWrite(BaseModel):
     base_weight_g: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)
     size_chart_media_object_id: int | None = Field(default=None, gt=0)
     is_active: bool = True
-    sizes: list[CrmGarmentSizeWrite] = Field(default_factory=list, max_length=100)
+    sizes: list[CrmGarmentSizeWrite] = Field(
+        default_factory=list, max_length=GARMENT_MODEL_SIZE_LIMIT
+    )
 
     @field_validator("code")
     @classmethod

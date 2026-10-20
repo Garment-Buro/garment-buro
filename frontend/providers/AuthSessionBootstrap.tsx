@@ -16,7 +16,7 @@ export const AuthSessionBootstrap = () => {
         const unsubscribeChannel = authSessionChannel.subscribe(message => {
             const state = useAuthStore.getState();
             if (message.type === 'session') {
-                state.acceptRemoteSession(message.session, message.generation);
+                state.acceptRemoteSession(message.session, message.generation, message.accountEpoch);
             } else {
                 state.acceptRemoteLogout(message.pending);
             }

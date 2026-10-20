@@ -47,7 +47,12 @@ async def _write(session: AsyncSession, operation: Awaitable[T]) -> T:
     except CrmReferenceNotFoundError as error:
         await session.rollback()
         raise HTTPException(status_code=404, detail=str(error)) from error
-    except (CrmReferenceConflictError, CrmReferenceVersionConflictError) as error:
+    except CrmReferenceVersionConflictError as error:
+        await session.rollback()
+        raise HTTPException(
+            409, {"code": "crm_reference_version_conflict", "message": str(error)}
+        ) from error
+    except CrmReferenceConflictError as error:
         await session.rollback()
         raise HTTPException(status_code=409, detail=str(error)) from error
     except IntegrityError as error:

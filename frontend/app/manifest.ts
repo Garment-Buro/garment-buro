@@ -2,17 +2,17 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
     return {
+        // Keep the installed application identity while changing its launch page.
         id: "/constructor",
-        name: "Garment Buro — конструктор",
+        name: "Garment Buro",
         short_name: "Garment Buro",
-        description: "Когда вещь почти подходит — можно её доработать.",
-        start_url: "/constructor?source=pwa",
+        description: "Сообщества, одежда и люди Garment Buro.",
+        start_url: "/?source=pwa",
         scope: "/",
         display: "standalone",
         orientation: "portrait-primary",
         lang: "ru",
-        background_color: "#F2F2F2",
-        theme_color: "#F2F2F2",
+        background_color: "#77745A",
         icons: [
             {
                 src: "/pwa-icon-192.png",

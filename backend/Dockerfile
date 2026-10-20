@@ -2,8 +2,7 @@ FROM python:3.12-slim-bookworm
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    LEGACY_DATABASE_URL=sqlite:////app/legacy/ecommerce.db
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
 WORKDIR /app
 
@@ -11,11 +10,9 @@ RUN groupadd --gid 10001 app \
     && useradd --uid 10001 --gid app --no-create-home --shell /usr/sbin/nologin app
 
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --require-hashes -r requirements.txt
 
 COPY --chown=app:app . .
-RUN mkdir -p /app/uploads /app/legacy \
-    && chown -R app:app /app/uploads /app/legacy
 
 USER app
 

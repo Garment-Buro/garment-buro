@@ -6,15 +6,18 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
     Text,
     UniqueConstraint,
+    column,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, IntegerIdMixin, TimestampMixin
+from app.db.text import UnicodeLower
 
 
 class CrmGarmentPattern(Base, IntegerIdMixin, TimestampMixin):
@@ -22,6 +25,18 @@ class CrmGarmentPattern(Base, IntegerIdMixin, TimestampMixin):
 
     __tablename__ = "crm_garment_patterns"
     __table_args__ = (
+        Index(
+            "ix_crm_patterns_directory_code",
+            UnicodeLower(column("code")),
+            "id",
+        ),
+        Index(
+            "ix_crm_patterns_size_window",
+            "garment_model_id",
+            "garment_size_id",
+            "width_cm",
+            "length_cm",
+        ),
         UniqueConstraint(
             "garment_model_id",
             "grid_key",
@@ -93,6 +108,13 @@ class CrmGarmentPattern(Base, IntegerIdMixin, TimestampMixin):
 class CrmGarmentFabricRequirement(Base, IntegerIdMixin, TimestampMixin):
     __tablename__ = "crm_garment_fabric_requirements"
     __table_args__ = (
+        Index(
+            "ix_crm_fabric_requirement_model_first",
+            "garment_model_id",
+            column("is_primary").desc(),
+            "id",
+            postgresql_include=["fabric_id"],
+        ),
         UniqueConstraint(
             "garment_model_id",
             "fabric_id",
@@ -112,7 +134,6 @@ class CrmGarmentFabricRequirement(Base, IntegerIdMixin, TimestampMixin):
     garment_model_id: Mapped[int] = mapped_column(
         ForeignKey("crm_garment_models.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     )
     fabric_id: Mapped[int] = mapped_column(
         ForeignKey("crm_fabrics.id", ondelete="RESTRICT"),

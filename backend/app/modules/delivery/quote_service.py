@@ -3,11 +3,13 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
+from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.modules.delivery.constants import CDEK_PICKUP_DELIVERY_METHOD
+from app.modules.delivery.destination import DeliveryDestinationError, resolve_delivery_destination
 from app.modules.delivery.logistics import centimeters_to_integer, kilograms_to_grams
 from app.modules.delivery.provider import CdekQuoteProvider, CdekTariffQuote
 from app.modules.delivery.quote_repository import CdekQuoteProduct, CdekQuoteRepository
@@ -25,6 +27,10 @@ class PreparedCdekQuote:
     body: bytes
     sha256: str
     tariff_code: int
+    request_sha256: str
+    delivery_city: str
+    delivery_address: str
+    cdek_point_code: str | None
 
 
 class CdekQuoteService:
@@ -33,7 +39,7 @@ class CdekQuoteService:
     def __init__(
         self,
         settings: Settings,
-        provider: CdekQuoteProvider,
+        provider: CdekQuoteProvider | None,
         *,
         repository: CdekQuoteRepository | None = None,
     ) -> None:
@@ -48,6 +54,16 @@ class CdekQuoteService:
     ) -> PreparedCdekQuote:
         if not self.settings.cdek_quote_enabled:
             raise CdekQuoteValidationError("cdek_quote_disabled")
+        return await self.prepare_for_verification(session, command)
+
+    async def prepare_for_verification(
+        self,
+        session: AsyncSession,
+        command: CdekQuoteRequest,
+        *,
+        now: datetime | None = None,
+    ) -> PreparedCdekQuote:
+        """Prepare locally, including when validating an already-issued quote."""
 
         quantities: dict[int, int] = {}
         for item in command.cart_items:
@@ -63,6 +79,11 @@ class CdekQuoteService:
         ):
             raise CdekQuoteValidationError("cdek_product_unavailable")
 
+        try:
+            destination = await resolve_delivery_destination(session, command, now=now)
+        except DeliveryDestinationError as error:
+            raise CdekQuoteValidationError(str(error)) from error
+
         tariff_code = (
             self.settings.cdek_warehouse_to_warehouse_tariff
             if command.delivery_method == CDEK_PICKUP_DELIVERY_METHOD
@@ -73,7 +94,7 @@ class CdekQuoteService:
             "currency": 1,
             "tariff_code": tariff_code,
             "from_location": {"code": self.settings.cdek_sender_city_code},
-            "to_location": {"country_code": "RU", "city": command.city},
+            "to_location": {"country_code": "RU", "city": destination.city},
             "packages": self._packages(products_by_id, quantities),
         }
         body = json.dumps(
@@ -83,13 +104,31 @@ class CdekQuoteService:
             separators=(",", ":"),
             allow_nan=False,
         ).encode("utf-8")
+        binding = json.dumps(
+            {
+                "provider_request": hashlib.sha256(body).hexdigest(),
+                "method": command.delivery_method,
+                "city": destination.city,
+                "address": destination.address,
+                "point_code": destination.point_code,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
         return PreparedCdekQuote(
             body=body,
             sha256=hashlib.sha256(body).hexdigest(),
             tariff_code=tariff_code,
+            request_sha256=hashlib.sha256(binding).hexdigest(),
+            delivery_city=destination.city,
+            delivery_address=destination.address,
+            cdek_point_code=destination.point_code,
         )
 
     async def calculate(self, prepared: PreparedCdekQuote) -> CdekTariffQuote:
+        if self.provider is None:
+            raise RuntimeError("CDEK quote provider is not configured")
         return await self.provider.calculate_tariff(prepared.body)
 
     @staticmethod

@@ -1,26 +1,15 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import or_, select
+from sqlalchemy import select
 
-from app.modules.catalog.models import ProductVariant
-from app.modules.crm.assortment_models import (
-    CrmGarmentFabricRequirement,
-    CrmGarmentPattern,
-)
-from app.modules.crm.file_models import CrmFileAttachment
-from app.modules.crm.material_models import CrmMaterialReservation
 from app.modules.crm.models import CrmOrderProject
-from app.modules.crm.production_models import CrmProductionPlanRevision
-from app.modules.crm.production_repository import CrmProductionRepository
-from app.modules.crm.reference_models import CrmFabric, CrmTechCard, CrmTechCardRevision
 from app.modules.identity.security import ensure_utc
-from app.modules.media.models import MediaObject
-from app.modules.orders.models import Order, OrderItem
+from app.modules.orders.models import Order
 from app.modules.production.evidence import (
     ProductionConflict,
     ProductionNotFound,
     order_evidence,
-    verify_specification,
+    verify_loaded_specification,
 )
 from app.modules.production.models import (
     ProductionBag,
@@ -29,7 +18,29 @@ from app.modules.production.models import (
     ProductionWorkItem,
 )
 from app.modules.production.projections import bag_display_state, floor_customization, project_unit
+from app.modules.production.read_repository import ProductionDetailRepository
 from app.modules.production.repository import ProductionRepository
+
+
+def _tech_card_view(card):
+    return {
+        "id": card.id,
+        "name": card.name_snapshot,
+        "revision": card.revision_number,
+        "description": card.description_snapshot,
+        "checkpoints": [
+            {
+                "position": point.position,
+                "name": point.name,
+                "description": point.description,
+                "stage_code": point.stage_code,
+                "standard_minutes": (
+                    str(point.standard_minutes) if point.standard_minutes is not None else None
+                ),
+            }
+            for point in card.checkpoints
+        ],
+    }
 
 
 def floor_evidence(item):
@@ -56,10 +67,10 @@ def _custom_sleeve_variant(source):
     return "height" if fit.get("sleeveMode") == "height" else "standard"
 
 
-async def cutting_details(session, *, source, spec, files):
+def cutting_details(data, *, source, spec, files):
     if spec is None:
         return None
-    plan = await session.get(CrmProductionPlanRevision, spec.plan_id)
+    plan = data.plans.get(spec.plan_id)
     if plan is None:
         return None
 
@@ -67,17 +78,7 @@ async def cutting_details(session, *, source, spec, files):
     pattern_media_ids = {
         attachment.media_object_id for attachment, _ in files if attachment.id in pattern_ids
     }
-    patterns = list(
-        await session.scalars(
-            select(CrmGarmentPattern)
-            .where(
-                CrmGarmentPattern.garment_model_id == plan.garment_model_id,
-                CrmGarmentPattern.garment_size_id == plan.garment_size_id,
-                CrmGarmentPattern.is_active.is_(True),
-            )
-            .order_by(CrmGarmentPattern.code, CrmGarmentPattern.id)
-        )
-    )
+    patterns = data.patterns.get((plan.garment_model_id, plan.garment_size_id), [])
     sleeve_variant = _custom_sleeve_variant(source)
     pattern = next((row for row in patterns if row.media_object_id in pattern_media_ids), None)
     if pattern is None and len(patterns) == 1:
@@ -97,37 +98,11 @@ async def cutting_details(session, *, source, spec, files):
                 None,
             )
 
-    fabric = await session.scalar(
-        select(CrmFabric)
-        .join(
-            CrmMaterialReservation,
-            CrmMaterialReservation.fabric_id == CrmFabric.id,
-        )
-        .where(CrmMaterialReservation.production_plan_revision_id == plan.id)
-        .order_by(CrmMaterialReservation.id)
-        .limit(1)
-    )
+    fabric = data.reserved_fabrics.get(plan.id)
     if fabric is None and source.variant_id_snapshot is not None:
-        variant = await session.get(ProductVariant, source.variant_id_snapshot)
-        if variant and variant.fabric_id:
-            fabric = await session.get(CrmFabric, variant.fabric_id)
+        fabric = data.variant_fabrics.get(source.variant_id_snapshot)
     if fabric is None:
-        fabric = await session.scalar(
-            select(CrmFabric)
-            .join(
-                CrmGarmentFabricRequirement,
-                CrmGarmentFabricRequirement.fabric_id == CrmFabric.id,
-            )
-            .where(
-                CrmGarmentFabricRequirement.garment_model_id == plan.garment_model_id,
-                CrmFabric.is_active.is_(True),
-            )
-            .order_by(
-                CrmGarmentFabricRequirement.is_primary.desc(),
-                CrmGarmentFabricRequirement.id,
-            )
-            .limit(1)
-        )
+        fabric = data.default_fabrics.get(plan.garment_model_id)
 
     return {
         "pattern_code": pattern.code if pattern else None,
@@ -176,6 +151,7 @@ class ProductionReadService:
         # One bounded batch for the page, not one request per bag or station.
         stage_counts = {}
         dtf_counts = {}
+        dtf_required_bags = set()
         purchase_counts = {}
         overdue_dtf_counts = {}
         now = datetime.now(timezone.utc)
@@ -190,6 +166,8 @@ class ProductionReadService:
                 .where(ProductionWorkItem.bag_id.in_(bag_ids))
             )
             for work, spec in work_rows:
+                if spec.specification["print_file_ids"]:
+                    dtf_required_bags.add(work.bag_id)
                 route = spec.specification["route"]
                 counts = stage_counts.setdefault(work.bag_id, {})
                 if work.stage_index < len(route):
@@ -223,6 +201,7 @@ class ProductionReadService:
                     ),
                     "version": bag.version if bag else 0,
                     "stage_counts": stage_counts.get(bag.id, {}) if bag else {},
+                    "requires_dtf": bool(bag and bag.id in dtf_required_bags),
                     "dtf_pending": dtf_counts.get(bag.id, 0) if bag else 0,
                     "dtf_overdue": overdue_dtf_counts.get(bag.id, 0) if bag else 0,
                     "purchase_pending": purchase_counts.get(bag.id, 0) if bag else 0,
@@ -250,68 +229,63 @@ class ProductionReadService:
         work = await self.repository.work(session, bag.id) if bag else []
         specs = await self.repository.specifications(session, work)
         units = await self.repository.units(session, project_id)
+        cutting = bool(set(stations) & {"tech", "cut"})
+        data = await ProductionDetailRepository().load(
+            session,
+            units=units,
+            specifications=specs,
+            cutting=cutting,
+            editing="tech" in stations,
+        )
+        work_by_unit = {row.unit_id: row for row in work}
+        cards_by_model = {
+            model_id: [_tech_card_view(card) for card in cards]
+            for model_id, cards in data.cards.items()
+        }
         result = []
-        plans = CrmProductionRepository()
         for unit in units:
-            source = await session.get(OrderItem, unit.order_item_id)
+            source = data.items.get(unit.order_item_id)
             if source is None:
                 raise ProductionConflict("Нет исходной позиции заказа")
-            row = next((x for x in work if x.unit_id == unit.id), None)
+            row = work_by_unit.get(unit.id)
             spec = specs.get(row.specification_id) if row else None
             blockers = []
             if spec:
                 try:
-                    await verify_specification(session, unit, spec, source)
+                    verify_loaded_specification(
+                        unit,
+                        spec,
+                        source,
+                        plan=data.plans.get(spec.plan_id),
+                        files=data.specification_files(spec.specification),
+                    )
                 except ProductionConflict as error:
                     blockers.append(str(error))
             else:
                 blockers.append("Технолог ещё не закрепил спецификацию и файлы")
             if row and row.issue:
                 blockers.append(row.issue)
-            garment_model_id = await plans.get_catalog_garment_model_id(
-                session, catalog_product_id=unit.product_id_snapshot
-            )
-            sizes, cards = [], []
-            if garment_model_id is not None:
-                sizes = [
-                    {"id": x.id, "code": x.code}
-                    for x in await plans.list_active_sizes(
-                        session, garment_model_id=garment_model_id
-                    )
-                ]
-                cards = [
-                    {"id": x.id, "name": x.name_snapshot, "revision": x.revision_number}
-                    for x in await session.scalars(
-                        select(CrmTechCardRevision)
-                        .join(CrmTechCard, CrmTechCard.id == CrmTechCardRevision.tech_card_id)
-                        .where(
-                            CrmTechCard.garment_model_id == garment_model_id,
-                            CrmTechCard.is_active.is_(True),
-                            CrmTechCardRevision.status == "published",
-                        )
-                    )
-                ]
-            elif not spec:
+            garment_model_id = data.model_ids.get(unit.product_id_snapshot)
+            sizes = data.sizes.get(garment_model_id, [])
+            cards = cards_by_model.get(garment_model_id, [])
+            if garment_model_id is None and not spec:
                 blockers.append("Модель каталога не связана с производственной моделью")
-            files = list(
+            assigned_card = next(
                 (
-                    await session.execute(
-                        select(CrmFileAttachment, MediaObject)
-                        .join(MediaObject, MediaObject.id == CrmFileAttachment.media_object_id)
-                        .where(
-                            or_(
-                                CrmFileAttachment.production_unit_id == unit.id,
-                                CrmFileAttachment.tech_card_revision_id.in_(
-                                    [x["id"] for x in cards]
-                                ),
-                            ),
-                            MediaObject.status == "ready",
-                            MediaObject.is_public.is_(False),
-                        )
-                        .order_by(CrmFileAttachment.id)
-                    )
-                ).all()
+                    card
+                    for card in cards
+                    if spec and card["id"] == spec.specification["tech_card_revision_id"]
+                ),
+                None,
             )
+            if spec and assigned_card is None:
+                revision = data.revisions.get(spec.specification["tech_card_revision_id"])
+                if revision:
+                    assigned_card = _tech_card_view(revision)
+            file_card_ids = {card["id"] for card in cards}
+            if spec:
+                file_card_ids.add(spec.specification["tech_card_revision_id"])
+            files = data.visible_files(unit.id, file_card_ids)
             result.append(
                 {
                     "id": unit.id,
@@ -334,6 +308,7 @@ class ProductionReadService:
                     "blockers": blockers,
                     "sizes": sizes,
                     "cards": cards,
+                    "tech_card": assigned_card,
                     "files": [
                         {
                             "id": a.id,
@@ -346,13 +321,13 @@ class ProductionReadService:
                         for a, m in files
                     ],
                     "cutting": (
-                        await cutting_details(
-                            session,
+                        cutting_details(
+                            data,
                             source=source,
                             spec=spec,
                             files=files,
                         )
-                        if set(stations) & {"tech", "cut", "packing"}
+                        if cutting
                         else None
                     ),
                 }

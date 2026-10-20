@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings
 from app.modules.carts.models import CartMigrationRun
 from app.modules.carts.repository import CartRepository
-from app.modules.carts.schemas import CartUpdateRequest
+from app.modules.carts.schemas import LegacyCartUpdateRequest
 from app.modules.carts.security import digest_cart_id, normalize_cart_id
 from app.modules.carts.service import CartService
 
@@ -32,7 +32,7 @@ class LegacyCartSourceEntry:
 @dataclass(frozen=True, slots=True)
 class LegacyCartRecord:
     cart_id: str
-    payload: CartUpdateRequest
+    payload: LegacyCartUpdateRequest
     remaining_ttl_seconds: int | None = None
 
     @property
@@ -82,7 +82,7 @@ class LegacyCartPlanner:
                 raw = json.loads(value)
                 if not isinstance(raw, dict):
                     raise CartMigrationError("Legacy cart payload must be an object")
-                payload = CartUpdateRequest.model_validate(raw)
+                payload = LegacyCartUpdateRequest.model_validate(raw)
                 if not payload.updated_at_ms:
                     raise CartMigrationError(
                         "Legacy cart snapshot has no positive update timestamp"

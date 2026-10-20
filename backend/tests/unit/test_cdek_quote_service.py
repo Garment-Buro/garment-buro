@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from app.core.config import AppEnvironment, Settings
 from app.db.base import Base
 from app.db.session import DatabaseManager
 from app.modules.catalog.models import Product
+from app.modules.delivery.directory_models import PickupDirectoryState, PickupPoint
 from app.modules.delivery.provider import CdekTariffQuote
 from app.modules.delivery.quote_schemas import CdekQuoteRequest
 from app.modules.delivery.quote_service import CdekQuoteService, CdekQuoteValidationError
@@ -36,7 +38,6 @@ def _settings(path: Path) -> Settings:
         database_enabled=True,
         database_url=f"sqlite+aiosqlite:///{path}",
         catalog_reads_enabled=True,
-        catalog_migration_fingerprint="a" * 64,
         minio_enabled=True,
         minio_access_key="access",
         minio_secret_key="secret",
@@ -44,6 +45,7 @@ def _settings(path: Path) -> Settings:
         cdek_quote_enabled=True,
         cdek_client_id="cdek-client",
         cdek_client_secret="cdek-secret",
+        jwt_secret="j" * 32,
     )
 
 
@@ -72,6 +74,19 @@ async def _create_database(path: Path) -> tuple[DatabaseManager, Product, Produc
     )
     async with database.session() as session:
         session.add_all([active, inactive])
+        session.add_all(
+            [
+                PickupDirectoryState(key="cdek-ru", updated_at=datetime.now(timezone.utc)),
+                PickupPoint(
+                    code="SPB1",
+                    search_text="санкт-петербург",
+                    payload={
+                        "code": "SPB1",
+                        "location": {"city": "Санкт-Петербург", "address": "Невский,1"},
+                    },
+                ),
+            ]
+        )
         await session.commit()
     return database, active, inactive
 
@@ -85,6 +100,7 @@ def test_cdek_quote_uses_server_catalog_and_stable_packages(tmp_path: Path) -> N
             {
                 "city": "  Санкт-Петербург  ",
                 "delivery_method": "cdek_pickup",
+                "cdek_point_code": "SPB1",
                 "cart_items": [
                     {
                         "product_id": product.id,
@@ -145,6 +161,7 @@ def test_cdek_quote_rejects_spoofed_or_incomplete_catalog_items(tmp_path: Path) 
                     {
                         "city": "Москва",
                         "delivery_method": "cdek_door",
+                        "delivery_address": "Тверская,1",
                         "cart_items": [{"product_id": product_id, "quantity": 1}],
                     }
                 )
@@ -161,6 +178,7 @@ def test_cdek_quote_rejects_spoofed_or_incomplete_catalog_items(tmp_path: Path) 
                 {
                     "city": "Москва",
                     "delivery_method": "cdek_door",
+                    "delivery_address": "Тверская,1",
                     "cart_items": [{"product_id": product.id, "quantity": 1}],
                 }
             )
@@ -180,6 +198,7 @@ def test_cdek_quote_enforces_package_limit_before_database_io(tmp_path: Path) ->
         {
             "city": "Москва",
             "delivery_method": "cdek_door",
+            "delivery_address": "Тверская,1",
             "cart_items": [{"product_id": 1, "quantity": 3}],
         }
     )
@@ -187,5 +206,49 @@ def test_cdek_quote_enforces_package_limit_before_database_io(tmp_path: Path) ->
     async def scenario() -> None:
         with pytest.raises(CdekQuoteValidationError, match="cdek_package_limit_exceeded"):
             await service.prepare(None, command)  # type: ignore[arg-type]
+
+    asyncio.run(scenario())
+
+
+def test_pickup_quote_uses_database_destination_instead_of_browser_labels(tmp_path: Path) -> None:
+    async def scenario():
+        database, product, _ = await _create_database(tmp_path / "canonical-point.db")
+        try:
+            async with database.session() as session:
+                session.add_all(
+                    [
+                        PickupPoint(
+                            code="TVR1",
+                            search_text="тверь",
+                            payload={
+                                "code": "TVR1",
+                                "location": {
+                                    "city": "Тверь",
+                                    "address": "Советская,1",
+                                    "address_full": "Тверь, Советская,1",
+                                },
+                            },
+                        ),
+                    ]
+                )
+                await session.commit()
+            command = CdekQuoteRequest.model_validate(
+                {
+                    "city": "Поддельный город",
+                    "delivery_method": "cdek_pickup",
+                    "delivery_address": "Поддельный адрес",
+                    "cdek_point_code": "TVR1",
+                    "cart_items": [{"product_id": product.id, "quantity": 1}],
+                }
+            )
+            async with database.session() as session:
+                prepared = await CdekQuoteService(database.settings, QuoteProvider()).prepare(
+                    session, command
+                )
+            assert json.loads(prepared.body)["to_location"]["city"] == "Тверь"
+            assert prepared.delivery_address == "Тверь, Советская,1"
+            assert prepared.cdek_point_code == "TVR1"
+        finally:
+            await database.shutdown()
 
     asyncio.run(scenario())

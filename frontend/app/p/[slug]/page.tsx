@@ -3,17 +3,20 @@ import { notFound } from 'next/navigation';
 
 import { PublicPartnerLanding } from '@/components/partner/PublicPartnerLanding';
 import { getPublicPartnerLanding } from '@/lib/api/partners.server';
-import { getServerProducts } from '@/lib/api/products.server';
+import {getCollectionProducts} from '@/lib/server/backend/collection';
+import type {CollectionModelsState} from '@/lib/catalog/collection';
 
 type PartnerLandingPageProps = {
     params: Promise<{ slug: string }>;
 };
 
-export const revalidate = 60;
+// Publication can be revoked by the owner at any time. Selected product reads
+// keep their own bounded cache; the landing and page are read per request.
+export const revalidate = 0;
 
 export async function generateMetadata({ params }: PartnerLandingPageProps): Promise<Metadata> {
     const { slug } = await params;
-    const landing = await getPublicPartnerLanding(slug).catch(() => null);
+    const landing = await getPublicPartnerLanding(slug);
     if (!landing) return { title: 'Страница не найдена', robots: { index: false } };
     return {
         title: landing.title,
@@ -30,12 +33,13 @@ export async function generateMetadata({ params }: PartnerLandingPageProps): Pro
 
 export default async function PartnerLandingPage({ params }: PartnerLandingPageProps) {
     const { slug } = await params;
-    const [landing, allProducts] = await Promise.all([
-        getPublicPartnerLanding(slug).catch(() => null),
-        getServerProducts().catch(() => []),
-    ]);
+    const landing = await getPublicPartnerLanding(slug);
     if (!landing) notFound();
-    const selectedIds = new Set(landing.product_ids);
-    const products = allProducts.filter(product => selectedIds.has(product.id));
-    return <PublicPartnerLanding landing={landing} products={products} />;
+    let models: CollectionModelsState;
+    try {
+        models = {status:'ready', items:await getCollectionProducts(landing.product_ids)};
+    } catch {
+        models = {status:'error'};
+    }
+    return <PublicPartnerLanding landing={landing} models={models} />;
 }

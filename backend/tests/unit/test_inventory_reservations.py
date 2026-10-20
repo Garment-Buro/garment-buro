@@ -13,8 +13,10 @@ from app.db.base import Base
 from app.db.session import DatabaseManager
 from app.modules.catalog.mapper import CatalogResponseMapper
 from app.modules.catalog.models import Product, ProductVariant
+from app.modules.catalog.schemas import ProductWriteRequest
 from app.modules.catalog.service import (
     CatalogInventoryReservedError,
+    CatalogProductVersionConflictError,
     CatalogService,
     CatalogWriteService,
 )
@@ -127,6 +129,7 @@ def test_payment_confirmation_consumes_reservation_and_state_machine(tmp_path: P
                     session, product_id
                 )
                 assert catalog_product is not None
+                assert catalog_product.version == 1
                 assert catalog_product.stock_quantity == 3
                 assert catalog_product.variants[0].stock_quantity == 2
 
@@ -192,6 +195,7 @@ def test_payment_confirmation_consumes_reservation_and_state_machine(tmp_path: P
                     )
                 )
                 assert product is not None and product.stock_quantity == 3
+                assert product.version == 2
                 assert product.reserved_quantity == 0
                 assert variant is not None and variant.stock_quantity == 2
                 assert variant.reserved_quantity == 0
@@ -204,6 +208,18 @@ def test_payment_confirmation_consumes_reservation_and_state_machine(tmp_path: P
                     "shipped",
                     "completed",
                 ]
+            async with database.session() as session:
+                with pytest.raises(CatalogProductVersionConflictError):
+                    await CatalogWriteService(settings).update_product(
+                        session,
+                        product_id=product_id,
+                        expected_version=1,
+                        payload=ProductWriteRequest(title="Stale", price=100, stock_quantity=5),
+                        actor_user_id=manager_id,
+                    )
+                await session.rollback()
+                assert (await session.get(Product, product_id)).stock_quantity == 3
+
         finally:
             await database.shutdown()
 

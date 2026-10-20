@@ -7,6 +7,7 @@ export type AdminSection =
     | 'employees'
     | 'clients'
     | 'assortment'
+    | 'presets'
     | 'problems'
     | 'support';
 export interface Page<T> {
@@ -131,6 +132,10 @@ export interface AdminClientDetail {
     name: string;
     email: string | null;
     phone: string | null;
+    orders_count: number;
+    orders_total: string;
+    paid_orders_total: string;
+    tickets_count: number;
     account: {
         id: number;
         email: string | null;
@@ -150,26 +155,26 @@ export interface AdminClientDetail {
         delivery_method: string | null;
         pickup_point: string | null;
     };
-    orders: {
-        id: number;
-        created_at: string;
-        total: string;
-        status: string;
-        payment_status: string;
-        workflow_state: string | null;
-        delivery_city: string | null;
-        delivery_method: string | null;
-        payment_method: string | null;
-    }[];
-    tickets: {
-        id: number;
-        subject: string;
-        status: AdminInboxStatus;
-        priority: AdminInboxPriority;
-        order_id: number | null;
-        created_at: string;
-        updated_at: string;
-    }[];
+}
+export interface AdminClientOrder {
+    id: number;
+    created_at: string;
+    total: string;
+    status: string;
+    payment_status: string;
+    workflow_state: string | null;
+    delivery_city: string | null;
+    delivery_method: string | null;
+    payment_method: string | null;
+}
+export interface AdminClientTicket {
+    id: number;
+    subject: string;
+    status: AdminInboxStatus;
+    priority: AdminInboxPriority;
+    order_id: number | null;
+    created_at: string;
+    updated_at: string;
 }
 export interface AdminPayout {
     id: number;
@@ -234,7 +239,8 @@ export const sectionLabels: Record<AdminSection, string> = {
     payouts: 'Заявки на выплаты',
     employees: 'Сотрудники',
     clients: 'Клиенты',
-    assortment: 'Товары и склад',
+    assortment: 'Модели и склад',
+    presets: 'Пресеты',
     problems: 'Проблемы',
     support: 'Поддержка',
 };
@@ -242,6 +248,7 @@ export const systemAdminSections: AdminSection[] = [
     'stats',
     'employees',
     'assortment',
+    'presets',
     'orders',
     'clients',
     'problems',

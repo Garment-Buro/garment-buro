@@ -27,30 +27,6 @@ class VersionedWrite(BaseModel):
     expected_version: int = Field(gt=0)
 
 
-class CrmCatalogProductVariantReferenceRead(BaseModel):
-    id: int
-    sku: str | None
-    size: str | None
-    garment_size_id: int | None
-    fabric_id: int | None
-    color: str | None
-    stock_quantity: int
-
-
-class CrmCatalogProductReferenceRead(BaseModel):
-    id: int
-    title: str
-    slug: str | None
-    category_id: int | None
-    garment_model_id: int | None
-    price: Decimal
-    old_price: Decimal | None
-    image_url: str | None = None
-    is_active: bool
-    stock_quantity: int
-    variants: list[CrmCatalogProductVariantReferenceRead]
-
-
 class CrmGarmentPatternWrite(BaseModel):
     code: str = Field(min_length=1, max_length=64)
     garment_model_id: int = Field(gt=0)
@@ -173,7 +149,6 @@ class CrmAccessoryRead(CrmAccessoryWrite):
 
     id: int
     version: int
-    model_ids: list[int] = Field(default_factory=list)
 
 
 class CrmGarmentAccessoryRequirementWrite(BaseModel):

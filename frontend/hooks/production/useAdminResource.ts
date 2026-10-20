@@ -5,6 +5,8 @@ import { requestJson } from '@/lib/api/http';
 import { useProductionAuthStore } from '@/store/productionAuthStore';
 
 export function useAdminResource<T>(path: string, refreshIntervalMs = 0) {
+    const epoch = useProductionAuthStore(state => state.sessionEpoch);
+    const resourceKey = `${epoch}:${path}`;
     const run = useProductionAuthStore((state) => state.runAuthenticated);
     const [result, setResult] = useState<{
         path: string;
@@ -19,12 +21,12 @@ export function useAdminResource<T>(path: string, refreshIntervalMs = 0) {
     useEffect(() => {
         const controller = new AbortController();
         const hasCurrentData =
-            resultRef.current.path === path &&
+            resultRef.current.path === resourceKey &&
             resultRef.current.data !== null;
         void (async () => {
             if (!hasCurrentData) {
                 setLoading(true);
-                setResult({ path, data: null, error: '' });
+                setResult({ path: resourceKey, data: null, error: '' });
             } else {
                 setResult((current) => ({ ...current, error: '' }));
             }
@@ -36,11 +38,11 @@ export function useAdminResource<T>(path: string, refreshIntervalMs = 0) {
                     }),
                 );
                 if (!controller.signal.aborted)
-                    setResult({ path, data, error: '' });
+                    setResult({ path: resourceKey, data, error: '' });
             } catch (error) {
                 if (!controller.signal.aborted)
                     setResult({
-                        path,
+                        path: resourceKey,
                         data: null,
                         error:
                             error instanceof Error
@@ -52,7 +54,7 @@ export function useAdminResource<T>(path: string, refreshIntervalMs = 0) {
             }
         })();
         return () => controller.abort();
-    }, [path, revision, run]);
+    }, [path, resourceKey, revision, run]);
     useEffect(() => {
         if (refreshIntervalMs <= 0) return;
         const refreshWhenVisible = () => {
@@ -72,9 +74,9 @@ export function useAdminResource<T>(path: string, refreshIntervalMs = 0) {
         };
     }, [refreshIntervalMs, reload]);
     return {
-        data: result.path === path ? result.data : null,
-        error: result.path === path ? result.error : '',
-        loading: loading || result.path !== path,
+        data: result.path === resourceKey ? result.data : null,
+        error: result.path === resourceKey ? result.error : '',
+        loading: loading || result.path !== resourceKey,
         reload,
     };
 }

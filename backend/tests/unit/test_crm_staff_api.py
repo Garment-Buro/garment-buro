@@ -450,7 +450,7 @@ def test_crm_staff_api_requires_permission_and_returns_bounded_pii_minimized_rea
                 assert missing.status_code == 404
 
                 fabrics = await client.get(
-                    "/api/crm/reference/fabrics?is_active=true",
+                    "/api/crm/reference/fabrics?active=true",
                     headers={"Authorization": "Bearer staff-token"},
                 )
                 assert fabrics.status_code == 200
@@ -459,14 +459,20 @@ def test_crm_staff_api_requires_permission_and_returns_bounded_pii_minimized_rea
                 assert fabrics.json()["items"][0]["balance"]["available_meters"] == "20.000"
 
                 models = await client.get(
-                    "/api/crm/reference/garment-models?is_active=true",
+                    "/api/crm/reference/garment-models?active=true",
                     headers={"Authorization": "Bearer staff-token"},
                 )
                 assert models.status_code == 200
                 model = models.json()["items"][0]
-                assert model["catalog_product_ids"] == [101]
-                assert [size["code"] for size in model["sizes"]] == ["M"]
-                assert model["published_tech_card"]["revision_number"] == 1
+                assert model["product_count"] == 1 and model["size_count"] == 1
+                assert model["tech_card_revision"] == 1
+                assert "catalog_product_ids" not in model and "sizes" not in model
+                model_source = await client.get(
+                    f"/api/crm/reference/garment-models/{model['id']}",
+                    headers={"Authorization": "Bearer staff-token"},
+                )
+                assert model_source.status_code == 200
+                assert [size["code"] for size in model_source.json()["sizes"]] == ["M"]
 
                 oversized = await client.get(
                     "/api/crm/projects?limit=101",

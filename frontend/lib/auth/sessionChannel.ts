@@ -1,15 +1,14 @@
 import type { AuthSessionResponse } from '@/lib/auth/types';
+import { requireWritableStorage } from '../browser/utils/storage.ts';
 
 const CHANNEL_NAME = 'garment-buro-auth-session-v2';
 const GENERATION_KEY = 'gb-auth-session-generation';
-const LOCK_KEY = 'gb-auth-refresh-lock';
+const ACCOUNT_EPOCH_KEY = 'gb-auth-account-epoch';
 const LOCK_NAME = 'garment-buro-auth-refresh';
-const LOCK_TTL_MS = 15_000;
-const LOCK_WAIT_MS = 20_000;
 
 export type AuthSessionChannelMessage =
-    | { type: 'session'; generation: string; session: AuthSessionResponse }
-    | { type: 'logout'; pending: boolean };
+    | { type: 'session'; generation: string; accountEpoch: string; session: AuthSessionResponse }
+    | { type: 'logout'; generation: string; pending: boolean };
 
 type Listener = (message: AuthSessionChannelMessage) => void;
 
@@ -26,12 +25,27 @@ const storage = () => {
     }
 };
 
+const readSharedMarker = (key: string) => {
+    try { return storage()?.getItem(key) || null; }
+    catch { return null; }
+};
+
 const ensureChannel = () => {
     if (channel || typeof BroadcastChannel === 'undefined') return channel;
     channel = new BroadcastChannel(CHANNEL_NAME);
     channel.addEventListener('message', (event: MessageEvent<AuthSessionChannelMessage>) => {
         const message = event.data;
         if (!message || (message.type !== 'session' && message.type !== 'logout')) return;
+        // Hidden tabs may receive old events after a newer cookie/session write.
+        let sharedGeneration: string | null;
+        try {
+            const sharedStorage = storage();
+            if (!sharedStorage) return;
+            sharedGeneration = sharedStorage.getItem(GENERATION_KEY);
+        } catch {
+            return; // Cannot reconcile account lifetimes without shared markers.
+        }
+        if (sharedGeneration && message.generation !== sharedGeneration) return;
         if (message.type === 'session') latestSessionMessage = message;
         listeners.forEach(listener => listener(message));
     });
@@ -52,34 +66,58 @@ export const authSessionChannel = {
         return () => listeners.delete(listener);
     },
 
-    publishSession(session: AuthSessionResponse) {
+    publishSession(session: AuthSessionResponse, accountEpoch: string) {
         const generation = newId();
         const message: Extract<AuthSessionChannelMessage, { type: 'session' }> = {
             type: 'session',
             generation,
+            accountEpoch,
             session,
         };
         latestSessionMessage = message;
-        storage()?.setItem(GENERATION_KEY, generation);
+        try {
+            const sharedStorage = storage();
+            if (!sharedStorage) throw new Error();
+            sharedStorage.setItem(ACCOUNT_EPOCH_KEY, accountEpoch);
+            sharedStorage.setItem(GENERATION_KEY, generation);
+        } catch {
+            latestSessionMessage = null;
+            throw new Error('Не удалось сохранить состояние входа. Разрешите хранение данных браузера и попробуйте снова.');
+        }
         ensureChannel()?.postMessage(message);
         return generation;
     },
 
     publishLogout(pending: boolean) {
+        // Completion belongs to the same logout intent, so a login deliberately
+        // queued after that intent remains valid when its HTTP response arrives.
+        const generation = !pending && !readSharedMarker(ACCOUNT_EPOCH_KEY)
+            ? readSharedMarker(GENERATION_KEY) || newId() : newId();
         latestSessionMessage = null;
-        storage()?.removeItem(GENERATION_KEY);
-        ensureChannel()?.postMessage({ type: 'logout', pending });
+        try {
+            const sharedStorage = storage();
+            if (!sharedStorage) return;
+            sharedStorage.setItem(GENERATION_KEY, generation);
+            sharedStorage.removeItem(ACCOUNT_EPOCH_KEY);
+        } catch {
+            return; // Local logout stays pending; never publish a marker other tabs cannot verify.
+        }
+        ensureChannel()?.postMessage({ type: 'logout', generation, pending });
     },
 
     getSharedGeneration() {
-        return storage()?.getItem(GENERATION_KEY) || null;
+        return readSharedMarker(GENERATION_KEY);
+    },
+
+    getSharedAccountEpoch() {
+        return readSharedMarker(ACCOUNT_EPOCH_KEY);
     },
 
     async waitForSession(generation: string, timeoutMs = 750) {
         if (latestSessionMessage?.generation === generation) {
-            return latestSessionMessage.session;
+            return latestSessionMessage;
         }
-        return new Promise<AuthSessionResponse | null>((resolve) => {
+        return new Promise<Extract<AuthSessionChannelMessage, { type: 'session' }> | null>((resolve) => {
             const timeout = window.setTimeout(() => {
                 listeners.delete(listener);
                 resolve(null);
@@ -88,7 +126,7 @@ export const authSessionChannel = {
                 if (message.type !== 'session' || message.generation !== generation) return;
                 window.clearTimeout(timeout);
                 listeners.delete(listener);
-                resolve(message.session);
+                resolve(message);
             };
             listeners.add(listener);
             ensureChannel();
@@ -100,49 +138,12 @@ export async function withAuthRefreshLock<Result>(
     operation: () => Promise<Result>,
 ): Promise<Result> {
     if (typeof navigator !== 'undefined' && navigator.locks) {
-        return navigator.locks.request(LOCK_NAME, operation);
+        return navigator.locks.request(LOCK_NAME, async () => {
+            if (typeof window !== 'undefined') requireWritableStorage(() => window.localStorage);
+            return operation();
+        });
     }
-    const browserStorage = storage();
-    if (!browserStorage) return operation();
-
-    const owner = newId();
-    const deadline = Date.now() + LOCK_WAIT_MS;
-    let acquired = false;
-    while (!acquired && Date.now() < deadline) {
-        const now = Date.now();
-        const current = parseLock(browserStorage.getItem(LOCK_KEY));
-        if (!current || current.expiresAt <= now) {
-            browserStorage.setItem(
-                LOCK_KEY,
-                JSON.stringify({ owner, expiresAt: now + LOCK_TTL_MS }),
-            );
-            acquired = parseLock(browserStorage.getItem(LOCK_KEY))?.owner === owner;
-        }
-        if (!acquired) await delay(40 + Math.floor(Math.random() * 30));
-    }
-    if (!acquired) return operation();
-    try {
-        return await operation();
-    } finally {
-        if (parseLock(browserStorage.getItem(LOCK_KEY))?.owner === owner) {
-            browserStorage.removeItem(LOCK_KEY);
-        }
-    }
+    // A localStorage lease is not atomic across tabs and can expire while a
+    // response still carries Set-Cookie. Never run cookie mutations unlocked.
+    throw new Error('Authentication coordination unavailable');
 }
-
-const parseLock = (value: string | null): { owner: string; expiresAt: number } | null => {
-    if (!value) return null;
-    try {
-        const parsed = JSON.parse(value) as { owner?: unknown; expiresAt?: unknown };
-        if (typeof parsed.owner === 'string' && typeof parsed.expiresAt === 'number') {
-            return { owner: parsed.owner, expiresAt: parsed.expiresAt };
-        }
-    } catch {
-        // Treat malformed or externally cleared state as an available lock.
-    }
-    return null;
-};
-
-const delay = (milliseconds: number) => new Promise<void>(resolve => {
-    window.setTimeout(resolve, milliseconds);
-});

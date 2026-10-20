@@ -2,26 +2,31 @@ import { Suspense } from "react";
 import type { Metadata, Viewport } from "next";
 import { Alumni_Sans_SC, IBM_Plex_Mono, Inter, Manrope, Questrial, Michroma } from "next/font/google";
 import "./globals.css";
-import "@aejkatappaja/phantom-ui/ssr.css";
 
 const manrope = Manrope({
   variable: "--font-manrope",
-  subsets: ["latin", "cyrillic"],
+  subsets: ["latin", "cyrillic", "latin-ext"],
+  // Include the currency glyphs used by catalog prices in the critical font.
+  // Other families remain available through their variables and load on use.
+  preload: true,
 });
 
 const questrial = Questrial({
+  preload: false,
   weight: "400",
   variable: "--font-questrial",
   subsets: ["latin"],
 });
 
 const michroma = Michroma({
+  preload: false,
   weight: "400",
   variable: "--font-michroma",
   subsets: ["latin"],
 });
 
 const inter = Inter({
+  preload: false,
   weight: ["400", "800"],
   style: ["normal", "italic"],
   variable: "--font-inter",
@@ -29,6 +34,7 @@ const inter = Inter({
 });
 
 const alumniSansSc = Alumni_Sans_SC({
+  preload: false,
   weight: "800",
   variable: "--font-alumni-sans-sc",
   subsets: ["latin", "cyrillic"],
@@ -36,6 +42,7 @@ const alumniSansSc = Alumni_Sans_SC({
 });
 
 const ibmPlexMono = IBM_Plex_Mono({
+  preload: false,
   weight: "500",
   variable: "--font-ibm-plex-mono",
   subsets: ["latin"],
@@ -49,6 +56,10 @@ export const metadata: Metadata = {
   },
   description: "Совместные коллекции, конструктор одежды, производство и доставка GARMENT BURO.",
   manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: "Garment Buro",
+  },
   icons: {
     icon: "/favicon.ico",
     apple: "/apple-touch-icon.png",
@@ -71,7 +82,6 @@ import { SplashBoundary } from "@/providers/SplashBoundary";
 import { CookieConsent } from "@/components/shared/CookieConsent";
 
 import { CartSyncBootstrap } from "@/components/cart/CartSyncBootstrap";
-import { PhantomUiBootstrap } from "@/components/runtime/PhantomUiBootstrap";
 import { PwaRegistration } from "@/components/pwa/PwaRegistration";
 import { YandexMetrika } from "@/components/analytics/YandexMetrika";
 
@@ -103,7 +113,6 @@ export default function RootLayout({
             {/* Global Modal / Banner overlays */}
             <CookieConsent />
 
-            <PhantomUiBootstrap />
             <CartSyncBootstrap />
 
             {/* Popup modal slot (parallel routes) */}

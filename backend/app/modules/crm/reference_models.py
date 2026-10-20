@@ -17,12 +17,14 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    column,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, IntegerIdMixin, TimestampMixin
+from app.db.text import UnicodeLower
 
 CRM_REFERENCE_DETAILS_TYPE = JSON().with_variant(JSONB, "postgresql")
 
@@ -55,6 +57,7 @@ class CrmReferenceAction(str, Enum):
 class CrmFabric(Base, IntegerIdMixin, TimestampMixin):
     __tablename__ = "crm_fabrics"
     __table_args__ = (
+        Index("ix_crm_fabrics_editor_active_id", "is_active", "id"),
         CheckConstraint("length(trim(code)) > 0", name="crm_fabric_code_nonempty"),
         CheckConstraint("length(trim(name)) > 0", name="crm_fabric_name_nonempty"),
         CheckConstraint("length(trim(color_name)) > 0", name="crm_fabric_color_nonempty"),
@@ -113,6 +116,7 @@ class CrmFabric(Base, IntegerIdMixin, TimestampMixin):
 class CrmGarmentModelCategory(Base, IntegerIdMixin, TimestampMixin):
     __tablename__ = "crm_garment_model_categories"
     __table_args__ = (
+        Index("ix_crm_model_categories_directory_name", UnicodeLower(column("name")), "id"),
         CheckConstraint(
             "length(trim(code)) > 0",
             name="crm_garment_model_category_code_nonempty",
@@ -144,6 +148,18 @@ class CrmGarmentModelCategory(Base, IntegerIdMixin, TimestampMixin):
 class CrmGarmentModel(Base, IntegerIdMixin, TimestampMixin):
     __tablename__ = "crm_garment_models"
     __table_args__ = (
+        Index("ix_crm_models_editor_active_id", "is_active", "id"),
+        # Match ordered_text's Unicode casing and stable code-point order exactly.
+        Index(
+            "ix_crm_models_directory_name",
+            UnicodeLower(column("name")),
+            "id",
+        ),
+        Index(
+            "ix_crm_models_directory_code",
+            UnicodeLower(column("code")),
+            "id",
+        ),
         CheckConstraint("length(trim(code)) > 0", name="crm_garment_model_code_nonempty"),
         CheckConstraint("length(trim(name)) > 0", name="crm_garment_model_name_nonempty"),
         CheckConstraint(
@@ -243,7 +259,9 @@ class CrmGarmentModel(Base, IntegerIdMixin, TimestampMixin):
 class CrmGarmentSize(Base, IntegerIdMixin, TimestampMixin):
     __tablename__ = "crm_garment_sizes"
     __table_args__ = (
-        UniqueConstraint("garment_model_id", "code", name="uq_crm_garment_size_code"),
+        UniqueConstraint(
+            "garment_model_id", "code", name="uq_crm_garment_size_code", postgresql_include=["id"]
+        ),
         CheckConstraint("length(trim(code)) > 0", name="crm_garment_size_code_nonempty"),
         CheckConstraint("sort_order >= 0", name="crm_garment_size_sort_nonnegative"),
         CheckConstraint("base_price >= 0", name="crm_garment_size_price_nonnegative"),
@@ -315,8 +333,13 @@ class CrmGarmentSize(Base, IntegerIdMixin, TimestampMixin):
         CheckConstraint("currency = 'RUB'", name="crm_garment_size_currency_rub"),
         CheckConstraint("version > 0", name="crm_garment_size_version_positive"),
         Index(
-            "ix_crm_garment_sizes_model_active_sort", "garment_model_id", "is_active", "sort_order"
+            "ix_crm_garment_sizes_model_active_sort",
+            "garment_model_id",
+            "is_active",
+            "sort_order",
+            "id",
         ),
+        Index("ix_crm_sizes_editor_model_active_id", "garment_model_id", "is_active", "id"),
     )
 
     garment_model_id: Mapped[int] = mapped_column(
@@ -324,7 +347,7 @@ class CrmGarmentSize(Base, IntegerIdMixin, TimestampMixin):
         nullable=False,
         index=True,
     )
-    code: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    code: Mapped[str] = mapped_column(String(32), nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     base_price: Mapped[Decimal] = mapped_column(
         Numeric(12, 2),

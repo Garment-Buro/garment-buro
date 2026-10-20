@@ -14,21 +14,17 @@ const savedItemsPanelPath = path.join(componentsRoot, "unfinished", "SavedItemsP
 const draftPreviewPath = path.join(componentsRoot, "unfinished", "ConstructorDraftPreview.tsx");
 const draftPreviewStylesPath = path.join(componentsRoot, "unfinished", "ConstructorDraftPreview.module.css");
 const unfinishedConfigPath = path.join(process.cwd(), "lib", "unfinished", "config", "ui.ts");
-const unfinishedSavedItemFixturesPath = path.join(process.cwd(), "lib", "unfinished", "fixtures", "savedItems.ts");
-const unfinishedProfileFixturesPath = path.join(process.cwd(), "lib", "unfinished", "fixtures", "profile.ts");
 const unfinishedTypesPath = path.join(process.cwd(), "lib", "unfinished", "types.ts");
 const unfinishedUtilsPath = path.join(process.cwd(), "lib", "unfinished", "utils", "unfinished.ts");
 const unfinishedHookPath = path.join(process.cwd(), "hooks", "unfinished", "useUnfinishedSurface.ts");
-const savedItemsPath = path.join(process.cwd(), "lib", "unfinished", "utils", "savedItems.ts");
 const overlayPagePath = path.join(appRoot, "@modal", "(.)unfinished", "page.tsx");
 const readUnfinishedSource = () => [
     surfacePath,
     profilePanelPath,
+    ...["ProfileSignIn.tsx", "ProfileSettings.tsx", "ProfileOrders.tsx"].map(file => path.join(componentsRoot, "unfinished", file)),
     savedItemsPanelPath,
     unfinishedHookPath,
     unfinishedConfigPath,
-    unfinishedSavedItemFixturesPath,
-    unfinishedProfileFixturesPath,
     unfinishedTypesPath,
     unfinishedUtilsPath,
 ]
@@ -54,10 +50,8 @@ test("unfinished page route defines the mobile drafts surface", () => {
     assert.match(pageSource, /name="back"/);
     assert.match(pageSource, /back_icon_item\.svg/);
     assert.match(pageSource, /name="delete"/);
-    assert.match(pageSource, /window\.location\.replace\("\/\?selectForConstructor=1"\)/);
-    assert.match(pageSource, /router\.push\(`\/constructor\?productId=\$\{selectedDraft\.productId\}&draftId=\$\{encodeURIComponent\(selectedDraft\.id\)\}`\)/);
-    assert.match(pageSource, /loadSavedProfileItems\(CONSTRUCTOR_DRAFTS_STORAGE_KEY\)/);
-    assert.match(pageSource, /loadSavedProfileItems\(MY_COLLECTION_STORAGE_KEY\)/);
+    assert.match(pageSource, /router\.push\(`\/constructor\?projectId=\$\{selectedItem\.id\}`\)/);
+    assert.doesNotMatch(pageSource, /loadSavedProfileItems|PREVIEW_FIXTURES|isMockDataEnabled/);
     assert.match(pageSource, /Продолжить/);
     assert.match(pageSource, /UNFINISHED/);
     assert.match(pageSource, /MY COLLECTION/);
@@ -113,8 +107,8 @@ test("unfinished draft preview layers saved decorations over a centered garment"
     const previewStylesSource = fs.readFileSync(draftPreviewStylesPath, "utf8");
     const stylesSource = fs.readFileSync(stylesPath, "utf8");
 
-    assert.match(pageSource, /<ConstructorDraftPreview[\s\S]*item=\{item\}/);
-    assert.match(pageSource, /<ConstructorDraftPreview[\s\S]*item=\{selectedDraft\}/);
+    assert.match(pageSource, /<ConstructorDraftPreview[\s\S]*draftState: surface\.projectLibrary\.restored/);
+    assert.doesNotMatch(fs.readFileSync(savedItemsPanelPath, 'utf8'), /<ConstructorDraftPreview/);
     assert.match(previewSource, /data-constructor-draft-preview="true"/);
     assert.match(previewSource, /customization\.decorations\.filter/);
     assert.match(previewSource, /data-constructor-draft-decoration=\{decoration\.variantId\}/);
@@ -171,7 +165,7 @@ test("unfinished and collection share responsive Figma tray states", () => {
     assert.match(stylesSource, /\.collapsedBottomBarSection\s*\{[^}]*--unfinished-bottom-height:\s*var\(--unfinished-bottom-collapsed-height\)/s);
     assert.match(stylesSource, /\.contentPanel\s*\{[^}]*display:\s*flex/s);
     assert.match(stylesSource, /\.selectedProductFrame\s*\{[^}]*position:\s*relative/s);
-    assert.match(pageSource, /!isProfileTab\s*&&\s*\(\s*<div className=\{styles\.collectionInfoBlock\}>[\s\S]*?<h1 className=\{styles\.pageTitle\}>\{activeTitle\}<\/h1>[\s\S]*?selectedItem\.number[\s\S]*?selectedItem\.name/s);
+    assert.match(pageSource, /!isProfileTab\s*&&\s*\(\s*<div className=\{styles\.collectionInfoBlock\}>[\s\S]*?<h1 className=\{styles\.pageTitle\}>\{activeTitle\}<\/h1>[\s\S]*?selectedItem\.id[\s\S]*?selectedItem\.title/s);
     assert.match(stylesSource, /--draft-card-width:\s*clamp\(110px,\s*29\.73vw,\s*190px\)/);
     assert.match(stylesSource, /--draft-photo-height:\s*clamp\(100px,\s*27\.03vw,\s*173px\)/);
     assert.match(stylesSource, /--draft-card-height:\s*calc\(var\(--draft-photo-height\) \+ 30px\)/);
@@ -194,11 +188,9 @@ test("PWA keeps profile navigation above the bottom safe area", () => {
 
 test("collection selection preserves the current tray state", () => {
     const pageSource = readUnfinishedSource();
-    const collectionSelectionHandler = pageSource.match(/const handleSelectGridItem = \(item: SavedProfileItem\) => \{[\s\S]*?\n    \};/)?.[0] ?? "";
-    const collectionSelectionBranch = collectionSelectionHandler.match(/if \(activeTab === "my-collection"\) \{[\s\S]*?return;\n        \}/)?.[0] ?? "";
-
-    assert.match(collectionSelectionBranch, /setSelectedCollectionId\(item\.id\)/);
-    assert.doesNotMatch(collectionSelectionBranch, /setBottomPanelState/);
+    const collectionSelectionHandler = pageSource.match(/const handleSelectGridItem = \(item: ProjectSummary\) => \{[\s\S]*?\n    \};/)?.[0] ?? "";
+    assert.match(collectionSelectionHandler, /projectLibrary\.select\(item\.id\)/);
+    assert.match(collectionSelectionHandler, /if \(activeTab === "my-collection"\) return;\s*setBottomPanelState/);
 });
 
 test("unfinished and collection use the approved three-state content bar", () => {
@@ -253,13 +245,11 @@ test("unfinished and collection use the approved three-state content bar", () =>
     assert.match(pageSource, /src:\s*"\/unfinished_bg_2\.webp",\s*active:\s*isUnfinishedTab && bottomPanelState === "normal"/);
     assert.match(pageSource, /src:\s*"\/unfinished_bg_3\.webp",\s*active:\s*isUnfinishedTab && isBottomBarExpanded/);
     assert.match(pageSource, /DRAFTS_PANEL_BACKGROUND = "url\('\/unfinished_bg\.webp'\)"/);
-    assert.match(pageSource, /export const COLLECTION_PREVIEW_FIXTURES: SavedProfileItem\[\]/);
-    assert.match(pageSource, /const collectionFixtures = fixturesEnabled \? COLLECTION_PREVIEW_FIXTURES : EMPTY_SAVED_ITEMS/);
-    assert.match(pageSource, /collectionFixtures\[0\]\?\.id/);
+    assert.doesNotMatch(fs.readFileSync(unfinishedHookPath, 'utf8'), /collectionFixtures|COLLECTION_HERO_IMAGE/);
     assert.match(pageSource, /!isTabContentVisible \? styles\.tabLayoutSwitching : ""/);
     assert.match(pageSource, /!isProfileTab && isTabContentVisible && \(/);
     assert.match(pageSource, /key=\{`\$\{activeTab\}-\$\{selectedItem\?\.id \?\? "empty"\}`\}/);
-    assert.match(pageSource, /selectedDraft && isUnfinishedTab/);
+    assert.match(pageSource, /selectedItem && surface\.projectLibrary\.restored/);
     assert.doesNotMatch(pageSource, /selectedDraft && !isCollectionTab/);
     assert.match(stylesSource, /\.unfinishedSection\.tabLayoutSwitching,[\s\S]*?\.tabLayoutSwitching \.contentPanel,[\s\S]*?\.tabLayoutSwitching \.collectionProductImage\s*\{[^}]*transition:\s*none/s);
     assert.match(stylesSource, /\.tabLayoutSwitching \.sectionBackgroundLayer/);
@@ -278,15 +268,10 @@ test("profile route renders the mobile profile surface", () => {
     assert.match(pageSource, /useState<ProfileTab>\(initialTab\)/);
     assert.match(pageSource, /useState<BottomPanelState>\("collapsed"\)/);
     assert.match(pageSource, /profile_bg\.webp/);
-    assert.match(pageSource, /discount_bg\.webp/);
     assert.match(pageSource, /discount_header_icon\.svg/);
-    assert.match(pageSource, /name="discount-lock"/);
     assert.match(pageSource, /ЗАКАЗЫ/);
     assert.match(pageSource, /ПОДДЕРЖКА/);
     assert.match(pageSource, /НАСТРОЙКИ/);
-    assert.match(pageSource, /Скидка на первый заказ/);
-    assert.match(pageSource, /Заказ подтверждён/);
-    assert.match(pageSource, /Получен/);
     assert.match(pageSource, /ЛИЧНАЯ ИНФОРМАЦИЯ/);
     assert.match(pageSource, /ПОЛУЧИТЬ КОД/);
     assert.match(pageSource, /<CustomerSupport\s*\/>/);
@@ -296,11 +281,6 @@ test("profile route renders the mobile profile surface", () => {
     assert.match(pageSource, /setBottomPanelState\(isExpandedOnlyProfileTab\(nextProfileTab\) \? "expanded" : "normal"\)/);
     assert.match(pageSource, /const handleToggleOrder = \(orderId: string\) => \{[\s\S]*?setExpandedOrderId\(shouldCollapseOrder \? null : orderId\)[\s\S]*?setBottomPanelState\(shouldCollapseOrder \? "normal" : "expanded"\)/s);
     assert.match(pageSource, /if \(isExpandedOrderPanel && isBottomBarExpanded\) \{[\s\S]*?setExpandedOrderId\(null\)[\s\S]*?setBottomPanelState\("normal"\)/s);
-    assert.match(pageSource, /function OrderSummary[\s\S]*?onClick=\{\(\) => onToggle\(order\.id\)\}/s);
-    assert.match(pageSource, /function ExpandedOrder[\s\S]*?onClick=\{onCollapse\}/s);
-    const normalOrdersBranch = pageSource.match(/function ProfileOrders[\s\S]*?function ProfileDiscounts/)?.[0] ?? "";
-    assert.match(normalOrdersBranch, /styles\.orderSummaries/);
-    assert.doesNotMatch(normalOrdersBranch, /OrderStatusList|styles\.orderTimeline/);
     assert.match(stylesSource, /\.profileBottomPanel\s*\{/);
     assert.match(stylesSource, /\.profileBottomPanelFrame\s*\{[^}]*background-color:\s*#F3F3F3[^}]*background-image:\s*url\('\/unfinished_bg\.webp'\)[^}]*background-repeat:\s*no-repeat/s);
     assert.match(stylesSource, /\.profileBottomPanelInner\s*\{[^}]*background:\s*transparent/s);
@@ -315,21 +295,6 @@ test("profile route renders the mobile profile surface", () => {
     assert.match(stylesSource, /\.discountCard\s*\{/);
     assert.match(stylesSource, /\.profileSettingsCard[\s\S]{0,80}\{/);
     assert.match(stylesSource, /\.profileSection \.pageTitle\s*\{[^}]*top:\s*clamp\(58px,\s*15\.676vw,\s*100px\)/s);
-});
-
-test("profile settings fields and confirmation code are editable", () => {
-    const pageSource = readUnfinishedSource();
-    const stylesSource = fs.readFileSync(stylesPath, "utf8");
-
-    assert.doesNotMatch(pageSource, /readOnly/);
-    assert.match(pageSource, /value=\{surface\.loginEmail\}[\s\S]{0,160}surface\.setLoginEmail\(event\.target\.value\)/);
-    assert.match(pageSource, /surface\.profileCode\.map\(\(character, index\) =>/);
-    assert.match(pageSource, /inputMode="numeric"/);
-    assert.match(pageSource, /surface\.handleProfileCodeChange\(index, event\.target\.value\)/);
-    assert.match(pageSource, /value=\{surface\.profileName\}[\s\S]{0,160}surface\.setProfileName/);
-    assert.match(pageSource, /value=\{surface\.profilePhone\}[\s\S]{0,160}surface\.setProfilePhone/);
-    assert.match(pageSource, /value=\{surface\.profileEmail\}[\s\S]{0,160}surface\.setProfileEmail/);
-    assert.match(stylesSource, /\.profileCodeSlots input\s*\{/);
 });
 
 test("profile uses the same inner panel controls as collection and unfinished", () => {
@@ -350,24 +315,11 @@ test("profile uses the same inner panel controls as collection and unfinished", 
     assert.doesNotMatch(stylesSource, /\.profilePanel\s*\{/);
 });
 
-test("unfinished page has local saved-item storage helpers", () => {
-    assert.equal(fs.existsSync(savedItemsPath), true);
-
-    const savedItemsSource = fs.readFileSync(savedItemsPath, "utf8");
-
-    assert.match(savedItemsSource, /CONSTRUCTOR_DRAFTS_STORAGE_KEY = ['"]plus2opacity-constructor-drafts['"]/);
-    assert.match(savedItemsSource, /MY_COLLECTION_STORAGE_KEY = ['"]plus2opacity-my-collection['"]/);
-    assert.match(savedItemsSource, /buildSavedProfileItem/);
-    assert.match(savedItemsSource, /loadSavedProfileItems/);
-    assert.match(savedItemsSource, /saveConstructorDraft/);
-});
-
 test("unfinished route hides global chrome around the mobile surface", () => {
     const pageChromePath = path.join(process.cwd(), "lib", "browser", "utils", "pageChrome.ts");
     const chromeFileGroups = [
         [path.join(componentsRoot, "layout", "Header.tsx"), pageChromePath],
         [path.join(componentsRoot, "layout", "Footer.tsx"), pageChromePath],
-        [path.join(componentsRoot, "shared", "AnimatedLogo.tsx")],
         [
             path.join(componentsRoot, "shared", "SplashScreen.tsx"),
             path.join(process.cwd(), "hooks", "browser", "useSplashController.ts"),

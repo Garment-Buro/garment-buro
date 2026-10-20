@@ -5,8 +5,7 @@ import Image from "next/image";
 
 import type { UnfinishedSurfaceViewModel } from "@/hooks/unfinished/useUnfinishedSurface";
 import { DRAFTS_PANEL_BACKGROUND } from "@/lib/unfinished/config/ui";
-import type { SavedProfileItem } from "@/lib/unfinished/utils/savedItems";
-import { ConstructorDraftPreview } from "@/components/unfinished/ConstructorDraftPreview";
+import type { ProjectSummary } from '@/lib/projects/types';
 import styles from "./UnfinishedSurface.module.css";
 
 type SavedItemsPanelProps = {
@@ -14,10 +13,10 @@ type SavedItemsPanelProps = {
 };
 
 type SavedItemCardProps = {
-    item: SavedProfileItem;
+    item: ProjectSummary;
     isActive: boolean;
     variant: "draft" | "collection";
-    onSelect: (item: SavedProfileItem) => void;
+    onSelect: (item: ProjectSummary) => void;
 };
 
 function SavedItemCard({ item, isActive, variant, onSelect }: SavedItemCardProps) {
@@ -27,21 +26,17 @@ function SavedItemCard({ item, isActive, variant, onSelect }: SavedItemCardProps
                 className={`${styles.surfaceButton} ${styles.draftPreview}`}
                 type="button"
                 onClick={() => onSelect(item)}
-                aria-label={variant === "collection" ? `Изделие ${item.number}` : `Черновик ${item.number}`}
+                aria-label={`${variant === 'collection' ? 'Изделие' : 'Черновик'} ${String(item.id).padStart(3, '0')}`}
             >
                 <div className={styles.productImageWrap}>
-                    {variant === "draft" ? (
-                        <ConstructorDraftPreview item={item} className={styles.productImage} />
-                    ) : (
-                        <Image src={item.imageSrc} alt="" width={110} height={100} className={styles.productImage} />
-                    )}
+                    <span className={styles.projectCardPlaceholder}>#{item.id}</span>
                     {variant === "draft" && (
                         <Image src="/unfinished_card_edit.svg" alt="" width={24} height={24} className={styles.draftEditIcon} />
                     )}
                 </div>
                 <div className={styles.draftMeta}>
-                    <span className={styles.draftNumber}>{item.number}</span>
-                    <span className={styles.draftName}>{item.name}</span>
+                    <span className={styles.draftNumber}>{String(item.id).padStart(3, '0')}</span>
+                    <span className={styles.draftName}>{item.title}</span>
                 </div>
             </button>
         </article>
@@ -79,6 +74,10 @@ export function SavedItemsPanel({ surface }: SavedItemsPanelProps) {
                 </div>
 
                 <div className={styles.draftsViewport} onScroll={surface.handleScroll}>
+                    {surface.projectLibrary.account.userId !== null && surface.projectLibrary.status === 'ready' && (
+                        <button type="button" className={styles.projectLibraryAction}
+                            onClick={() => void surface.projectLibrary.retry()}>Обновить список проектов</button>
+                    )}
                     <div className={styles.draftsGrid} role="list">
                         {surface.gridItems.map((item) => (
                             <SavedItemCard
@@ -90,6 +89,16 @@ export function SavedItemsPanel({ surface }: SavedItemsPanelProps) {
                             />
                         ))}
                     </div>
+                    {surface.projectLibrary.nextCursor !== null && (
+                        <button type="button" className={styles.profilePrimaryButton}
+                            disabled={surface.projectLibrary.loadingMore}
+                            onClick={() => void surface.projectLibrary.loadMore()}>
+                            {surface.projectLibrary.loadingMore ? 'ЗАГРУЖАЕМ…' : 'ПОКАЗАТЬ ЕЩЁ'}
+                        </button>
+                    )}
+                    {Boolean(surface.projectLibrary.error) && surface.projectLibrary.status === 'ready' && (
+                        <p role="alert">Не удалось загрузить следующую страницу. Повторите загрузку.</p>
+                    )}
                 </div>
             </div>
         </div>

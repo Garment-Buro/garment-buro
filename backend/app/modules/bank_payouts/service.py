@@ -105,7 +105,7 @@ class PartnerBankPayoutService:
                 payout_id=payout.id,
                 amount=payout.amount,
                 requisites=PartnerRequisitesRequest.model_validate(
-                    requisites.model_dump(exclude={"updated_at"})
+                    requisites.model_dump(include=set(PartnerRequisitesRequest.model_fields))
                 ),
                 purpose=command.payment_purpose,
                 now=observed_at,

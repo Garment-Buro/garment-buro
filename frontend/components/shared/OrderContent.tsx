@@ -5,6 +5,7 @@ import { Text } from '@/components/shared/Text';
 import { OrderStatusMark } from '@/components/orders/OrderStatusMark';
 import { useOrderDetails } from '@/hooks/orders/useOrderDetails';
 import { buildOrderDetailRows, getOrderFitSummary, parseOrderItems } from '@/lib/orders/utils/orderDetails';
+import { customerOrderStatus } from '@/lib/orders/customerStatus';
 
 // ─── Main component ─────────────────────────────────────────────────────────
 interface OrderContentProps {
@@ -12,30 +13,34 @@ interface OrderContentProps {
 }
 
 export const OrderContent: React.FC<OrderContentProps> = ({ orderId: propOrderId }) => {
-    const { order, isLoading } = useOrderDetails(propOrderId);
+    const { order, isLoading, error, retry } = useOrderDetails(propOrderId);
 
     // ── Loading ──
     if (isLoading) {
         return (
             <div className="p-10 text-center">
-                <Text size={15} className="text-[#999]">Загрузка данных заказа...</Text>
+                <p role="status"><Text size={15} className="text-[#999]">Загрузка данных заказа...</Text></p>
             </div>
         );
     }
 
-    // ── Error / Not found ──
+    if (error) return <div className="p-8 pb-10 text-center" role="alert">
+        <Text size={15}>{error}</Text>
+        <button type="button" onClick={retry} className="mt-4 underline">Повторить загрузку</button>
+    </div>;
+
+    // ── Not found ──
     if (!order) {
         return (
             <div className="p-8 pb-10 text-center">
-                <OrderStatusMark variant="error" />
+                <OrderStatusMark variant="error" label="Заказ не найден" />
                 <Text size={20} weight="semibold" className="text-black mb-2 mt-2">Заказ не найден</Text>
                 <Text size={14} className="text-[#666]">Проверьте номер заказа или вернитесь на главную</Text>
             </div>
         );
     }
 
-    // ── Success ──
-    const isCancelled = order.status === 'cancelled';
+    const status = customerOrderStatus(order);
     const items = parseOrderItems(order.cart_items);
     const rows = buildOrderDetailRows(order);
 
@@ -43,7 +48,7 @@ export const OrderContent: React.FC<OrderContentProps> = ({ orderId: propOrderId
         <div className="p-8 pb-10">
             {/* Icon */}
             <div className="mb-2">
-                <OrderStatusMark variant={isCancelled ? 'error' : 'success'} />
+                <OrderStatusMark variant={status.tone} />
             </div>
 
             <Text size={22} weight="semibold" className="text-black mb-6">Заказ #{order.id}</Text>
@@ -51,9 +56,9 @@ export const OrderContent: React.FC<OrderContentProps> = ({ orderId: propOrderId
             {/* Detail rows */}
             <div className="flex flex-col mb-8">
                 {rows.map(({ label, value }) => (
-                    <div key={label} className="flex justify-between py-[10px] border-b border-black/8">
-                        <Text size={15} className="text-[#666]">{label}:</Text>
-                        <Text size={15} weight="medium" className="text-black">{value}</Text>
+                    <div key={label} className="flex flex-wrap justify-between gap-x-4 gap-y-1 py-[10px] border-b border-black/8">
+                        <Text size={15} className="text-[#666] shrink-0">{label}:</Text>
+                        <Text size={15} weight="medium" className="text-black wrap-anywhere">{value}</Text>
                     </div>
                 ))}
             </div>
@@ -81,10 +86,9 @@ export const OrderContent: React.FC<OrderContentProps> = ({ orderId: propOrderId
                 ))}
             </div>
 
-            {/* Track button — max 280px */}
             <div className="mt-8 flex justify-center">
-                <button className="w-full max-w-[280px] h-[50px] rounded-[12px] bg-[linear-gradient(180deg,rgba(243,243,243,0.6)_0%,rgba(220,220,220,0.6)_100%)] shadow-[inset_0_1px_3px_0_rgba(0,0,0,0.2)] text-black transition-opacity hover:opacity-80 cursor-pointer">
-                    <Text size={15} className="tracking-wide text-black">отследить заказ</Text>
+                <button type="button" onClick={retry} className="w-full max-w-[280px] h-[50px] rounded-[12px] bg-[linear-gradient(180deg,rgba(243,243,243,0.6)_0%,rgba(220,220,220,0.6)_100%)] shadow-[inset_0_1px_3px_0_rgba(0,0,0,0.2)] text-black transition-opacity hover:opacity-80 cursor-pointer">
+                    <Text size={15} className="tracking-wide text-black">Обновить статус</Text>
                 </button>
             </div>
         </div>

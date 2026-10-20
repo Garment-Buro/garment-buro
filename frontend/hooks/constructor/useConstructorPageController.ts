@@ -2,21 +2,21 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { loadConstructorDraft, saveConstructorDraft } from "@/lib/unfinished/utils/savedItems";
+import { readLegacyConstructorDraft } from "@/lib/projects/legacyRecords";
+import { useCustomerProject } from "@/hooks/projects/useCustomerProject";
+import { isCustomerSessionCurrent } from "@/hooks/catalog/customerSession";
 import { useConstructorPageEnvironment } from "@/hooks/constructor/useConstructorPageEnvironment";
 import { useConstructorProduct } from "@/hooks/constructor/useConstructorProduct";
 import { useConstructorDerivedState } from "@/hooks/constructor/useConstructorDerivedState";
+import { useConstructorPointerSession } from "@/hooks/constructor/useConstructorPointerSession";
+import { useConstructorCartPreparation } from "@/hooks/constructor/useConstructorCartPreparation";
+import { constructorPublicImages } from "@/lib/constructor/cartPreparation";
+import { ApiError } from "@/lib/api/http";
 import { getNextDecorationDropPosition, getPanelSwipeAction } from "@/lib/constructor/utils/interaction";
-import {
-    CANVAS_SIZE,
-    COLLAPSED_PANEL_BASE_HEIGHT,
-    CUSTOM_BASE_PRICE,
-    PX_PER_CM,
-    ROTATE_CONTROLS_HEIGHT,
-    ROTATE_PANEL_GAP,
-} from "@/lib/constructor/constants";
+import { COLLAPSED_PANEL_BASE_HEIGHT, ROTATE_CONTROLS_HEIGHT, ROTATE_PANEL_GAP } from "@/lib/constructor/constants";
 import type {
     CanvasViewport,
+    ConstructorDraftState,
     ConstructorPageProps,
     HardwareCategory,
     HardwareVariant,
@@ -30,25 +30,31 @@ import {
     buildConstructorCustomization,
     clampCanvasPoint,
     createDefaultFit,
-    getCustomDecorationsFromCartItem,
     getCustomDecorationsFromCustomization,
+    getConstructorDraftFromCartItem,
     getFirstAvailableSize,
     getHardwareScaleLimits,
-    getItemSizeCm,
     getPlacedItemsFromCartItem,
     getPlacedItemsFromCustomization,
     getProductDimensions,
     readUploadedImage,
+    resolveConstructorGeometry,
 } from "@/lib/constructor/utils/constructor";
-import type { CartItem } from "@/lib/cart/types";
 import { useCartStore } from "@/store/cartStore";
+import { constructorCartPayload, constructorSelectionStock, restoreConstructorSelection } from '@/lib/constructor/selection';
 
 export const useConstructorPageController = ({
     productId: initialProductId = null,
     editCartItemId: initialEditCartItemId = null,
     draftId: initialDraftId = null,
+    projectId: initialProjectId = null,
 }: ConstructorPageProps = {}) => {
     const router = useRouter();
+    const panelGesture = useConstructorPointerSession();
+    const projectSession = useCustomerProject(initialProjectId);
+    const cartPreparation = useConstructorCartPreparation();
+    const [isSignInOpen, setIsSignInOpen] = useState(false);
+    const [saveNotice, setSaveNotice] = useState<string | null>(null);
     const [modelView, setModelView] = useState<ModelView>("front");
     const [selectedCategory, setSelectedCategory] = useState<HardwareCategory>("prints");
     const [placedItemsByView, setPlacedItemsByView] = useState<PlacedItemsByView>({ front: [], back: [] });
@@ -61,8 +67,9 @@ export const useConstructorPageController = ({
     const [isCustomizationDetailsOpen, setIsCustomizationDetailsOpen] = useState(false);
     const [isExitPopupOpen, setIsExitPopupOpen] = useState(false);
     const [comment, setComment] = useState("");
-    const [isInstructionMounted, setIsInstructionMounted] = useState(!initialDraftId);
+    const [isInstructionMounted, setIsInstructionMounted] = useState(!initialDraftId && !initialProjectId);
     const [restoredDraftModelImages, setRestoredDraftModelImages] = useState<Record<ModelView, string> | null>(null);
+    const [restoredDraftGeometry, setRestoredDraftGeometry] = useState<ConstructorDraftState | null>(null);
     const constructorProductId = initialProductId;
     const editCartItemId = initialEditCartItemId;
     const constructorDraftId = initialDraftId;
@@ -77,10 +84,13 @@ export const useConstructorPageController = ({
     const nextCustomDecorationIdRef = useRef(0);
     const loadedEditCartItemIdRef = useRef<string | null>(null);
     const loadedDraftIdRef = useRef<string | null>(null);
+    const loadedServerDraftRef = useRef<ConstructorDraftState | null>(null);
+    const imageInputLifetime = useRef<AbortController | null>(null);
+    const readingImages = useRef(false);
     const [glassRefreshId, setGlassRefreshId] = useState(0);
     const { items, activeItemId, addItem, updateItem, setIsCartOpen } = useCartStore();
     const editingCartItem = useMemo(
-        () => editCartItemId ? items.find((item) => item.id === editCartItemId) : undefined,
+        () => (editCartItemId ? items.find((item) => item.id === editCartItemId) : undefined),
         [editCartItemId, items],
     );
     const constructorCartItem = useMemo(() => {
@@ -89,16 +99,23 @@ export const useConstructorPageController = ({
         const activeItem = activeItemId ? items.find((item) => item.id === activeItemId) : undefined;
         return editingCartItem || activeItem || items[items.length - 1];
     }, [activeItemId, editCartItemId, editingCartItem, items]);
-    const productIdToLoad = constructorProductId || (editingCartItem?.product_id ? String(editingCartItem.product_id) : null);
+    const productIdToLoad = initialProjectId
+        ? projectSession.document?.product_id
+            ? String(projectSession.document.product_id)
+            : null
+        : constructorProductId || (editingCartItem?.product_id ? String(editingCartItem.product_id) : null);
     const {
         product,
         selectedSize,
-        setSelectedSize,
+        selectedColor,
+        selectionAvailable,
+        restoreSelection,
         selectedFit,
-        setSelectedFit,
         isSizeModalOpen,
         setIsSizeModalOpen,
-        handleSaveFit,
+        handleSaveFit: saveProductFit,
+        error: productError,
+        retry: retryProduct,
     } = useConstructorProduct(productIdToLoad);
     const isConstructorOverlayActive = isInstructionMounted || isSizeModalOpen || isExitPopupOpen;
     const instructionPortalTarget = useConstructorPageEnvironment(isConstructorOverlayActive);
@@ -111,10 +128,12 @@ export const useConstructorPageController = ({
         if (!editingCartItem || !product) return;
         if (loadedEditCartItemIdRef.current === editingCartItem.id) return;
 
-        const editSize = editingCartItem.customization?.selectedSize || editingCartItem.size || getFirstAvailableSize(product);
-        const editFit = editingCartItem.customization?.fit || createDefaultFit(editSize, getProductDimensions(product, editSize));
+        const editSize = editingCartItem.customization?.selectedSize ?? editingCartItem.size ?? getFirstAvailableSize(product);
+        const restored = getConstructorDraftFromCartItem(editingCartItem);
+        const editFit = editingCartItem.customization?.fit || createDefaultFit(editSize, restored?.customization.garment || getProductDimensions(product, editSize, editingCartItem.color));
         const restoredPlacedItems = getPlacedItemsFromCartItem(editingCartItem);
-        const restoredCustomDecorations = getCustomDecorationsFromCartItem(editingCartItem);
+        const restoredCustomDecorations = getCustomDecorationsFromCustomization(editingCartItem.customization,
+            resolveConstructorGeometry(product, editSize, restored).pixelsPerCm);
         const restoredDecorations = editingCartItem.customization?.decorations || [];
         const maxItemIndex = Math.max(
             0,
@@ -130,14 +149,16 @@ export const useConstructorPageController = ({
         );
 
         const frameId = window.requestAnimationFrame(() => {
-            setSelectedSize(editSize);
-            setSelectedFit(editFit);
+            restoreSelection(editSize, editFit, editingCartItem.color);
             setComment(editingCartItem.customization?.comment || "");
-            setPlacedItemsByView(({
+            setPlacedItemsByView({
                 front: restoredPlacedItems.front,
                 back: restoredPlacedItems.back,
-            }));
+            });
             setCustomDecorations(restoredCustomDecorations);
+            setRestoredDraftModelImages(restored?.customization.modelImages || null);
+            setRestoredDraftGeometry(restored ? { ...restored, customization: { ...restored.customization, selectedColor: editingCartItem.color } } : null);
+            setModelView(restored?.activeView || 'front');
             setSelectedItemUid(null);
             setAreDecorationCaptionsVisible(restoredDecorations.length > 0);
             nextItemIdRef.current = maxItemIndex;
@@ -148,19 +169,22 @@ export const useConstructorPageController = ({
         return () => {
             window.cancelAnimationFrame(frameId);
         };
-    }, [editingCartItem, product, setSelectedFit, setSelectedSize]);
+    }, [editingCartItem, product, restoreSelection]);
 
     useEffect(() => {
-        if (!constructorDraftId || !product || editCartItemId) return;
-        if (loadedDraftIdRef.current === constructorDraftId) return;
-
-        const draft = loadConstructorDraft(constructorDraftId);
-        const draftState = draft?.draftState;
+        if (!product || editCartItemId) return;
+        const serverDraft = projectSession.restored;
+        if (serverDraft && loadedServerDraftRef.current === serverDraft) return;
+        if (!serverDraft && (initialProjectId || !constructorDraftId || loadedDraftIdRef.current === constructorDraftId)) return;
+        const draftState = serverDraft || readLegacyConstructorDraft(constructorDraftId!)?.draftState;
         if (!draftState) return;
 
         const { customization } = draftState;
         const restoredPlacedItems = getPlacedItemsFromCustomization(customization);
-        const restoredCustomDecorations = getCustomDecorationsFromCustomization(customization);
+        const restoredCustomDecorations = getCustomDecorationsFromCustomization(
+            customization,
+            resolveConstructorGeometry(product, customization.selectedSize, draftState).pixelsPerCm,
+        );
         const maxItemIndex = Math.max(
             0,
             ...customization.decorations
@@ -175,15 +199,14 @@ export const useConstructorPageController = ({
         );
 
         const frameId = window.requestAnimationFrame(() => {
-            setSelectedSize(customization.selectedSize);
-            setSelectedFit(
-                customization.fit
-                || createDefaultFit(customization.selectedSize, getProductDimensions(product, customization.selectedSize)),
-            );
+            restoreSelection(customization.selectedSize,
+                customization.fit || createDefaultFit(customization.selectedSize, customization.garment), customization.selectedColor);
             setComment(customization.comment || "");
             setPlacedItemsByView(restoredPlacedItems);
             setCustomDecorations(restoredCustomDecorations);
             setRestoredDraftModelImages(customization.modelImages);
+            setRestoredDraftGeometry({ ...draftState, customization: { ...customization,
+                selectedColor: restoreConstructorSelection(product, customization.selectedSize, customization.selectedColor).color } });
             setModelView(draftState.activeView);
             setSelectedItemUid(null);
             setAreDecorationCaptionsVisible(customization.decorations.length > 0);
@@ -191,25 +214,37 @@ export const useConstructorPageController = ({
             nextItemIdRef.current = maxItemIndex;
             nextCustomDecorationIdRef.current = maxCustomDecorationIndex;
             loadedDraftIdRef.current = constructorDraftId;
+            loadedServerDraftRef.current = serverDraft ? draftState : null;
         });
 
         return () => window.cancelAnimationFrame(frameId);
-    }, [
-        constructorDraftId,
-        editCartItemId,
-        product,
-        setSelectedFit,
-        setSelectedSize,
-    ]);
+    }, [constructorDraftId, initialProjectId, projectSession.restored, editCartItemId, product, restoreSelection]);
+
+    const handleSaveFit = (fit: NonNullable<typeof selectedFit>, color: string | null) => {
+        if (constructorSelectionStock(product, { size: fit.selectedSize, color }) <= 0) return;
+        if (fit.selectedSize !== selectedSize || color !== selectedColor) {
+            setRestoredDraftModelImages(null);
+        }
+        saveProductFit(fit, color);
+    };
 
     useEffect(() => {
         decorationsScrollerRef.current?.scrollTo({ left: 0 });
     }, [isPanelExpanded, selectedCategory]);
 
-    useEffect(() => () => {
-        if (captionsRevealTimerRef.current) {
-            window.clearTimeout(captionsRevealTimerRef.current);
-        }
+    useEffect(
+        () => () => {
+            if (captionsRevealTimerRef.current) {
+                window.clearTimeout(captionsRevealTimerRef.current);
+            }
+        },
+        [],
+    );
+
+    useEffect(() => {
+        const lifetime = new AbortController();
+        imageInputLifetime.current = lifetime;
+        return () => lifetime.abort();
     }, []);
 
     const {
@@ -220,24 +255,30 @@ export const useConstructorPageController = ({
         placedItems,
         garmentDimensions,
         modelBounds,
+        geometry,
         canUploadCustomDecoration,
         selectedModel,
         currentVariants,
         hardwareMap,
         customizationPrice,
         totalPrice,
+        pricing,
+        decorationPrices,
         placedItemDetails,
         decorationPages,
         getDecorationPanelPrice,
     } = useConstructorDerivedState({
         product,
         selectedSize,
+        selectedColor,
         modelView,
         selectedCategory,
         customDecorations,
         placedItemsByView,
         selectedItemUid,
         restoredModelImages: restoredDraftModelImages,
+        restoredDraft: restoredDraftGeometry,
+        selectedFit,
     });
 
     const toggleModelView = () => {
@@ -270,23 +311,23 @@ export const useConstructorPageController = ({
         setAreDecorationCaptionsVisible(true);
         setGlassRefreshId((value) => value + 1);
         const hardware = newHardware || hardwareMap[variantId];
-        const baseSize = hardware
-            ? getItemSizeCm({ uid: "", variantId, x: 0, y: 0, scale: 1 }, hardware)
-            : null;
         const viewport = canvasViewportRef.current;
         // Drop the new decoration slightly above the centre of the area that
         // remains visible above the decorations panel (even when it is fully
         // expanded), so it is always on screen right after being added.
         const visibleAreaHeight = viewport
             ? Math.max(120, viewport.height - (panelHeight + panelBottomForCanvas))
-            : CANVAS_SIZE;
-        const targetScreenY = viewport ? visibleAreaHeight / 2 : CANVAS_SIZE * 0.42;
+            : geometry.canvasPixelSize.height;
+        const targetScreenY = viewport ? visibleAreaHeight / 2 : geometry.canvasPixelSize.height * 0.42;
         const centerPoint = viewport
             ? {
-                x: clampCanvasPoint((viewport.width / 2 - viewport.stagePos.x) / viewport.stageScale),
-                y: clampCanvasPoint((targetScreenY - viewport.stagePos.y) / viewport.stageScale),
-            }
-            : { x: CANVAS_SIZE / 2, y: CANVAS_SIZE * 0.42 };
+                  x: clampCanvasPoint((viewport.width / 2 - viewport.stagePos.x) / viewport.stageScale, geometry.canvasPixelSize.width),
+                  y: clampCanvasPoint((targetScreenY - viewport.stagePos.y) / viewport.stageScale, geometry.canvasPixelSize.height),
+              }
+            : {
+                  x: geometry.canvasPixelSize.width / 2,
+                  y: geometry.canvasPixelSize.height * 0.42,
+              };
         nextItemIdRef.current += 1;
         const newItemUid = `item_${nextItemIdRef.current}`;
         setPlacedItemsByView((prev) => ({
@@ -299,11 +340,10 @@ export const useConstructorPageController = ({
                     ...getNextDecorationDropPosition({
                         centerPoint,
                         existingItems: prev[modelView],
-                        canvasSize: CANVAS_SIZE,
+                        canvasSize: geometry.canvasPixelSize,
                     }),
                     scale: hardware?.text ? Math.min(1, 300 / Math.max(hardware.defaultWidth, hardware.defaultHeight || 1)) : 1,
                     rotation: 0,
-                    ...(baseSize ? { baseLongSideCm: baseSize.longSideCm } : {}),
                 },
             ],
         }));
@@ -321,21 +361,22 @@ export const useConstructorPageController = ({
         nextCustomDecorationIdRef.current += 1;
         const variant: HardwareVariant = {
             id: `custom_${nextCustomDecorationIdRef.current}`,
-            categoryId: 'prints',
+            categoryId: "prints",
             name: result.text.content,
             src: result.src,
             text: result.text,
             defaultWidth: result.width,
             defaultHeight: result.height,
-            price: CUSTOM_BASE_PRICE,
-            basePrice: CUSTOM_BASE_PRICE,
+            price: 0,
             minSizeMm: 10,
             maxSizeMm: 600,
             isCustom: true,
         };
-        const oldVariantStillUsed = editingTextItem && Object.values(placedItemsByView).flat().some((item) => (
-            item.uid !== editingTextItem.uid && item.variantId === editingTextItem.variantId
-        ));
+        const oldVariantStillUsed =
+            editingTextItem &&
+            Object.values(placedItemsByView)
+                .flat()
+                .some((item) => item.uid !== editingTextItem.uid && item.variantId === editingTextItem.variantId);
         setCustomDecorations((previous) => [
             ...previous.filter((entry) => !editingTextItem || oldVariantStillUsed || entry.id !== editingTextItem.variantId),
             variant,
@@ -343,14 +384,19 @@ export const useConstructorPageController = ({
         if (editingTextItem) {
             setPlacedItemsByView((previous) => ({
                 ...previous,
-                [modelView]: previous[modelView].map((item) => item.uid === editingTextItem.uid
-                    ? { ...item, variantId: variant.id, baseLongSideCm: Math.max(result.width, result.height) / PX_PER_CM }
-                    : item),
+                [modelView]: previous[modelView].map((item) =>
+                    item.uid === editingTextItem.uid
+                        ? {
+                              ...item,
+                              variantId: variant.id,
+                          }
+                        : item,
+                ),
             }));
         } else {
             handleAddHardware(variant.id, variant);
         }
-        setSelectedCategory('prints');
+        setSelectedCategory("prints");
     };
 
     const handleUpdateItem = (uid: string, newAttrs: Partial<PlacedHardware>) => {
@@ -369,6 +415,8 @@ export const useConstructorPageController = ({
     };
 
     const handleUploadDecoration = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const signal = imageInputLifetime.current?.signal;
+        if (!signal || signal.aborted || readingImages.current) return;
         const files = Array.from(event.target.files || []);
         if (files.length === 0) return;
 
@@ -383,32 +431,40 @@ export const useConstructorPageController = ({
             return;
         }
 
-        const uploadedImages = await Promise.all(files.slice(0, freeSlots).map(readUploadedImage));
-        const nextDecorations = uploadedImages.map(({ src, width, height }, index): HardwareVariant => {
-            const longSide = Math.max(width, height) || 1;
-            const previewLongSide = 72;
-            const defaultWidth = Math.max(24, Math.round((width / longSide) * previewLongSide));
-            const defaultHeight = Math.max(24, Math.round((height / longSide) * previewLongSide));
-            nextCustomDecorationIdRef.current += 1;
+        const input = event.target;
+        readingImages.current = true;
+        try {
+            const uploadedImages = await Promise.all(files.slice(0, freeSlots).map((file) => readUploadedImage(file, signal)));
+            if (signal.aborted) return;
+            const nextDecorations = uploadedImages.map(({ src, width, height }, index): HardwareVariant => {
+                const longSide = Math.max(width, height) || 1;
+                const previewLongSide = 72;
+                const defaultWidth = Math.max(24, Math.round((width / longSide) * previewLongSide));
+                const defaultHeight = Math.max(24, Math.round((height / longSide) * previewLongSide));
+                nextCustomDecorationIdRef.current += 1;
 
-            return {
-                id: `custom_${nextCustomDecorationIdRef.current}`,
-                categoryId: selectedCategory,
-                name: String(customDecorations.length + index + 1).padStart(3, "0"),
-                src,
-                price: CUSTOM_BASE_PRICE,
-                basePrice: CUSTOM_BASE_PRICE,
-                defaultWidth,
-                defaultHeight,
-                minSizeMm: 10,
-                maxSizeMm: 300,
-                isCustom: true,
-            };
-        });
+                return {
+                    id: `custom_${nextCustomDecorationIdRef.current}`,
+                    categoryId: selectedCategory,
+                    name: String(customDecorations.length + index + 1).padStart(3, "0"),
+                    src,
+                    price: 0,
+                    defaultWidth,
+                    defaultHeight,
+                    minSizeMm: 10,
+                    maxSizeMm: 300,
+                    isCustom: true,
+                };
+            });
 
-        setCustomDecorations((prev) => [...prev, ...nextDecorations]);
-        setAreDecorationCaptionsVisible(true);
-        event.target.value = "";
+            setCustomDecorations((prev) => [...prev, ...nextDecorations]);
+            setAreDecorationCaptionsVisible(true);
+        } catch (error) {
+            if (!signal.aborted) setSaveNotice(error instanceof Error ? error.message : "Не удалось прочитать изображение.");
+        } finally {
+            readingImages.current = false;
+            input.value = "";
+        }
     };
 
     const handleMainPointerDownCapture = (event: React.PointerEvent<HTMLElement>) => {
@@ -429,6 +485,7 @@ export const useConstructorPageController = ({
     };
 
     const handlePanelHandlePointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
+        panelGesture.cancel();
         panelDragStartYRef.current = event.clientY;
 
         const handleMove = (moveEvent: PointerEvent) => {
@@ -438,24 +495,18 @@ export const useConstructorPageController = ({
             if (deltaY < -22) {
                 setIsPanelExpanded(true);
                 setAreDecorationCaptionsVisible(true);
-                panelDragStartYRef.current = null;
+                panelGesture.cancel();
             }
 
             if (deltaY > 22) {
                 setIsPanelExpanded(false);
                 setIsCustomizationDetailsOpen(false);
-                panelDragStartYRef.current = null;
+                panelGesture.cancel();
             }
         };
 
-        const handleUp = () => {
-            panelDragStartYRef.current = null;
-            window.removeEventListener("pointermove", handleMove);
-            window.removeEventListener("pointerup", handleUp);
-        };
-
-        window.addEventListener("pointermove", handleMove);
-        window.addEventListener("pointerup", handleUp);
+        const reset = () => { panelDragStartYRef.current = null; };
+        panelGesture.start(event.pointerId, { onMove: handleMove, onEnd: reset, onCancel: reset });
     };
 
     // Handle vertical panel swipes anywhere on the panel while preserving
@@ -465,16 +516,9 @@ export const useConstructorPageController = ({
 
         const startX = event.clientX;
         const startY = event.clientY;
-        let resolved = false;
-
-        const cleanup = () => {
-            window.removeEventListener("pointermove", handleMove);
-            window.removeEventListener("pointerup", cleanup);
-            window.removeEventListener("pointercancel", cleanup);
-        };
+        panelGesture.cancel();
 
         const handleMove = (moveEvent: PointerEvent) => {
-            if (resolved) return;
             const deltaX = moveEvent.clientX - startX;
             const deltaY = moveEvent.clientY - startY;
             const action = getPanelSwipeAction({
@@ -485,97 +529,127 @@ export const useConstructorPageController = ({
             });
 
             if (action === "expand") {
-                resolved = true;
                 setIsPanelExpanded(true);
                 setAreDecorationCaptionsVisible(true);
-                cleanup();
+                panelGesture.cancel();
             } else if (action === "collapse") {
-                resolved = true;
                 setIsPanelExpanded(false);
                 setIsCustomizationDetailsOpen(false);
-                cleanup();
+                panelGesture.cancel();
             } else if (Math.abs(deltaX) > 24 && Math.abs(deltaX) > Math.abs(deltaY) * 1.35) {
                 // Horizontal intent (scrolling the decorations) — bail out.
-                resolved = true;
-                cleanup();
+                panelGesture.cancel();
             }
         };
 
-        window.addEventListener("pointermove", handleMove);
-        window.addEventListener("pointerup", cleanup);
-        window.addEventListener("pointercancel", cleanup);
+        panelGesture.start(event.pointerId, { onMove: handleMove });
     };
 
-    const getConstructorCustomization = () => buildConstructorCustomization({
-        selectedModel,
-        selectedSize,
-        selectedFit,
-        garmentDimensions,
-        placedItemsByView,
-        hardwareMap,
-        frontImage,
-        backImage,
-        totalPrice,
-        comment,
-    });
+    const getConstructorCustomization = () =>
+        buildConstructorCustomization({
+            selectedModel,
+            selectedSize,
+            selectedColor: selectedColor ?? undefined,
+            selectedFit,
+            garmentDimensions,
+            placedItemsByView,
+            hardwareMap,
+            frontImage,
+            backImage,
+            totalPrice,
+            comment,
+            geometry,
+            decorationPrices,
+        });
 
-    const handleBuy = () => {
-        if (!selectedModel) return;
+    const handleBuy = async () => {
+        if (
+            !selectedModel ||
+            !product ||
+            !pricing.quote ||
+            !selectionAvailable ||
+            projectSession.status !== "idle" || cartPreparation.isPreparing ||
+            (projectSession.isExisting && (!projectSession.restored || projectSession.error))
+        )
+            return;
+        if (editCartItemId && !editingCartItem) {
+            setSaveNotice("Товар удалён из корзины. Откройте корзину заново.");
+            return;
+        }
         const customization = getConstructorCustomization();
         if (!customization) return;
 
-        const cartPayload: Omit<CartItem, "id"> = {
-            product_id: product?.id || 0,
-            title: selectedModel.name,
-            price: totalPrice,
-            image: customization.modelImages[modelView] || selectedModel.src,
-            size: selectedSize || "",
-            color: editingCartItem?.color || `custom-${Date.now()}`,
-            quantity: 1,
-            customization,
-        };
+        const cartPayload = constructorCartPayload(product, { size: selectedSize, color: selectedColor }, customization, modelView);
+        if (!cartPayload) return;
 
-        if (editingCartItem) {
-            updateItem(editingCartItem.id, cartPayload);
-            setIsCartOpen(true);
-            return;
+        const projectImages = projectSession.editor.getImageSources();
+        setSaveNotice(null);
+        try {
+            await cartPreparation.submit(cartPayload, {
+                publicImages: new Set([...constructorPublicImages(product), ...projectImages.publicImages]),
+                privateImages: projectImages.privateImages,
+            }, durable => {
+                if (editingCartItem) {
+                    const current = useCartStore.getState().items.find(item => item.id === editingCartItem.id);
+                    if (JSON.stringify(current) !== JSON.stringify(editingCartItem)) throw new Error("Товар в корзине изменился. Откройте его заново перед сохранением дизайна.");
+                    updateItem(editingCartItem.id, { ...durable, quantity: editingCartItem.quantity });
+                } else addItem(durable);
+                setIsCartOpen(true);
+            });
+        } catch (error) {
+            if (error instanceof Error && error.name === 'AbortError') return;
+            setSaveNotice(error instanceof ApiError
+                ? error.status === 404 ? "Изображение проекта недоступно. Откройте проект заново или загрузите файл ещё раз."
+                    : "Не удалось сохранить изображения. Изменения остались в редакторе. Нажмите «Купить» ещё раз."
+                : error instanceof Error ? error.message : "Не удалось сохранить изображения. Попробуйте ещё раз.");
         }
-
-        addItem(cartPayload);
-        setIsCartOpen(true);
     };
 
     const handleConstructorCartEdit = () => {
         if (!constructorCartItem) return;
 
-        router.push(`/constructor?productId=${constructorCartItem.product_id}&editCartItemId=${encodeURIComponent(constructorCartItem.id)}`);
+        router.push(
+            `/constructor?productId=${constructorCartItem.product_id}&editCartItemId=${encodeURIComponent(constructorCartItem.id)}`,
+        );
     };
 
-    const handleSaveDraft = () => {
-        if (selectedModel) {
-            const customization = getConstructorCustomization();
-            if (customization) {
-                saveConstructorDraft({
-                    draftId: constructorDraftId,
-                    productId: product?.id || 0,
-                    title: selectedModel.name,
-                    imageSrc: customization.modelImages[modelView] || selectedModel.src,
-                    draftState: {
-                        activeView: modelView,
-                        canvasPixelSize: {
-                            width: CANVAS_SIZE,
-                            height: CANVAS_SIZE,
-                        },
-                        modelBounds,
-                        customization,
-                    },
-                });
-            }
+    const handleSaveDraft = async () => {
+        if (!selectedModel || !product || projectSession.status !== "idle" || cartPreparation.isPreparing) return;
+        if (!projectSession.account.sessionReady) {
+            setSaveNotice("Восстанавливаем сессию…");
+            return;
         }
-
-        setIsInstructionMounted(false);
+        if (!projectSession.account.userId) {
+            setIsExitPopupOpen(false);
+            setIsSignInOpen(true);
+            return;
+        }
+        const customization = getConstructorCustomization();
+        if (!customization) return;
+        const { userId, key } = projectSession.account;
+        setSaveNotice(null);
         setIsExitPopupOpen(false);
-        router.push("/unfinished");
+        const result = await projectSession.editor.save({
+            productId: product.id,
+            title: projectSession.document?.title || selectedModel.name,
+            kind: projectSession.document?.kind || "draft",
+            assets: product.media_assets || [],
+            draft: {
+                activeView: modelView,
+                canvasPixelSize: geometry.canvasPixelSize,
+                modelBounds,
+                customization,
+            },
+        });
+        if (!result || !isCustomerSessionCurrent(userId, key)) return;
+        if (!result.matchesDraft) {
+            setSaveNotice("Предыдущая попытка сохранена. Нажмите «Сохранить» ещё раз, чтобы записать текущие изменения.");
+            return;
+        }
+        setSaveNotice("Сохранено в аккаунте.");
+        setIsInstructionMounted(false);
+        // The durable URL also makes reload and opening on another device real.
+        if (!initialProjectId) router.replace(`/constructor?projectId=${result.document.id}`);
     };
 
     const handlePanelPrimaryAction = () => {
@@ -585,11 +659,11 @@ export const useConstructorPageController = ({
             return;
         }
 
-        handleBuy();
+        void handleBuy();
     };
 
     const handlePanelSecondaryAction = () => {
-        handleSaveDraft();
+        void handleSaveDraft();
     };
 
     const rotateBottom = `calc(var(--constructor-panel-bottom, 5px) + ${panelHeight + ROTATE_PANEL_GAP}px)`;
@@ -600,7 +674,8 @@ export const useConstructorPageController = ({
         WebkitBackdropFilter: "blur(12px) saturate(160%)",
         background: "rgba(255, 255, 255, 0.18)",
         border: "1px solid rgba(255, 255, 255, 0.3)",
-        boxShadow: "rgba(0, 0, 0, 0.1) 0px 8px 32px, rgba(255, 255, 255, 0.5) 0px 1px 2px inset, rgba(255, 255, 255, 0.05) 0px -1px 2px inset",
+        boxShadow:
+            "rgba(0, 0, 0, 0.1) 0px 8px 32px, rgba(255, 255, 255, 0.5) 0px 1px 2px inset, rgba(255, 255, 255, 0.05) 0px -1px 2px inset",
         overflow: "hidden",
     };
 
@@ -611,6 +686,14 @@ export const useConstructorPageController = ({
     };
 
     return {
+        projectSession,
+        cartPreparation,
+        isProductExpected: Boolean(productIdToLoad),
+        productError,
+        retryProduct,
+        isSignInOpen,
+        setIsSignInOpen,
+        saveNotice,
         isTextEditorOpen,
         setIsTextEditorOpen,
         openTextEditor,
@@ -619,6 +702,8 @@ export const useConstructorPageController = ({
         editingText: editingTextItem ? hardwareMap[editingTextItem.variantId]?.text : undefined,
         router,
         selectedSize,
+        selectedColor,
+        selectionAvailable,
         setIsSizeModalOpen,
         selectedFit,
         isSizeModalOpen,
@@ -641,7 +726,9 @@ export const useConstructorPageController = ({
         handleRemoveHardware,
         handleCanvasInteraction,
         canvasViewportRef,
-        getHardwareScaleLimits,
+        getHardwareScaleLimits: (item: PlacedHardware, hardware: HardwareVariant) =>
+            getHardwareScaleLimits(item, hardware, geometry.pixelsPerCm),
+        canvasPixelSize: geometry.canvasPixelSize,
         rotateButtonGlassStyle,
         isPanelExpanded,
         setIsPanelExpanded,
@@ -677,6 +764,7 @@ export const useConstructorPageController = ({
         setComment,
         resetConstructorViewportAfterKeyboard,
         totalPrice,
+        pricing,
         handlePanelSecondaryAction,
         handlePanelPrimaryAction,
         constructorCartItem,

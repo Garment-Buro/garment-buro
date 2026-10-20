@@ -1,0 +1,55 @@
+.collection {
+    border: 1px solid #d9dfe2;
+    padding: 14px;
+    border-radius: 12px;
+    margin: 20px 0;
+    min-width: 0;
+}
+.collection legend {
+    font-weight: 600;
+    font-size: 15px;
+    padding: 0 4px;
+}
+.products {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
+    gap: 8px;
+    margin: 12px 0;
+}
+.product {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    padding: 10px;
+    border: 1px solid #d9dfe2;
+    border-radius: 10px;
+    font-size: 14px;
+    overflow-wrap: anywhere;
+}
+.product input {
+    flex: 0 0 18px;
+    width: 18px;
+    height: 18px;
+    accent-color: #171717;
+}
+.selected {
+    padding-left: 22px;
+    display: grid;
+    gap: 12px;
+    font-size: 14px;
+}
+.selected li > span {
+    display: block;
+    margin-bottom: 6px;
+    overflow-wrap: anywhere;
+}
+
+.collection p { font-size: 14px; line-height: 1.5; margin: 12px 0; }
+.collection small { display: block; color: #52616a; font-size: 12px; overflow-wrap: anywhere; }
+.collection button { padding: 10px 14px; border: 1px solid #b6c1c7; border-radius: 10px; font-size: 14px; background: #fff; color: #171717; cursor: pointer; }
+.collection button:disabled { opacity: .5; cursor: default; }
+.collection :is(button,input):focus-visible { outline: 2px solid #356b88; outline-offset: 2px; }
+.field { display: grid; gap: 7px; min-width: 0; font-size: 14px; }
+.field input { width: 100%; min-width: 0; padding: 12px; border: 1px solid #b6c1c7; border-radius: 10px; font: inherit; background: #fff; color: #171717; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+@media (max-width: 480px) { .collection { padding: 10px; } }

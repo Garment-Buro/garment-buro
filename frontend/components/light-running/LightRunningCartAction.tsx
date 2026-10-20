@@ -4,7 +4,7 @@ import { useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 
 import { CartActionBarV2 } from "@/components/cart/CartActionBarV2";
-import { getActiveCatalogCartItem } from "@/lib/catalog/utils/catalog";
+import { getActiveCartItem } from "@/lib/cart/utils/activeItem";
 import { useCartStore } from "@/store/cartStore";
 
 export function LightRunningCartAction() {
@@ -12,7 +12,7 @@ export function LightRunningCartAction() {
     const items = useCartStore((state) => state.items);
     const activeItemId = useCartStore((state) => state.activeItemId);
     const activeItem = useMemo(
-        () => getActiveCatalogCartItem(items, activeItemId),
+        () => getActiveCartItem(items, activeItemId),
         [activeItemId, items],
     );
 

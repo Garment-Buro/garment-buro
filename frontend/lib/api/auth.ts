@@ -1,6 +1,5 @@
 import type {
     AuthAccessResponse,
-    AuthOrder,
     AuthProfileData,
     AuthSessionResponse,
     AuthUser,
@@ -14,14 +13,14 @@ const jsonHeaders = (token?: string | null) => ({
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
 });
 
-export const requestAuthEmailCode = (email: string) => requestJson<EmailCodeRequestResponse>(
+export const requestAuthEmailCode = (email: string, signal?: AbortSignal) => requestJson<EmailCodeRequestResponse>(
     '/auth/email/request',
-    { method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ email }) },
+    { method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ email }), signal },
 );
 
-export const verifyAuthEmailCode = (email: string, code: string) => requestJson<AuthSessionResponse>(
+export const verifyAuthEmailCode = (email: string, code: string, signal?: AbortSignal) => requestJson<AuthSessionResponse>(
     '/auth/email/verify',
-    { method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ email, code }) },
+    { method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ email, code }), signal },
 );
 
 export const refreshAuthSession = () => requestJson<AuthSessionResponse>(
@@ -41,25 +40,21 @@ export const logoutAuthSession = async () => {
     });
 };
 
-export const getAuthOrders = (token: string, signal?: AbortSignal) => requestJson<AuthOrder[]>(
-    '/auth/orders',
-    { headers: { Authorization: `Bearer ${token}` }, signal },
-);
-
 export const getAuthAccess = (token: string, signal?: AbortSignal) => requestJson<AuthAccessResponse>(
     '/auth/access',
     { headers: { Authorization: `Bearer ${token}` }, signal },
 );
 
-export const updateAuthProfile = (token: string, profile: AuthProfileData) => requestJson<AuthUser>(
+export const updateAuthProfile = (token: string, profile: AuthProfileData, signal?: AbortSignal) => requestJson<AuthUser>(
     '/auth/me',
-    { method: 'PUT', headers: jsonHeaders(token), body: JSON.stringify(profile) },
+    { method: 'PUT', headers: jsonHeaders(token), body: JSON.stringify(profile), signal, cache: 'no-store' },
 );
 
-export const deleteAuthProfile = async (token: string) => {
+export const deleteAuthProfile = async (token: string, signal?: AbortSignal) => {
     await request('/auth/me', {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
+        signal,
     });
 };
 

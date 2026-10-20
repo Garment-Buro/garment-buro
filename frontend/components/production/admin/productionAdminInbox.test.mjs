@@ -32,7 +32,7 @@ test('production and system administrators receive different sections', () => {
     assert.match(types, /productionAdminSections[\s\S]*'orders', 'problems'/);
     assert.match(
         types,
-        /systemAdminSections: AdminSection\[\] = \[\s*'stats',\s*'employees',\s*'assortment',\s*'orders',\s*'clients',\s*'problems',\s*'support',\s*\]/,
+        /systemAdminSections: AdminSection\[\] = \[\s*'stats',\s*'employees',\s*'assortment',\s*'presets',\s*'orders',\s*'clients',\s*'problems',\s*'support',\s*\]/,
     );
     assert.match(terminal, /user\?\.admin_scope === 'production'/);
     assert.match(terminal, /section === 'payouts'/);

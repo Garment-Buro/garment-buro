@@ -1,6 +1,6 @@
 import type { Coordinates } from '@/lib/location/types';
 
-export type { AddressSuggestion, Coordinates } from '@/lib/location/types';
+export type { Coordinates } from '@/lib/location/types';
 
 export type LoadState = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -20,18 +20,6 @@ export type CdekOffice = {
         latitude?: number;
         longitude?: number;
     };
-};
-
-export type TariffResult = {
-    delivery_sum?: number;
-    period_min?: number;
-    period_max?: number;
-    tariff_name?: string;
-};
-
-export type CityPreset = {
-    label: string;
-    code: number;
 };
 
 export type YandexMapInstance = {

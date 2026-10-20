@@ -1,229 +1,38 @@
 'use client';
 
-import { useMemo, useState, type FormEvent } from 'react';
-import {
-    PiCheckCircle,
-    PiCopy,
-    PiPlus,
-    PiTrash,
-} from 'react-icons/pi';
-import { useAssortmentResource } from '@/hooks/production/useAssortmentResource';
+import { useRef, useState } from 'react';
+import { PiCheckCircle, PiCopy, PiPlus } from 'react-icons/pi';
+import { useTechCardDirectory } from '@/hooks/production/useReferenceDirectory';
 import { saveAssortment } from '@/lib/api/productionAssortment';
-import {
-    employeeStation,
-    employeeStations,
-    stationLabels,
-} from '@/lib/production/adminTypes';
-import { compactDecimal } from '@/lib/production/numbers';
-import type {
-    GarmentModel,
-    ReferencePage,
-    TechCard,
-    TechCheckpoint,
-} from '@/lib/production/assortmentTypes';
+import type { TechCardSummary } from '@/lib/production/techDirectory';
 import { AdminFilters } from '../AdminFilters';
-import { AssortmentDialog, AssortmentFeedback } from './AssortmentDialog';
+import { AssortmentFeedback } from './AssortmentDialog';
+import { TechCardEditor } from './TechCardEditor';
 import styles from '../ProductionAdmin.module.css';
 
-type CardEditor = {
-    cardId?: number;
-    modelId: number;
-    code: string;
-    expectedLatestRevision?: number;
-    name: string;
-    description: string;
-    checkpoints: TechCheckpoint[];
-};
-
-const newCheckpoint = (position: number): TechCheckpoint => ({
-    position,
-    stage_code: 'tech',
-    role_code: 'tech',
-    name: '',
-    description: null,
-    standard_minutes: null,
-    labor_cost: '0',
-    currency: 'RUB',
-});
-
 export function AdminTechCards() {
-    const cardsResource = useAssortmentResource<TechCard[]>('tech-cards');
-    const modelsResource =
-        useAssortmentResource<ReferencePage<GarmentModel>>('models');
-    const [editor, setEditor] = useState<CardEditor | null>(null);
     const [query, setQuery] = useState('');
     const [activityFilter, setActivityFilter] = useState('');
     const [revisionFilter, setRevisionFilter] = useState('');
     const [sorting, setSorting] = useState('model:asc');
+    const [editorCard, setEditorCard] = useState<number | null>(null);
     const [saving, setSaving] = useState(false);
     const [formError, setFormError] = useState('');
-    const models = useMemo(
-        () => modelsResource.data?.items ?? [],
-        [modelsResource.data],
-    );
-    const availableModels = models.filter(
-        (model) =>
-            !(cardsResource.data ?? []).some(
-                (card) => card.garment_model_id === model.id,
-            ),
-    );
-    const createUnavailableReason = !models.length
-        ? 'Сначала добавьте модель изделия.'
-        : !availableModels.length
-          ? 'У каждой модели уже есть техкарта. Для изменений создайте новую версию в карточке нужной модели.'
-          : null;
-    const modelName = (id: number) =>
-        models.find((model) => model.id === id)?.name ?? `Модель №${id}`;
-    const visibleCards = useMemo(() => {
-        const needle = query.trim().toLocaleLowerCase('ru');
-        const nameFor = (id: number) =>
-            models.find((model) => model.id === id)?.name ?? `Модель №${id}`;
-        const filtered = (cardsResource.data ?? []).filter((card) => {
-            const current = [...card.revisions].sort(
-                (left, right) => right.revision_number - left.revision_number,
-            )[0];
-            return (
-                (!activityFilter ||
-                    card.is_active === (activityFilter === 'active')) &&
-                (!revisionFilter || current?.status === revisionFilter) &&
-                (!needle ||
-                    `${card.code} ${nameFor(card.garment_model_id)} ${current?.name_snapshot ?? ''}`
-                        .toLocaleLowerCase('ru')
-                        .includes(needle))
-            );
-        });
-        const [field, direction] = sorting.split(':');
-        return [...filtered].sort((left, right) => {
-            const values: Record<string, [string | number, string | number]> = {
-                model: [
-                    nameFor(left.garment_model_id),
-                    nameFor(right.garment_model_id),
-                ],
-                code: [left.code, right.code],
-                revision: [
-                    left.latest_revision_number,
-                    right.latest_revision_number,
-                ],
-            };
-            const [a, b] = values[field] ?? values.model;
-            const result =
-                typeof a === 'number' && typeof b === 'number'
-                    ? a - b
-                    : String(a).localeCompare(String(b), 'ru');
-            return direction === 'desc' ? -result : result;
-        });
-    }, [activityFilter, cardsResource.data, models, query, revisionFilter, sorting]);
-    const startCard = () => {
-        const model = availableModels[0];
-        setEditor({
-            modelId: model?.id ?? models[0]?.id ?? 0,
-            code: '',
-            name: '',
-            description: '',
-            checkpoints: [newCheckpoint(1)],
-        });
+    const busyRef = useRef(false);
+    const setBusy = (busy: boolean) => {
+        busyRef.current = busy;
+        setSaving(busy);
     };
-    const startRevision = (card: TechCard) => {
-        const source = [...card.revisions]
-            .filter((revision) => revision.status !== 'discarded')
-            .sort((a, b) => b.revision_number - a.revision_number)[0];
-        setEditor({
-            cardId: card.id,
-            modelId: card.garment_model_id,
-            code: card.code,
-            expectedLatestRevision: card.latest_revision_number,
-            name: source?.name_snapshot ?? '',
-            description: source?.description_snapshot ?? '',
-            checkpoints:
-                source?.checkpoints.map((checkpoint, index) => ({
-                    ...checkpoint,
-                    stage_code: employeeStation(
-                        checkpoint.stage_code as Parameters<
-                            typeof employeeStation
-                        >[0],
-                    ),
-                    role_code: employeeStation(
-                        checkpoint.role_code as Parameters<
-                            typeof employeeStation
-                        >[0],
-                    ),
-                    position: index + 1,
-                    standard_minutes:
-                        checkpoint.standard_minutes == null
-                            ? null
-                            : compactDecimal(checkpoint.standard_minutes),
-                    labor_cost: compactDecimal(checkpoint.labor_cost),
-                })) ?? [newCheckpoint(1)],
-        });
-    };
-    const updateCheckpoint = (
-        index: number,
-        field: keyof TechCheckpoint,
-        value: string,
-    ) => {
-        setEditor((current) => {
-            if (!current) return current;
-            const checkpoints = [...current.checkpoints];
-            checkpoints[index] = {
-                ...checkpoints[index],
-                [field]: value || null,
-            };
-            return { ...current, checkpoints };
-        });
-    };
-    const submit = async (event: FormEvent) => {
-        event.preventDefault();
-        if (!editor) return;
-        setSaving(true);
-        setFormError('');
-        const revision = {
-            name: editor.name,
-            description: editor.description || null,
-            checkpoints: editor.checkpoints.map((checkpoint, index) => ({
-                position: index + 1,
-                stage_code: checkpoint.stage_code,
-                role_code: checkpoint.role_code,
-                name: checkpoint.name,
-                description: checkpoint.description || null,
-                standard_minutes: checkpoint.standard_minutes
-                    ? Number(checkpoint.standard_minutes)
-                    : null,
-                labor_cost: Number(checkpoint.labor_cost || 0),
-                currency: 'RUB',
-            })),
-        };
-        try {
-            if (editor.cardId) {
-                await saveAssortment(
-                    `tech-cards/${editor.cardId}/revisions`,
-                    'POST',
-                    {
-                        expected_latest_revision:
-                            editor.expectedLatestRevision,
-                        revision,
-                    },
-                );
-            } else {
-                await saveAssortment(
-                    `models/${editor.modelId}/tech-cards`,
-                    'POST',
-                    { code: editor.code, revision },
-                );
-            }
-            setEditor(null);
-            cardsResource.reload();
-        } catch (reason) {
-            setFormError(
-                reason instanceof Error
-                    ? reason.message
-                    : 'Не удалось сохранить техкарту',
-            );
-        } finally {
-            setSaving(false);
-        }
-    };
-    const publish = async (card: TechCard, revision: number) => {
-        setSaving(true);
+    const directory = useTechCardDirectory({
+        query,
+        active: activityFilter ? activityFilter === 'active' : undefined,
+        revision_status: revisionFilter || undefined,
+        sort: sorting,
+        limit: 24,
+    });
+    const publish = async (card: TechCardSummary, revision: number) => {
+        if (busyRef.current) return;
+        setBusy(true);
         setFormError('');
         try {
             await saveAssortment(
@@ -231,418 +40,203 @@ export function AdminTechCards() {
                 'POST',
                 {},
             );
-            cardsResource.reload();
-        } catch (reason) {
+            void directory.retry();
+        } catch (error) {
             setFormError(
-                reason instanceof Error
-                    ? reason.message
-                    : 'Не удалось опубликовать версию',
+                error instanceof Error
+                    ? error.message
+                    : 'Не удалось опубликовать версию.',
             );
         } finally {
-            setSaving(false);
+            setBusy(false);
         }
     };
-
     return (
-        <section aria-busy={cardsResource.loading || modelsResource.loading}>
-            <div className={styles.assortmentHeading}>
-                <div>
-                    <h3>Технологические карты</h3>
-                    <p className={styles.muted}>
-                        Последовательность операций, роли, время и стоимость работ.
-                    </p>
+        <section aria-busy={directory.loading}>
+            <fieldset className={styles.adminFields} disabled={saving}>
+                <div className={styles.assortmentHeading}>
+                    <div>
+                        <h3>Технологические карты</h3>
+                        <p className={styles.muted}>
+                            Последовательность операций, роли, время и стоимость
+                            работ.
+                        </p>
+                    </div>
+                    <button onClick={() => setEditorCard(0)}>
+                        <PiPlus aria-hidden /> Создать техкарту
+                    </button>
                 </div>
-                <button
-                    disabled={!availableModels.length}
-                    title={createUnavailableReason ?? 'Создать техкарту'}
-                    onClick={startCard}
-                >
-                    <PiPlus aria-hidden /> Создать техкарту
-                </button>
-            </div>
-            {createUnavailableReason &&
-                !cardsResource.loading &&
-                !modelsResource.loading && (
-                    <p className={styles.muted}>{createUnavailableReason}</p>
-                )}
-            <div className={styles.assortmentFilters}>
-                <label className={styles.assortmentSearch}>
-                    Поиск техкарты
-                    <input
-                        type="search"
-                        value={query}
-                        placeholder="Код, модель или название"
-                        onChange={(event) => setQuery(event.target.value)}
-                    />
-                </label>
-                <AdminFilters
-                    groups={[
-                        {
-                            key: 'activity',
-                            label: 'Видимость',
-                            options: [
-                                ['', 'Все техкарты'],
-                                ['active', 'Активные'],
-                                ['hidden', 'Скрытые'],
-                            ],
-                        },
-                        {
-                            key: 'revision',
-                            label: 'Последняя версия',
-                            options: [
-                                ['', 'Любое состояние'],
-                                ['draft', 'Черновик'],
-                                ['published', 'Опубликована'],
-                                ['archived', 'Архив'],
-                                ['discarded', 'Отклонена'],
-                            ],
-                        },
-                        {
-                            key: 'sorting',
-                            label: 'Сортировка',
-                            options: [
-                                ['model:asc', 'По модели'],
-                                ['code:asc', 'По коду'],
-                                ['revision:desc', 'Сначала новые версии'],
-                                ['revision:asc', 'Сначала ранние версии'],
-                            ],
-                        },
-                    ]}
-                    values={{
-                        activity: activityFilter,
-                        revision: revisionFilter,
-                        sorting,
-                    }}
-                    defaults={{
-                        activity: '',
-                        revision: '',
-                        sorting: 'model:asc',
-                    }}
-                    onApply={(values) => {
-                        setActivityFilter(values.activity);
-                        setRevisionFilter(values.revision);
-                        setSorting(values.sorting);
-                    }}
-                />
-            </div>
-            {formError && !editor && (
-                <p className={styles.error} role="alert">
-                    {formError}
+                <p className={styles.muted}>
+                    Новая техкарта создаётся для модели без карты. Для изменений
+                    создайте новую версию.
                 </p>
-            )}
-            <AssortmentFeedback
-                loading={cardsResource.loading || modelsResource.loading}
-                error={cardsResource.error || modelsResource.error}
-                empty={
-                    !cardsResource.loading &&
-                    !modelsResource.loading &&
-                    visibleCards.length === 0
-                }
-            />
-            <div className={styles.assortmentCards}>
-                {visibleCards.map((card) => {
-                    const current = [...card.revisions].sort(
-                        (a, b) => b.revision_number - a.revision_number,
-                    )[0];
-                    const draft = card.revisions.find(
-                        (revision) => revision.status === 'draft',
-                    );
-                    return (
-                        <article className={styles.assortmentCard} key={card.id}>
-                            <div className={styles.assortmentCardTop}>
-                                <div>
-                                    <span className={styles.badge}>{card.code}</span>
-                                    <h4>{modelName(card.garment_model_id)}</h4>
-                                </div>
-                                <span className={styles.badge}>
-                                    Версия {card.latest_revision_number}
-                                </span>
-                            </div>
-                            <p>{current?.name_snapshot ?? 'Без названия'}</p>
-                            <p className={styles.muted}>
-                                {current?.checkpoints.length ?? 0} операций ·{' '}
-                                {draft ? 'Есть черновик' : 'Черновика нет'}
-                            </p>
-                            <div className={styles.cardActions}>
-                                {!draft ? (
-                                    <button
-                                        disabled={saving}
-                                        onClick={() => startRevision(card)}
-                                    >
-                                        <PiCopy aria-hidden /> Новая версия
-                                    </button>
-                                ) : (
-                                    <button
-                                        disabled
-                                        title="Сначала опубликуйте текущий черновик"
-                                    >
-                                        <PiCopy aria-hidden /> Черновик уже есть
-                                    </button>
-                                )}
-                                {draft && (
-                                    <button
-                                        className={styles.primaryButton}
-                                        disabled={saving}
-                                        onClick={() =>
-                                            void publish(
-                                                card,
-                                                draft.revision_number,
-                                            )
-                                        }
-                                    >
-                                        <PiCheckCircle aria-hidden /> Опубликовать
-                                    </button>
-                                )}
-                            </div>
-                        </article>
-                    );
-                })}
-            </div>
-            {editor && (
-                <AssortmentDialog
-                    title={
-                        editor.cardId ? 'Новая версия техкарты' : 'Новая техкарта'
-                    }
-                    description="Добавляйте операции в фактическом порядке производства и назначайте исполнителя каждой операции."
-                    onClose={() => setEditor(null)}
-                >
-                    <form onSubmit={submit}>
-                        <fieldset className={styles.formSection}>
-                            <legend>Техкарта</legend>
-                            <div className={styles.formGrid}>
-                                <label>
-                                    Модель
-                                    <select
-                                        required
-                                        disabled={Boolean(editor.cardId)}
-                                        value={editor.modelId || ''}
-                                        onChange={(event) =>
-                                            setEditor({
-                                                ...editor,
-                                                modelId: Number(event.target.value),
-                                            })
-                                        }
-                                    >
-                                        <option value="">Выберите модель</option>
-                                        {availableModels.map((model) => (
-                                            <option key={model.id} value={model.id}>
-                                                {model.name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </label>
-                                <label>
-                                    Код карты
-                                    <input
-                                        required
-                                        disabled={Boolean(editor.cardId)}
-                                        value={editor.code}
-                                        placeholder="HOODIE_TECH"
-                                        onChange={(event) =>
-                                            setEditor({
-                                                ...editor,
-                                                code: event.target.value.toUpperCase(),
-                                            })
-                                        }
-                                    />
-                                </label>
-                                <label className={styles.fullField}>
-                                    Название версии
-                                    <input
-                                        required
-                                        value={editor.name}
-                                        onChange={(event) =>
-                                            setEditor({
-                                                ...editor,
-                                                name: event.target.value,
-                                            })
-                                        }
-                                    />
-                                </label>
-                                <label className={styles.fullField}>
-                                    Комментарий
-                                    <textarea
-                                        value={editor.description}
-                                        onChange={(event) =>
-                                            setEditor({
-                                                ...editor,
-                                                description: event.target.value,
-                                            })
-                                        }
-                                    />
-                                </label>
-                            </div>
-                        </fieldset>
-                        <fieldset className={styles.formSection}>
-                            <legend>Операции</legend>
-                            <div className={styles.stepList}>
-                                {editor.checkpoints.map((checkpoint, index) => (
-                                    <article className={styles.stepEditor} key={index}>
-                                        <div className={styles.assortmentCardTop}>
-                                            <h4>Шаг {index + 1}</h4>
-                                            <button
-                                                type="button"
-                                                className={styles.iconButton}
-                                                disabled={
-                                                    editor.checkpoints.length === 1
-                                                }
-                                                onClick={() =>
-                                                    setEditor({
-                                                        ...editor,
-                                                        checkpoints:
-                                                            editor.checkpoints.filter(
-                                                                (_, itemIndex) =>
-                                                                    itemIndex !== index,
-                                                            ),
-                                                    })
-                                                }
-                                                aria-label={`Удалить шаг ${index + 1}`}
-                                            >
-                                                <PiTrash aria-hidden />
-                                            </button>
-                                        </div>
-                                        <div className={styles.formGrid}>
-                                            <label>
-                                                Участок
-                                                <select
-                                                    value={checkpoint.stage_code}
-                                                    onChange={(event) =>
-                                                        updateCheckpoint(
-                                                            index,
-                                                            'stage_code',
-                                                            event.target.value,
-                                                        )
-                                                    }
-                                                >
-                                                    {employeeStations.map((station) => (
-                                                        <option
-                                                            key={station}
-                                                            value={station}
-                                                        >
-                                                            {stationLabels[station]}
-                                                        </option>
-                                                    ))}
-                                                </select>
-                                            </label>
-                                            <label>
-                                                Роль исполнителя
-                                                <select
-                                                    value={checkpoint.role_code}
-                                                    onChange={(event) =>
-                                                        updateCheckpoint(
-                                                            index,
-                                                            'role_code',
-                                                            event.target.value,
-                                                        )
-                                                    }
-                                                >
-                                                    {employeeStations.map((station) => (
-                                                        <option
-                                                            key={station}
-                                                            value={station}
-                                                        >
-                                                            {stationLabels[station]}
-                                                        </option>
-                                                    ))}
-                                                </select>
-                                            </label>
-                                            <label className={styles.fullField}>
-                                                Операция
-                                                <input
-                                                    required
-                                                    value={checkpoint.name}
-                                                    onChange={(event) =>
-                                                        updateCheckpoint(
-                                                            index,
-                                                            'name',
-                                                            event.target.value,
-                                                        )
-                                                    }
-                                                />
-                                            </label>
-                                            <label>
-                                                Норма времени, мин
-                                                <input
-                                                    type="number"
-                                                    min="0.01"
-                                                    step="0.01"
-                                                    value={
-                                                        checkpoint.standard_minutes ??
-                                                        ''
-                                                    }
-                                                    onChange={(event) =>
-                                                        updateCheckpoint(
-                                                            index,
-                                                            'standard_minutes',
-                                                            event.target.value,
-                                                        )
-                                                    }
-                                                />
-                                            </label>
-                                            <label>
-                                                Стоимость работы
-                                                <input
-                                                    type="number"
-                                                    min="0"
-                                                    step="0.01"
-                                                    value={checkpoint.labor_cost}
-                                                    onChange={(event) =>
-                                                        updateCheckpoint(
-                                                            index,
-                                                            'labor_cost',
-                                                            event.target.value,
-                                                        )
-                                                    }
-                                                />
-                                            </label>
-                                            <label className={styles.fullField}>
-                                                Инструкция
-                                                <textarea
-                                                    value={
-                                                        checkpoint.description ?? ''
-                                                    }
-                                                    onChange={(event) =>
-                                                        updateCheckpoint(
-                                                            index,
-                                                            'description',
-                                                            event.target.value,
-                                                        )
-                                                    }
-                                                />
-                                            </label>
-                                        </div>
-                                    </article>
-                                ))}
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() =>
-                                    setEditor({
-                                        ...editor,
-                                        checkpoints: [
-                                            ...editor.checkpoints,
-                                            newCheckpoint(
-                                                editor.checkpoints.length + 1,
-                                            ),
-                                        ],
-                                    })
-                                }
+                <div className={styles.assortmentFilters}>
+                    <label className={styles.assortmentSearch}>
+                        Поиск техкарты
+                        <input
+                            type="search"
+                            value={query}
+                            placeholder="Код, модель или название"
+                            onChange={(event) => setQuery(event.target.value)}
+                        />
+                    </label>
+                    <AdminFilters
+                        groups={[
+                            {
+                                key: 'activity',
+                                label: 'Видимость',
+                                options: [
+                                    ['', 'Все техкарты'],
+                                    ['active', 'Активные'],
+                                    ['hidden', 'Скрытые'],
+                                ],
+                            },
+                            {
+                                key: 'revision',
+                                label: 'Последняя версия',
+                                options: [
+                                    ['', 'Любое состояние'],
+                                    ['draft', 'Черновик'],
+                                    ['published', 'Опубликована'],
+                                    ['archived', 'Архив'],
+                                    ['discarded', 'Отклонена'],
+                                ],
+                            },
+                            {
+                                key: 'sorting',
+                                label: 'Сортировка',
+                                options: [
+                                    ['model:asc', 'По модели'],
+                                    ['code:asc', 'По коду'],
+                                    ['revision:desc', 'Сначала новые версии'],
+                                    ['revision:asc', 'Сначала ранние версии'],
+                                ],
+                            },
+                        ]}
+                        values={{
+                            activity: activityFilter,
+                            revision: revisionFilter,
+                            sorting,
+                        }}
+                        defaults={{
+                            activity: '',
+                            revision: '',
+                            sorting: 'model:asc',
+                        }}
+                        onApply={(values) => {
+                            setActivityFilter(values.activity);
+                            setRevisionFilter(values.revision);
+                            setSorting(values.sorting);
+                        }}
+                    />
+                </div>
+
+                {formError && (
+                    <p className={styles.error} role="alert">
+                        {formError}
+                    </p>
+                )}
+                <AssortmentFeedback
+                    loading={directory.loading}
+                    error={directory.message}
+                    empty={!directory.loading && !directory.items.length}
+                />
+                <div className={styles.assortmentCards}>
+                    {directory.items.map((card) => {
+                        const draft = card.draft_revision_number;
+                        return (
+                            <article
+                                className={styles.assortmentCard}
+                                key={card.id}
                             >
-                                <PiPlus aria-hidden /> Добавить операцию
-                            </button>
-                        </fieldset>
-                        {formError && <p className={styles.error}>{formError}</p>}
-                        <div className={styles.editorActions}>
-                            <button type="button" onClick={() => setEditor(null)}>
-                                Отмена
-                            </button>
-                            <button className={styles.primaryButton} disabled={saving}>
-                                {saving ? 'Сохраняем…' : 'Сохранить черновик'}
-                            </button>
-                        </div>
-                    </form>
-                </AssortmentDialog>
-            )}
+                                <div className={styles.assortmentCardTop}>
+                                    <div>
+                                        <span className={styles.badge}>
+                                            {card.code}
+                                        </span>
+                                        <h4>{card.garment_model_name}</h4>
+                                    </div>
+                                    <span className={styles.badge}>
+                                        Версия {card.latest_revision_number}
+                                    </span>
+                                </div>
+                                <p>
+                                    {card.latest_revision_name ??
+                                        'Без названия'}
+                                </p>
+                                <p className={styles.muted}>
+                                    {card.checkpoint_count} операций ·{' '}
+                                    {draft ? 'Есть черновик' : 'Черновика нет'}
+                                </p>
+                                <div className={styles.cardActions}>
+                                    {!draft ? (
+                                        <button
+                                            onClick={() =>
+                                                setEditorCard(card.id)
+                                            }
+                                        >
+                                            <PiCopy aria-hidden /> Новая версия
+                                        </button>
+                                    ) : (
+                                        <button
+                                            disabled
+                                            title="Сначала опубликуйте текущий черновик"
+                                        >
+                                            <PiCopy aria-hidden /> Черновик уже
+                                            есть
+                                        </button>
+                                    )}
+                                    {draft && (
+                                        <button
+                                            className={styles.primaryButton}
+                                            onClick={() =>
+                                                void publish(card, draft)
+                                            }
+                                        >
+                                            <PiCheckCircle aria-hidden />{' '}
+                                            Опубликовать
+                                        </button>
+                                    )}
+                                </div>
+                            </article>
+                        );
+                    })}
+                </div>
+                {(directory.message || formError) && (
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setFormError('');
+                            void directory.retry();
+                        }}
+                    >
+                        Обновить техкарты
+                    </button>
+                )}
+                {directory.hasMore && (
+                    <button
+                        type="button"
+                        disabled={directory.loadingMore}
+                        onClick={() => void directory.loadMore()}
+                    >
+                        Ещё техкарты
+                    </button>
+                )}
+                {editorCard !== null && (
+                    <TechCardEditor
+                        key={editorCard}
+                        cardId={editorCard}
+                        onBusyChange={setBusy}
+                        onClose={() => {
+                            if (!busyRef.current) setEditorCard(null);
+                        }}
+                        onSaved={() => {
+                            setEditorCard(null);
+                            void directory.retry();
+                        }}
+                    />
+                )}
+            </fieldset>
         </section>
     );
 }

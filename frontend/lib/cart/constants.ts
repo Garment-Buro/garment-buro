@@ -1,6 +1,4 @@
-export const CART_ACTION_CONTENT_GLOW_COLLAPSED_HEIGHT = '300px';
 export const CART_ACTION_CONTENT_GLOW_EXPANDED_HEIGHT = '100px';
-export const CART_ACTION_CONTENT_GLOW_COLLAPSED_GRADIENT = 'radial-gradient(171.77% 41.81% at 50% 50%, rgba(255, 255, 255, 0.97) 38.95%, rgba(255, 255, 255, 0.79) 48.08%, rgba(255, 255, 255, 0.69) 53.37%, rgba(255, 255, 255, 0.50) 62.02%, rgba(255, 255, 255, 0.35) 69.24%, rgba(255, 255, 255, 0.20) 78.37%, rgba(255, 255, 255, 0.00) 97.12%)';
 export const CART_ACTION_CONTENT_GLOW_EXPANDED_GRADIENT = 'radial-gradient(171.77% 41.81% at 50% 50%, rgba(255, 255, 255, 0.97) 38.95%, rgba(255, 255, 255, 0.79) 48.08%, rgba(255, 255, 255, 0.69) 53.37%, rgba(255, 255, 255, 0.50) 62.02%, rgba(255, 255, 255, 0.35) 69.24%, rgba(255, 255, 255, 0.20) 78.37%, rgba(255, 255, 255, 0.00) 97.12%)';
 
 export const COLLAPSED_PRODUCT_MIN_HEIGHT = 49;
@@ -31,16 +29,7 @@ export const CART_ACTION_GUEST_AUTH_TOTAL_HEIGHT = 97;
 export const HANDLE_CLICK_GUARD_MS = 450;
 export const TOP_OVERSCROLL_COLLAPSE_THRESHOLD = 72;
 export const WHEEL_GESTURE_RESET_MS = 160;
-export const CART_ACTION_COURIER_DELIVERY_PRICE = 547;
-export const CART_ACTION_COUPON_DISCOUNT = 540;
 export const CART_ACTION_SURFACE_BACKGROUND = 'rgb(255 255 255 / 70%)';
 export const CART_ACTION_SURFACE_BACKDROP_FILTER = 'blur(12px) saturate(160%)';
 export const CART_ACTION_PRODUCT_SECTION_BACKGROUND = 'rgb(255 255 255 / 30%)';
 export const CART_ACTION_SECTION_GAP_BACKGROUND = 'rgba(243, 243, 243, 0.7)';
-export const CART_ACTION_COUPON_BUTTON_SHADOW = '0 0.665px 1.196px 0 rgba(0, 0, 0, 0.26)';
-
-export const CART_ACTION_COUPONS = [
-    { value: 'first-order', label: 'Первый заказ', amount: '10%' },
-    { value: 'level-l', label: 'Уровень L', amount: '10%' },
-    { value: 'ten-items', label: '10 изделий', amount: '10%' },
-] as const;

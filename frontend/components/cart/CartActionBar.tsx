@@ -1,11 +1,10 @@
 "use client";
 
 import Image from 'next/image';
+import dynamic from 'next/dynamic';
 import React from 'react';
 import type { CartActionBarProps } from '@/lib/cart/actionTypes';
 import {
-    CART_ACTION_CONTENT_GLOW_COLLAPSED_GRADIENT,
-    CART_ACTION_CONTENT_GLOW_COLLAPSED_HEIGHT,
     CART_ACTION_CONTENT_GLOW_EXPANDED_GRADIENT,
     CART_ACTION_CONTENT_GLOW_EXPANDED_HEIGHT,
     CART_ACTION_ENTER_MS,
@@ -20,18 +19,21 @@ import {
     CART_ACTION_SURFACE_FADE_MS,
     CART_ACTION_SURFACE_REVEAL_DELAY_MS,
 } from '@/lib/cart/constants';
-import { CartExpandedContent } from '@/components/cart/CartExpandedContent';
 import { CartGuestAuthPrompt } from '@/components/cart/CartGuestAuthPrompt';
-import { CartItemDetailsPopup } from '@/components/cart/CartItemDetailsPopup';
 import { CartQuantityControl } from '@/components/cart/CartQuantityControl';
 import { CartActionBarV2Collapsed } from '@/components/cart/CartActionBarV2Collapsed';
-import { AuthPopup } from '@/components/auth/AuthPopup';
 
 import { useCartActionBarController } from '@/hooks/cart/useCartActionBarController';
+import { useCartDeferredContent } from '@/hooks/cart/useCartDeferredContent';
+
+const CartExpandedContent = dynamic(() => import('./CartExpandedContent').then(module => module.CartExpandedContent), {
+    loading: () => <p role="status" className="p-4 text-center">Загружаем корзину…</p>,
+});
+const CartItemDetailsPopup = dynamic(() => import('./CartItemDetailsPopup').then(module => module.CartItemDetailsPopup));
+const AuthPopup = dynamic(() => import('@/components/auth/AuthPopup').then(module => module.AuthPopup));
 
 export const CartActionBar: React.FC<CartActionBarProps> = (props) => {
     const {
-        showAddProductCard,
         collapsedVariant,
         liquidV2Shifted,
         disabled,
@@ -45,7 +47,6 @@ export const CartActionBar: React.FC<CartActionBarProps> = (props) => {
         totalQuantity,
         productsTotal,
         deliveryPrice,
-        discount,
         grandTotal,
         deliveryMethod,
         setDeliveryMethod,
@@ -56,12 +57,11 @@ export const CartActionBar: React.FC<CartActionBarProps> = (props) => {
         retryQuote,
         quoteLoading,
         deliveryQuoted,
-        isCouponOpen,
-        setIsCouponOpen,
-        pendingCoupon,
-        setPendingCoupon,
-        appliedCoupon,
-        setAppliedCoupon,
+        qrAvailable,
+        pending,
+        resumePurchase,
+        retryPayment,
+        newPurchase,
         isOfferAccepted,
         setIsOfferAccepted,
         isPolicyAccepted,
@@ -85,7 +85,6 @@ export const CartActionBar: React.FC<CartActionBarProps> = (props) => {
         displayTitle,
         displayColor,
         displayPrice,
-        displayImage,
         shouldShowCartAction,
         panelDragHeight,
         expansionProgress,
@@ -101,6 +100,7 @@ export const CartActionBar: React.FC<CartActionBarProps> = (props) => {
         setExpandedFromHandle,
         handleExpandedContentWheel,
         handleExpandedContentTouchStart,
+        handleExpandedContentTouchMove,
         handleExpandedContentTouchEnd,
         handleHandlePointerDown,
         handleHandlePointerMove,
@@ -116,44 +116,38 @@ export const CartActionBar: React.FC<CartActionBarProps> = (props) => {
         isCartActionVisible,
     } = useCartActionBarController(props);
     const isLiquidV2 = collapsedVariant === 'liquid-v2';
+    const mountExpandedContent = useCartDeferredContent(isPanelExpandedPresentation);
 
     if (!isRendered) return null;
 
     const renderExpandedContent = () => (
         <CartExpandedContent
+            active={isExpanded}
             expandedContentRef={expandedContentRef}
             onWheel={handleExpandedContentWheel}
             onTouchStart={handleExpandedContentTouchStart}
+            onNativeTouchMove={handleExpandedContentTouchMove}
             onTouchEnd={handleExpandedContentTouchEnd}
             deliveryMethod={deliveryMethod}
             setDeliveryMethod={setDeliveryMethod}
             paymentMethod={paymentMethod}
             setPaymentMethod={setPaymentMethod}
-            showAddProductCard={showAddProductCard}
-            displayTitle={displayTitle}
-            displayColor={displayColor}
-            displayPrice={displayPrice}
-            displayImage={displayImage}
-            currentCartItem={currentCartItem}
-            disabled={disabled}
-            onAdd={onAdd}
             onEdit={onEdit}
             onDetails={setSelectedDetailsItem}
             updateQuantity={updateQuantity}
             items={items}
-            isCouponOpen={isCouponOpen}
-            setIsCouponOpen={setIsCouponOpen}
-            pendingCoupon={pendingCoupon}
-            setPendingCoupon={setPendingCoupon}
-            appliedCoupon={appliedCoupon}
-            setAppliedCoupon={setAppliedCoupon}
+            pending={pending}
+            isPaymentSubmitting={isPaymentSubmitting}
+            resumePurchase={resumePurchase}
+            retryPayment={retryPayment}
+            newPurchase={newPurchase}
             productsTotal={productsTotal}
             checkoutError={checkoutError}
             retryQuote={retryQuote}
             quoteLoading={quoteLoading}
             deliveryQuoted={deliveryQuoted}
+            qrAvailable={qrAvailable}
             deliveryPrice={deliveryPrice}
-            discount={discount}
             grandTotal={grandTotal}
             agreementIdPrefix={agreementIdPrefix}
             isOfferAccepted={isOfferAccepted}
@@ -185,7 +179,7 @@ export const CartActionBar: React.FC<CartActionBarProps> = (props) => {
 
     return (
         <>
-        <AuthPopup isOpen={isAuthPopupOpen} onClose={() => setIsAuthPopupOpen(false)} />
+        {isAuthPopupOpen && <AuthPopup isOpen onClose={() => setIsAuthPopupOpen(false)} />}
         {selectedDetailsItem ? (
             <CartItemDetailsPopup
                 item={selectedDetailsItem}
@@ -236,19 +230,6 @@ export const CartActionBar: React.FC<CartActionBarProps> = (props) => {
                         : `opacity ${CART_ACTION_EXIT_MS}ms ease, transform ${CART_ACTION_EXIT_MS}ms cubic-bezier(0.4, 0, 0.2, 1), bottom ${CART_ACTION_EXPAND_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`,
             }}
         >
-            {!isCompactCollapsedPresentation && !isPanelExpandedPresentation ? (
-                <div
-                    className="cart-action-bar-content-glow pointer-events-none absolute left-1/2 top-1/2 z-0"
-                    style={{
-                        width: '100vw',
-                        height: CART_ACTION_CONTENT_GLOW_COLLAPSED_HEIGHT,
-                        background: CART_ACTION_CONTENT_GLOW_COLLAPSED_GRADIENT,
-                        transform: 'translateX(-50%) translateY(-50%)',
-                        transition: 'height 0.3s ease',
-                    }}
-                />
-            ) : null}
-
             <div
                 className="cart-action-bar-content relative z-10 flex flex-col rounded-[20px] px-[clamp(5px,1.351vw,9px)]"
                 style={{
@@ -300,13 +281,7 @@ export const CartActionBar: React.FC<CartActionBarProps> = (props) => {
                         }}
                     />
 
-                    {collapsedVariant === 'legacy' && !isPanelExpandedPresentation && totalQuantity > 0 ? (
-                        <span className="mt-[2px] h-[10px] w-full pr-[25px] text-right font-manrope text-[10px] font-normal leading-[10px] text-[#9F9F9F]">
-                            {`в корзине: ${totalQuantity}`}
-                        </span>
-                    ) : (
-                        <span className="pointer-events-none h-[7px] shrink-0" aria-hidden="true" />
-                    )}
+                    <span className="pointer-events-none h-[7px] shrink-0" aria-hidden="true" />
                     <button
                         ref={handleZoneRef}
                         type="button"
@@ -465,7 +440,7 @@ export const CartActionBar: React.FC<CartActionBarProps> = (props) => {
                                 ].join(', '),
                         }}
                     >
-                        {renderExpandedContent()}
+                        {mountExpandedContent && renderExpandedContent()}
                     </div>
                 </div>
 
@@ -527,7 +502,7 @@ export const CartActionBar: React.FC<CartActionBarProps> = (props) => {
                         <button
                             type="button"
                             onClick={isPanelExpandedPresentation ? handleExpandedPayment : onBuy}
-                            disabled={isPanelExpandedPresentation && (isPaymentSubmitting || !isOfferAccepted || !isPolicyAccepted || items.length === 0)}
+                            disabled={isPanelExpandedPresentation && (isPaymentSubmitting || !deliveryQuoted || Boolean(pending) || !isOfferAccepted || !isPolicyAccepted || items.length === 0)}
                             aria-busy={isPanelExpandedPresentation && isPaymentSubmitting}
                             className="flex h-[14px] items-center justify-center font-manrope text-[14px] font-semibold leading-[11.582px] text-[#676767] transition-opacity disabled:opacity-40"
                         >
@@ -553,7 +528,7 @@ export const CartActionBar: React.FC<CartActionBarProps> = (props) => {
                             : `max-height ${CART_ACTION_EXPAND_MS}ms cubic-bezier(0.22, 1, 0.36, 1), opacity ${CART_ACTION_REVEAL_MS}ms ease, transform ${CART_ACTION_EXPAND_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`,
                     }}
                 >
-                    <CartGuestAuthPrompt onLogin={() => setIsAuthPopupOpen(true)} />
+                    {mountExpandedContent && <CartGuestAuthPrompt onLogin={() => setIsAuthPopupOpen(true)} />}
                 </div>
             ) : null}
         </div>

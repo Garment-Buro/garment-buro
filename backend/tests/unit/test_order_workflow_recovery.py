@@ -1,5 +1,5 @@
 import asyncio
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import pytest
 from sqlalchemy import select
@@ -8,6 +8,7 @@ from app.modules.delivery.models import CdekShipment, CdekShipmentAttempt
 from app.modules.delivery.provider import CdekOrderSnapshot
 from app.modules.delivery.recovery import recover_shipment
 from app.modules.fulfillment.models import FulfillmentJob
+from app.modules.identity.security import ensure_utc
 from app.modules.orders.models import Order
 from app.modules.orders.workflow import OrderWorkflowConflict
 from app.modules.orders.workflow_models import OrderWorkflow, OrderWorkflowJob
@@ -17,6 +18,19 @@ from app.modules.payments.models import PaymentReconciliationJob
 from app.modules.payments.provider import YooKassaProviderError
 from app.modules.payments.reconciliation import PaymentReconciliationProcessor
 from tests.unit.test_order_workflow import NOW, decide, setup, work
+
+
+@pytest.fixture
+def later_operator_clock(monkeypatch):
+    """Recovery may run long after the checkout/collection timestamp."""
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return (NOW + timedelta(hours=1)).astimezone(tz)
+
+    monkeypatch.setattr("app.modules.orders.workflow_operations.datetime", Clock)
+    monkeypatch.setattr("app.modules.delivery.recovery.datetime", Clock)
 
 
 def test_healthy_long_hold_does_not_exhaust_reconciliation_budget(tmp_path):
@@ -37,7 +51,7 @@ def test_healthy_long_hold_does_not_exhaust_reconciliation_budget(tmp_path):
     asyncio.run(scenario())
 
 
-def test_capture_window_and_operator_recovery_keep_original_key(tmp_path):
+def test_capture_window_and_operator_recovery_keep_original_key(tmp_path, later_operator_clock):
     async def scenario():
         async with setup(tmp_path) as (db, provider, _, _):
             await decide(db)
@@ -59,9 +73,10 @@ def test_capture_window_and_operator_recovery_keep_original_key(tmp_path):
                     session, family="workflow", job_id=2, expected_generation=1, actor_id=1
                 )
                 await session.commit()
+                retry_at = ensure_utc((await session.get(OrderWorkflowJob, 2)).available_at)
             provider.capture_error = None
             # Still replay-safe after operator fixes credentials, not a new operation.
-            await work(db, provider, NOW + timedelta(minutes=6))
+            await work(db, provider, retry_at + timedelta(seconds=1))
             async with db.session() as session:
                 assert (await session.get(Order, 1)).status == "processing"
             assert len(provider.captures) == 2
@@ -91,7 +106,9 @@ def test_capture_post_is_not_replayed_after_provider_idempotence_window(tmp_path
     asyncio.run(scenario())
 
 
-def test_delivery_recovery_verifies_identity_and_polling_survives_restart(tmp_path):
+def test_delivery_recovery_verifies_identity_and_polling_survives_restart(
+    tmp_path, later_operator_clock
+):
     async def scenario():
         async with setup(tmp_path) as (db, payments, _, _):
             await decide(db)
@@ -164,11 +181,12 @@ def test_delivery_recovery_verifies_identity_and_polling_survives_restart(tmp_pa
                 )
                 await session.commit()
                 assert (await session.get(Order, 1)).status == "processing"
+                tracking_at = ensure_utc((await session.get(OrderWorkflowJob, 3)).available_at)
             processor = OrderWorkflowProcessor(
                 db.settings.model_copy(update={"cdek_tracking_enabled": True}), payments, delivery
             )
             async with db.session() as session:
-                await processor.process_once(session, now=NOW + timedelta(minutes=5))
+                await processor.process_once(session, now=tracking_at + timedelta(minutes=5))
             async with db.session() as session:
                 assert (await session.get(Order, 1)).status == "completed"
                 assert (await session.get(OrderWorkflowJob, 3)).status == "completed"

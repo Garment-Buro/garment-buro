@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Literal
 from urllib.parse import urlsplit
@@ -29,10 +29,10 @@ class PartnerLandingFaqItem(BaseModel):
     question: str = Field(min_length=1, max_length=255)
     answer: str = Field(min_length=1, max_length=1000)
 
-    @field_validator("question", "answer")
+    @field_validator("question", "answer", mode="before")
     @classmethod
     def normalize_text(cls, value: str) -> str:
-        return value.strip()
+        return value.strip() if isinstance(value, str) else value
 
 
 class PartnerLandingContent(BaseModel):
@@ -119,6 +119,7 @@ class PartnerLandingResponse(BaseModel):
 
     id: int
     partner_id: int
+    version: int
     slug: str
     title: str
     eyebrow: str | None
@@ -134,6 +135,17 @@ class PartnerLandingResponse(BaseModel):
     published_at: datetime | None
     created_at: datetime
     updated_at: datetime
+
+    @field_validator("created_at", "updated_at", "published_at")
+    @classmethod
+    def utc_timestamps(cls, value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        return (
+            value.replace(tzinfo=timezone.utc)
+            if value.tzinfo is None
+            else value.astimezone(timezone.utc)
+        )
 
 
 class PublicPartnerLandingResponse(BaseModel):
@@ -172,14 +184,18 @@ class PartnerLandingCreateRequest(BaseModel):
     def normalize_slug(cls, value: str) -> str:
         return value.strip().casefold()
 
-    @field_validator("title", "headline", "description", "cta_label", "cta_href")
+    @field_validator("title", "headline", "description", "cta_label", "cta_href", mode="before")
     @classmethod
     def normalize_required_text(cls, value: str) -> str:
-        return value.strip()
+        return value.strip() if isinstance(value, str) else value
 
     @field_validator("cta_href")
     @classmethod
     def validate_cta_href(cls, value: str) -> str:
+        # WHATWG browsers treat backslashes as slashes and discard ASCII
+        # controls. Validate before urlsplit's different normalization rules.
+        if "\\" in value or any(ord(char) < 32 or ord(char) == 127 for char in value):
+            raise ValueError("CTA URL contains unsafe characters")
         if value.startswith("/") and not value.startswith("//"):
             return value
         parsed = urlsplit(value)
@@ -213,6 +229,7 @@ class PartnerLandingCreateRequest(BaseModel):
 class PartnerLandingUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    expected_version: int = Field(strict=True, gt=0, le=2_147_483_647)
     title: str | None = Field(default=None, min_length=1, max_length=255)
     eyebrow: str | None = Field(default=None, max_length=120)
     headline: str | None = Field(default=None, min_length=1, max_length=255)
@@ -225,10 +242,10 @@ class PartnerLandingUpdateRequest(BaseModel):
     product_ids: list[int] | None = Field(default=None, max_length=50)
     status: LandingState | None = None
 
-    @field_validator("title", "headline", "description", "cta_label")
+    @field_validator("title", "headline", "description", "cta_label", mode="before")
     @classmethod
     def normalize_required_text(cls, value: str | None) -> str | None:
-        return value.strip() if value is not None else None
+        return value.strip() if isinstance(value, str) else value
 
     @field_validator("eyebrow")
     @classmethod
@@ -261,6 +278,7 @@ class PartnerVisitResponse(BaseModel):
 
 class PartnerDashboardResponse(BaseModel):
     partner: PartnerProfileResponse
+    has_requisites: bool
     visits: int
     orders: int
     conversion_percent: Decimal
@@ -268,18 +286,6 @@ class PartnerDashboardResponse(BaseModel):
     available: Decimal
     paid: Decimal
     currency: Literal["RUB"] = "RUB"
-
-
-class PartnerCommissionResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    order_id: int
-    amount: Decimal
-    currency: Literal["RUB"]
-    status: Literal["pending", "canceled"]
-    available_at: datetime
-    created_at: datetime
 
 
 class PartnerPayoutCreateRequest(BaseModel):
@@ -324,7 +330,12 @@ class PartnerRequisitesRequest(BaseModel):
         return self
 
 
+class PartnerRequisitesWriteRequest(PartnerRequisitesRequest):
+    expected_version: int = Field(strict=True, ge=0, le=2_147_483_647)
+
+
 class PartnerRequisitesResponse(PartnerRequisitesRequest):
+    version: int = Field(strict=True, gt=0, le=2_147_483_647)
     updated_at: datetime
 
 

@@ -1,95 +1,34 @@
 'use client';
 
-import { useMemo, useState, type FormEvent } from 'react';
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
     PiArrowLeft,
     PiArrowRight,
-    PiCheck,
     PiImage,
     PiPackage,
     PiPencilSimple,
     PiPlus,
     PiTShirt,
+    PiTrash,
     PiUsersThree,
 } from 'react-icons/pi';
+import { useAdminLandingDirectory } from '@/hooks/admin/useAdminLandingDirectory';
+import type { AdminLandingCard } from '@/lib/partners/adminDirectory';
+import { useProductionCatalog } from '@/hooks/production/useProductionCatalog';
+import type { CatalogAdminCounts, CatalogAdminSort } from '@/lib/products/adminCatalog';
 import { useAssortmentResource } from '@/hooks/production/useAssortmentResource';
-import {
-    assortmentRequest,
-    saveAssortment,
-    uploadAssortmentMedia,
-} from '@/lib/api/productionAssortment';
 import type {
-    Fabric,
-    GarmentModel,
-    ProductCategory,
-    ProductCommunity,
-    ProductDetail,
     ProductReference,
-    ProductVariantReference,
-    ReferencePage,
 } from '@/lib/production/assortmentTypes';
+import { ProductEditorDialog } from '@/components/admin/ProductEditorDialog';
+import { deleteProductionProduct } from '@/hooks/admin/catalogEditorClients';
 import { safeImage } from '@/lib/production/workflow';
 import { AdminFilters } from '../AdminFilters';
-import {
-    AssortmentDialog,
-    AssortmentFeedback,
-    FileUploadStatus,
-    idleFileUploadStatus,
-    type FileUploadStatusValue,
-} from './AssortmentDialog';
+import { AssortmentDialog, AssortmentFeedback } from './AssortmentDialog';
+import { CategoryDirectory, CategoryFilter } from './CategoryDirectory';
+import { CategoryEditor } from './CategoryEditor';
 import styles from '../ProductionAdmin.module.css';
-
-type ProductEditor = ProductDetail & {
-    slug: string;
-    category_id: number | null;
-    garment_model_id: number | null;
-    variantReferences: ProductVariantReference[];
-};
-type CategoryEditor = Partial<ProductCategory> & {
-    slug: string;
-    name: string;
-    description: string | null;
-    is_active: boolean;
-};
-
-const emptyProduct = (): ProductEditor => ({
-    id: 0,
-    title: '',
-    slug: '',
-    category_id: null,
-    garment_model_id: null,
-    price: 0,
-    old_price: null,
-    description: null,
-    composition: null,
-    model_info: null,
-    sizes: '',
-    colors: '',
-    is_active: true,
-    type: 'normal',
-    weight: 0,
-    height: 0,
-    width: 0,
-    length: 0,
-    stock_quantity: 0,
-    video_src: null,
-    image_left: null,
-    image_right: null,
-    gallery_images: null,
-    size_chart_img_1: null,
-    size_chart_img_2: null,
-    desktop_video: null,
-    desktop_video_poster: null,
-    desktop_card_images: null,
-    desktop_slider_images: null,
-    mobile_card_image: null,
-    mobile_video_poster: null,
-    mobile_slider_images: null,
-    mobile_product_slider_images: null,
-    mobile_size_chart_first: null,
-    variants: [],
-    variantReferences: [],
-});
 
 const productPrice = (value: string | number) =>
     new Intl.NumberFormat('ru-RU', {
@@ -98,382 +37,79 @@ const productPrice = (value: string | number) =>
         maximumFractionDigits: 2,
     }).format(Number(value));
 
-const categorySlug = (value: string) => {
-    const transliteration: Record<string, string> = {
-        а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'e', ж: 'zh',
-        з: 'z', и: 'i', й: 'i', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o',
-        п: 'p', р: 'r', с: 's', т: 't', у: 'u', ф: 'f', х: 'h', ц: 'c',
-        ч: 'ch', ш: 'sh', щ: 'sch', ъ: '', ы: 'y', ь: '', э: 'e', ю: 'yu',
-        я: 'ya',
-    };
-    return value
-        .trim()
-        .toLocaleLowerCase('ru')
-        .split('')
-        .map((character) => transliteration[character] ?? character)
-        .join('')
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '')
-        .slice(0, 96);
-};
-
-export function AdminProducts() {
-    const products = useAssortmentResource<ProductReference[]>('products');
-    const categories =
-        useAssortmentResource<ProductCategory[]>('product-categories');
-    const communities =
-        useAssortmentResource<ProductCommunity[]>('product-communities');
-    const models = useAssortmentResource<ReferencePage<GarmentModel>>('models');
-    const fabrics = useAssortmentResource<ReferencePage<Fabric>>('fabrics');
+export function AdminProducts({ initialProduct }: { initialProduct?: number | 'new' }) {
+    const router = useRouter();
+    const counts = useAssortmentResource<CatalogAdminCounts>('product-counts');
     const [search, setSearch] = useState('');
     const [categoryFilter, setCategoryFilter] = useState('');
     const [activityFilter, setActivityFilter] = useState('');
     const [stockFilter, setStockFilter] = useState('');
-    const [sorting, setSorting] = useState('title:asc');
-    const [workspace, setWorkspace] = useState<
-        'overview' | 'blanks' | 'communities'
-    >('overview');
-    const [communityId, setCommunityId] = useState<number | null>(null);
-    const [editor, setEditor] = useState<ProductEditor | null>(null);
-    const [categoryEditor, setCategoryEditor] = useState<CategoryEditor | null>(null);
-    const [loadingEditor, setLoadingEditor] = useState(false);
-    const [saving, setSaving] = useState(false);
-    const [uploading, setUploading] = useState(false);
-    const [uploadStatus, setUploadStatus] =
-        useState<FileUploadStatusValue>(idleFileUploadStatus);
-    const [formError, setFormError] = useState('');
-    const selectedCommunity = communities.data?.find(
-        (community) => community.id === communityId,
+    const [sorting, setSorting] = useState<CatalogAdminSort>('title:asc');
+    const [workspace, setWorkspace] = useState<'overview' | 'blanks' | 'communities' | 'users'>(
+        initialProduct !== undefined ? 'blanks' : 'overview',
     );
-    const visibleProducts = useMemo(() => {
-        const query = search.trim().toLocaleLowerCase('ru');
-        const allowedIds = selectedCommunity
-            ? new Set(selectedCommunity.product_ids)
-            : null;
-        const rows = (products.data ?? []).filter(
-            (product) => !allowedIds || allowedIds.has(product.id),
-        );
-        const filtered = (query
-            ? rows.filter((product) =>
-                  `${product.title} ${product.slug ?? ''}`
-                      .toLocaleLowerCase('ru')
-                      .includes(query),
-              )
-            : rows
-        ).filter(
-            (product) =>
-                (!categoryFilter ||
-                    product.category_id === Number(categoryFilter)) &&
-                (!activityFilter ||
-                    product.is_active === (activityFilter === 'active')) &&
-                (!stockFilter ||
-                    (stockFilter === 'available'
-                        ? product.stock_quantity > 0
-                        : product.stock_quantity <= 0)),
-        );
-        const [field, direction] = sorting.split(':');
-        return [...filtered].sort((left, right) => {
-            const values: Record<string, [string | number, string | number]> = {
-                title: [left.title, right.title],
-                price: [Number(left.price), Number(right.price)],
-                stock: [left.stock_quantity, right.stock_quantity],
-                variants: [left.variants.length, right.variants.length],
-            };
-            const [a, b] = values[field] ?? values.title;
-            const result =
-                typeof a === 'number' && typeof b === 'number'
-                    ? a - b
-                    : String(a).localeCompare(String(b), 'ru');
-            return direction === 'desc' ? -result : result;
-        });
-    }, [
-        activityFilter,
-        categoryFilter,
-        products.data,
-        search,
-        selectedCommunity,
-        sorting,
-        stockFilter,
-    ]);
-    const categoryName = (id: number | null) =>
-        categories.data?.find((category) => category.id === id)?.name ??
-        'Без категории';
-    const modelName = (id: number | null) =>
-        models.data?.items.find((model) => model.id === id)?.name ??
-        'Модель не назначена';
-    const selectedModel = models.data?.items.find(
-        (model) => model.id === editor?.garment_model_id,
-    );
-    const selectedSizeIds = Array.from(
-        new Set(
-            (editor?.variantReferences ?? [])
-                .map((reference) => reference.garment_size_id)
-                .filter((id): id is number => id != null),
-        ),
-    );
-    const selectedFabricIds = Array.from(
-        new Set(
-            (editor?.variantReferences ?? [])
-                .map((reference) => reference.fabric_id)
-                .filter((id): id is number => id != null),
-        ),
-    );
+    const [selectedCommunity, setSelectedCommunity] = useState<AdminLandingCard | null>(null);
+    const [communitySearch, setCommunitySearch] = useState('');
 
-    const editProduct = async (reference: ProductReference) => {
-        setLoadingEditor(true);
-        setFormError('');
+    const communities = useAdminLandingDirectory('production', {query: communitySearch, limit:24}, workspace === 'communities' && selectedCommunity === null);
+    const [editingId, setEditingId] = useState<number | 'new' | null>(initialProduct ?? null);
+    const [deleting, setDeleting] = useState(false);
+    const [deleteTarget, setDeleteTarget] = useState<ProductReference | null>(null);
+    const [deleteError, setDeleteError] = useState('');
+    const closeEditor = () => {
+        setEditingId(null);
+        if (initialProduct !== undefined) router.replace('/production?section=presets');
+    };
+    const [categoryTarget,setCategoryTarget] = useState<number|null|undefined>();
+    const [categoryBusy,setCategoryBusy] = useState(false),[categoryRevision,setCategoryRevision] = useState(0);
+    const [categoryFilterName,setCategoryFilterName] = useState('');
+    const products = useProductionCatalog(
+        {
+            query: search.trim(),
+            category_id: categoryFilter ? Number(categoryFilter) : undefined,
+            active: activityFilter ? activityFilter === 'active' : undefined,
+            stock: stockFilter === 'available' || stockFilter === 'empty' ? stockFilter : 'all',
+            source: selectedCommunity ? 'all' : workspace === 'users' ? 'user' : 'garment_buro',
+            community_id: selectedCommunity?.id,
+            sort: sorting,
+            limit: 24,
+        },
+        workspace === 'blanks' || workspace === 'users' || Boolean(selectedCommunity),
+    );
+    const visibleProducts = products.items;
+    const editProduct = (reference: ProductReference) => setEditingId(reference.id);
+    const removeProduct = async () => {
+        if (!deleteTarget || deleting) return;
+        setDeleting(true);
+        setDeleteError('');
         try {
-            const detail = await assortmentRequest<ProductDetail>(
-                `products/${reference.id}`,
-            );
-            setEditor({
-                ...detail,
-                slug: reference.slug ?? '',
-                category_id: reference.category_id,
-                garment_model_id: reference.garment_model_id,
-                variantReferences: reference.variants,
-            });
-            setUploadStatus(
-                detail.image_left
-                    ? {
-                          state: 'success',
-                          message: 'Основное изображение уже загружено',
-                      }
-                    : idleFileUploadStatus,
-            );
+            await deleteProductionProduct(deleteTarget.id);
+            setDeleteTarget(null);
+            void products.retry();
+            counts.reload();
         } catch (reason) {
-            setFormError(
-                reason instanceof Error
-                    ? reason.message
-                    : 'Не удалось открыть товар',
-            );
-        } finally {
-            setLoadingEditor(false);
-        }
+            if (!(reason instanceof DOMException && reason.name === 'AbortError'))
+                setDeleteError(reason instanceof Error ? reason.message : 'Не удалось удалить пресет.');
+        } finally { setDeleting(false); }
     };
-    const submitCategory = async (event: FormEvent) => {
-        event.preventDefault();
-        if (!categoryEditor) return;
-        const slug = categorySlug(categoryEditor.slug || categoryEditor.name);
-        if (!slug) {
-            setFormError('Укажите название категории.');
-            return;
-        }
-        setSaving(true);
-        setFormError('');
-        try {
-            await saveAssortment(
-                categoryEditor.id
-                    ? `product-categories/${categoryEditor.id}`
-                    : 'product-categories',
-                categoryEditor.id ? 'PUT' : 'POST',
-                {
-                    slug,
-                    name: categoryEditor.name,
-                    description: categoryEditor.description,
-                    is_active: categoryEditor.is_active,
-                    ...(categoryEditor.id
-                        ? { expected_version: categoryEditor.version }
-                        : {}),
-                },
-            );
-            setCategoryEditor(null);
-            categories.reload();
-        } catch (reason) {
-            setFormError(
-                reason instanceof Error
-                    ? reason.message
-                    : 'Не удалось сохранить категорию',
-            );
-        } finally {
-            setSaving(false);
-        }
-    };
-    const submitProduct = async (event: FormEvent) => {
-        event.preventDefault();
-        if (!editor) return;
-        setSaving(true);
-        setFormError('');
-        const payload = {
-            title: editor.title,
-            slug: editor.slug || null,
-            category_id: editor.category_id,
-            garment_model_id: editor.garment_model_id,
-            price: Number(editor.price),
-            old_price:
-                editor.old_price == null ? null : Number(editor.old_price),
-            description: editor.description,
-            composition: editor.composition,
-            model_info: editor.model_info,
-            sizes: editor.sizes,
-            colors: editor.colors,
-            is_active: editor.is_active,
-            type: editor.type,
-            weight: Number(editor.weight),
-            height: Number(editor.height),
-            width: Number(editor.width),
-            length: Number(editor.length),
-            stock_quantity: Number(editor.stock_quantity),
-            video_src: editor.video_src,
-            image_left: editor.image_left,
-            image_right: editor.image_right,
-            gallery_images: editor.gallery_images,
-            size_chart_img_1: editor.size_chart_img_1,
-            size_chart_img_2: editor.size_chart_img_2,
-            desktop_video: editor.desktop_video,
-            desktop_video_poster: editor.desktop_video_poster,
-            desktop_card_images: editor.desktop_card_images,
-            desktop_slider_images: editor.desktop_slider_images,
-            mobile_card_image: editor.mobile_card_image,
-            mobile_video_poster: editor.mobile_video_poster,
-            mobile_slider_images: editor.mobile_slider_images,
-            mobile_product_slider_images:
-                editor.mobile_product_slider_images,
-            mobile_size_chart_first: editor.mobile_size_chart_first,
-            variants: editor.variants.map((variant, index) => {
-                const reference = editor.variantReferences[index];
-                return {
-                    id: variant.id || undefined,
-                    size: variant.size,
-                    garment_size_id: reference?.garment_size_id ?? null,
-                    fabric_id: reference?.fabric_id ?? null,
-                    color: variant.color,
-                    color_hex: variant.color_hex,
-                    stock_quantity: Number(variant.stock_quantity),
-                    width_cm: variant.width_cm,
-                    height_cm: variant.height_cm,
-                    preview_image: variant.preview_image,
-                    images: variant.images,
-                };
-            }),
-        };
-        try {
-            await saveAssortment(
-                editor.id ? `products/${editor.id}` : 'products',
-                editor.id ? 'PUT' : 'POST',
-                payload,
-            );
-            setEditor(null);
-            products.reload();
-        } catch (reason) {
-            setFormError(
-                reason instanceof Error
-                    ? reason.message
-                    : 'Не удалось сохранить товар',
-            );
-        } finally {
-            setSaving(false);
-        }
-    };
-    const updateVariant = (
-        index: number,
-        changes: Partial<ProductDetail['variants'][number]>,
-        referenceChanges?: Partial<ProductVariantReference>,
-    ) => {
-        setEditor((current) => {
-            if (!current) return current;
-            const variants = [...current.variants];
-            variants[index] = { ...variants[index], ...changes };
-            const variantReferences = [...current.variantReferences];
-            const existingReference = variantReferences[index] ?? {
-                id: variants[index].id,
-                sku: null,
-                size: null,
-                garment_size_id: null,
-                fabric_id: null,
-                color: null,
-                stock_quantity: 0,
-            };
-            variantReferences[index] = {
-                ...existingReference,
-                size: changes.size ?? variants[index].size,
-                color: changes.color ?? variants[index].color,
-                stock_quantity:
-                    changes.stock_quantity ?? variants[index].stock_quantity,
-                ...referenceChanges,
-            };
-            return { ...current, variants, variantReferences };
-        });
-    };
-    const rebuildVariantMatrix = (
-        sizeIds: number[],
-        fabricIds: number[],
-    ) => {
-        setEditor((current) => {
-            if (!current) return current;
-            const selectedModel = models.data?.items.find(
-                (model) => model.id === current.garment_model_id,
-            );
-            const existing = new Map(
-                current.variantReferences.map((reference, index) => [
-                    `${reference.garment_size_id ?? ''}:${reference.fabric_id ?? ''}`,
-                    { variant: current.variants[index], reference },
-                ]),
-            );
-            const combinations =
-                sizeIds.length === 0 && fabricIds.length === 0
-                    ? []
-                    : (sizeIds.length ? sizeIds : [null]).flatMap((sizeId) =>
-                          (fabricIds.length ? fabricIds : [null]).map(
-                              (fabricId) => ({ sizeId, fabricId }),
-                          ),
-                      );
-            const next = combinations.map(({ sizeId, fabricId }) => {
-                const key = `${sizeId ?? ''}:${fabricId ?? ''}`;
-                const previous = existing.get(key);
-                if (previous) return previous;
-                const size = selectedModel?.sizes.find(
-                    (item) => item.id === sizeId,
-                );
-                const fabric = fabrics.data?.items.find(
-                    (item) => item.id === fabricId,
-                );
-                return {
-                    variant: {
-                        id: 0,
-                        size: size?.code ?? null,
-                        color: fabric?.color_name ?? null,
-                        color_hex: fabric?.color_hex ?? null,
-                        stock_quantity: 0,
-                        width_cm: null,
-                        height_cm: null,
-                        preview_image: null,
-                        images: null,
-                    },
-                    reference: {
-                        id: 0,
-                        sku: null,
-                        size: size?.code ?? null,
-                        garment_size_id: sizeId,
-                        fabric_id: fabricId,
-                        color: fabric?.color_name ?? null,
-                        stock_quantity: 0,
-                    },
-                };
-            });
-            return {
-                ...current,
-                variants: next.map((item) => item.variant),
-                variantReferences: next.map((item) => item.reference),
-            };
-        });
-    };
-
     return (
-        <section
-            aria-busy={products.loading || communities.loading || loadingEditor}
-        >
+        <section aria-busy={products.loading || communities.loading}>
+            <fieldset className={styles.adminFields} disabled={categoryBusy}>
             {workspace === 'overview' && (
                 <>
                     <div className={styles.assortmentHeading}>
                         <div>
-                            <h3>Товары</h3>
+                            <h2>Пресеты</h2>
                             <p className={styles.muted}>
-                                Выберите основной каталог или товары конкретного
-                                сообщества.
+                                Бланки Garment Buro, пресеты лендингов и публикации пользователей.
                             </p>
                         </div>
                     </div>
+                    <AssortmentFeedback
+                        loading={counts.loading}
+                        error={counts.error}
+                        empty={false}
+                    />
                     <div className={styles.catalogHub}>
                         <button
                             type="button"
@@ -484,8 +120,8 @@ export function AdminProducts() {
                                 <PiTShirt aria-hidden />
                             </span>
                             <span>
-                                <strong>Garment-Buro бланки</strong>
-                                <small>{products.data?.length ?? 0} товаров</small>
+                                <strong>Garment Buro</strong>
+                                <small>Пресетов: {counts.data?.garment_buro ?? '…'}</small>
                             </span>
                             <PiArrowRight aria-hidden />
                         </button>
@@ -498,10 +134,22 @@ export function AdminProducts() {
                                 <PiUsersThree aria-hidden />
                             </span>
                             <span>
-                                <strong>Сообщества</strong>
-                                <small>
-                                    {communities.data?.length ?? 0} лендингов
-                                </small>
+                                <strong>Пресеты по лендингам</strong>
+                                <small>Лендингов: {counts.data?.communities ?? '…'}</small>
+                            </span>
+                            <PiArrowRight aria-hidden />
+                        </button>
+                        <button
+                            type="button"
+                            className={styles.catalogHubCard}
+                            onClick={() => setWorkspace('users')}
+                        >
+                            <span className={styles.catalogHubIcon}>
+                                <PiUsersThree aria-hidden />
+                            </span>
+                            <span>
+                                <strong>Пресеты пользователей</strong>
+                                <small>Пресетов: {counts.data?.user ?? '…'}</small>
                             </span>
                             <PiArrowRight aria-hidden />
                         </button>
@@ -517,32 +165,33 @@ export function AdminProducts() {
                                 className={styles.workspaceBack}
                                 onClick={() => setWorkspace('overview')}
                             >
-                                <PiArrowLeft aria-hidden /> Все товары
+                                <PiArrowLeft aria-hidden /> Все пресеты
                             </button>
-                            <h3>Сообщества</h3>
+                            <h3>Пресеты по лендингам</h3>
                             <p className={styles.muted}>
-                                Лендинги и товары, которые показываются в каждом из
-                                них.
+                                Лендинги и пресеты, которые показываются в каждом из них.
                             </p>
                         </div>
                     </div>
+                    <label className={styles.assortmentSearch}>
+                        Поиск лендинга
+                        <input type="search" value={communitySearch} onChange={event=>setCommunitySearch(event.target.value)} />
+                    </label>
                     <AssortmentFeedback
                         loading={communities.loading}
-                        error={communities.error}
-                        empty={
-                            !communities.loading &&
-                            (communities.data ?? []).length === 0
-                        }
+                        error={communities.message}
+                        empty={!communities.loading && communities.items.length === 0}
                     />
+                    {communities.message && <button type="button" onClick={()=>void communities.retry()}>Обновить лендинги</button>}
                     <div className={styles.communityGrid}>
-                        {(communities.data ?? []).map((community) => {
+                        {communities.items.map((community) => {
                             const image = safeImage(community.image_url);
                             return (
                                 <button
                                     type="button"
                                     className={styles.communityCard}
                                     key={community.id}
-                                    onClick={() => setCommunityId(community.id)}
+                                    onClick={() => setSelectedCommunity(community)}
                                 >
                                     <span className={styles.communityMedia}>
                                         {image ? (
@@ -559,7 +208,7 @@ export function AdminProducts() {
                                             <small>/{community.slug}</small>
                                         </span>
                                         <span>
-                                            {community.product_ids.length} товаров
+                                            {community.product_count} пресетов
                                             <PiArrowRight aria-hidden />
                                         </span>
                                     </span>
@@ -567,9 +216,10 @@ export function AdminProducts() {
                             );
                         })}
                     </div>
+                    {communities.hasMore && <button type="button" disabled={communities.loadingMore} onClick={()=>void communities.loadMore()}>Ещё лендинги</button>}
                 </>
             )}
-            {(workspace === 'blanks' || selectedCommunity) && (
+            {(workspace === 'blanks' || workspace === 'users' || selectedCommunity) && (
                 <>
                     <div className={styles.assortmentHeading}>
                         <div>
@@ -579,100 +229,65 @@ export function AdminProducts() {
                                 onClick={() => {
                                     setSearch('');
                                     if (selectedCommunity) {
-                                        setCommunityId(null);
+                                        setSelectedCommunity(null);
                                     } else {
                                         setWorkspace('overview');
                                     }
                                 }}
                             >
                                 <PiArrowLeft aria-hidden />
-                                {selectedCommunity ? 'Сообщества' : 'Все товары'}
+                                {selectedCommunity ? 'Пресеты по лендингам' : 'Все пресеты'}
                             </button>
                             <h3>
                                 {selectedCommunity?.title ??
-                                    'Garment-Buro бланки'}
+                                    (workspace === 'users'
+                                        ? 'Пресеты пользователей'
+                                        : 'Garment Buro')}
                             </h3>
                             <p className={styles.muted}>
                                 {selectedCommunity
                                     ? `${selectedCommunity.partner_name} · /${selectedCommunity.slug}`
-                                    : 'Основной каталог, цены, остатки и варианты товаров.'}
+                                    : 'Пресеты, модели, теги и доступность по ткани.'}
                             </p>
                         </div>
                         {workspace === 'blanks' && (
                             <div className={styles.headingActions}>
                                 <button
                                     onClick={() =>
-                                        setCategoryEditor({
-                                            slug: '',
-                                            name: '',
-                                            description: null,
-                                            is_active: true,
-                                        })
+                                        setCategoryTarget(null)
                                     }
                                 >
                                     <PiPlus aria-hidden /> Категория каталога
                                 </button>
                                 <button
                                     onClick={() => {
-                                        setUploadStatus(idleFileUploadStatus);
-                                        setEditor(emptyProduct());
+                                        setEditingId('new');
                                     }}
                                 >
-                                    <PiPlus aria-hidden /> Добавить товар
+                                    <PiPlus aria-hidden /> Добавить пресет
                                 </button>
                             </div>
                         )}
                     </div>
-                    {workspace === 'blanks' && (
-                        <div
-                            className={styles.chipList}
-                            aria-label="Категории товаров"
-                        >
-                            {(categories.data ?? []).map((category) => (
-                                <button
-                                    key={category.id}
-                                    onClick={() =>
-                                        setCategoryEditor({ ...category })
-                                    }
-                                >
-                                    {category.name}
-                                </button>
-                            ))}
-                        </div>
-                    )}
+                    {workspace==='blanks'&&<CategoryDirectory kind="product-categories" onEdit={setCategoryTarget} revision={categoryRevision}/>}
                     <div className={styles.assortmentFilters}>
                         <label className={styles.assortmentSearch}>
-                            Поиск товара
+                            Поиск пресета
                             <input
                                 type="search"
                                 value={search}
                                 placeholder="Название или адрес"
-                                onChange={(event) =>
-                                    setSearch(event.target.value)
-                                }
+                                onChange={(event) => setSearch(event.target.value)}
                             />
                         </label>
+                        <CategoryFilter revision={categoryRevision} kind="product-categories" value={Number(categoryFilter)||0} label={categoryFilterName} onChange={(id,name)=>{setCategoryFilter(id?String(id):'');setCategoryFilterName(name)}}/>
                         <AdminFilters
                             groups={[
-                                {
-                                    key: 'category',
-                                    label: 'Категория',
-                                    options: [
-                                        ['', 'Все категории'],
-                                        ...(categories.data ?? []).map(
-                                            (category) =>
-                                                [
-                                                    String(category.id),
-                                                    category.name,
-                                                ] as const,
-                                        ),
-                                    ],
-                                },
                                 {
                                     key: 'activity',
                                     label: 'Видимость',
                                     options: [
-                                        ['', 'Все товары'],
+                                        ['', 'Все пресеты'],
                                         ['active', 'В продаже'],
                                         ['hidden', 'Скрытые'],
                                     ],
@@ -700,623 +315,172 @@ export function AdminProducts() {
                                 },
                             ]}
                             values={{
-                                category: categoryFilter,
                                 activity: activityFilter,
                                 stock: stockFilter,
                                 sorting,
                             }}
                             defaults={{
-                                category: '',
                                 activity: '',
                                 stock: '',
                                 sorting: 'title:asc',
                             }}
                             onApply={(values) => {
-                                setCategoryFilter(values.category);
                                 setActivityFilter(values.activity);
                                 setStockFilter(values.stock);
-                                setSorting(values.sorting);
+                                setSorting(values.sorting as CatalogAdminSort);
                             }}
                         />
                     </div>
                 </>
             )}
-            {formError && !editor && !categoryEditor && (
-                <p className={styles.error}>{formError}</p>
-            )}
-            {(workspace === 'blanks' || selectedCommunity) && (
+
+            {(workspace === 'blanks' || workspace === 'users' || selectedCommunity) && (
                 <AssortmentFeedback
                     loading={products.loading}
                     error={products.error}
-                    empty={!products.loading && visibleProducts.length === 0}
+                    empty={!products.loading && !products.error && visibleProducts.length === 0}
                 />
             )}
-            {(workspace === 'blanks' || selectedCommunity) && (
+            {products.error &&
+                (workspace === 'blanks' || workspace === 'users' || selectedCommunity) && (
+                    <button
+                        type="button"
+                        className={styles.button}
+                        onClick={() => void products.retry()}
+                    >
+                        Обновить список
+                    </button>
+                )}
+            {(workspace === 'blanks' || workspace === 'users' || selectedCommunity) && (
                 <div className={styles.productGrid}>
-                {visibleProducts.map((product) => {
-                    const image = safeImage(product.image_url);
-                    const sku = product.variants.find((variant) => variant.sku)?.sku;
-                    const productCommunities = (communities.data ?? [])
-                        .filter((community) =>
-                            community.product_ids.includes(product.id),
-                        )
-                        .map((community) => community.title);
-                    return (
-                        <article className={styles.productCard} key={product.id}>
-                            <div className={styles.productMedia}>
-                                {image ? (
-                                    // eslint-disable-next-line @next/next/no-img-element
-                                    <img
-                                        src={image}
-                                        alt={product.title}
-                                        loading="lazy"
-                                    />
-                                ) : (
-                                    <span className={styles.productMediaFallback}>
-                                        <PiImage aria-hidden />
-                                        <small>Нет фото</small>
-                                    </span>
-                                )}
-                                <span
-                                    className={styles.productStatus}
-                                    data-active={product.is_active}
-                                >
-                                    {product.is_active ? 'В продаже' : 'Скрыт'}
-                                </span>
-                            </div>
-                            <div className={styles.productCardBody}>
-                                <div className={styles.productCardHeader}>
-                                    <div className={styles.productIdentity}>
-                                        <span className={styles.productCategory}>
-                                            {categoryName(product.category_id)}
+                    {visibleProducts.map((product) => {
+                        const image = safeImage(product.image_url);
+                        const sku = product.sku;
+                        const productCommunities = product.communities.map(community=>community.title);
+                        const hiddenCommunities = (product.community_count ?? 0) - productCommunities.length;
+                        return (
+                            <article className={styles.productCard} key={product.id}>
+                                <div className={styles.productMedia}>
+                                    {image ? (
+                                        // eslint-disable-next-line @next/next/no-img-element
+                                        <img src={image} alt={product.title} loading="lazy" />
+                                    ) : (
+                                        <span className={styles.productMediaFallback}>
+                                            <PiImage aria-hidden />
+                                            <small>Нет фото</small>
                                         </span>
-                                        <h4>{product.title}</h4>
-                                        <small>
-                                            {sku
-                                                ? `Артикул ${sku}`
-                                                : `/${product.slug ?? `product-${product.id}`}`}
-                                        </small>
-                                    </div>
-                                    <button
-                                        className={styles.iconButton}
-                                        disabled={loadingEditor}
-                                        onClick={() => void editProduct(product)}
-                                        aria-label={`Изменить товар ${product.title}`}
-                                        title="Изменить"
+                                    )}
+                                    <span
+                                        className={styles.productStatus}
+                                        data-active={product.is_active}
                                     >
-                                        <PiPencilSimple aria-hidden />
-                                    </button>
-                                </div>
-                                <p className={styles.productModel}>
-                                    <PiPackage aria-hidden />
-                                    <span>{modelName(product.garment_model_id)}</span>
-                                </p>
-                                <p className={styles.productCommunity}>
-                                    <PiUsersThree aria-hidden />
-                                    <span>
-                                        {productCommunities.length
-                                            ? productCommunities.join(', ')
-                                            : 'Без сообщества'}
+                                        {product.is_active ? 'В продаже' : 'Скрыт'}
                                     </span>
-                                </p>
-                                <dl className={styles.productFacts}>
-                                    <div>
-                                        <dt>Цена</dt>
-                                        <dd>{productPrice(product.price)}</dd>
+                                </div>
+                                <div className={styles.productCardBody}>
+                                    <div className={styles.productCardHeader}>
+                                        <div className={styles.productIdentity}>
+                                            <span className={styles.productCategory}>
+                                                {product.category_name ?? 'Без категории'}
+                                            </span>
+                                            <h4>{product.title}</h4>
+                                            <small>
+                                                {sku
+                                                    ? `Артикул ${sku}`
+                                                    : `/${product.slug ?? `product-${product.id}`}`}
+                                            </small>
+                                        </div>
+                                        <button
+                                            className={styles.iconButton}
+
+                                            onClick={() => void editProduct(product)}
+                                            aria-label={`Изменить пресет ${product.title}`}
+                                            title="Изменить"
+                                        >
+                                            <PiPencilSimple aria-hidden />
+                                        </button>
                                     </div>
-                                    <div>
-                                        <dt>Остаток</dt>
-                                        <dd>{product.stock_quantity} шт.</dd>
-                                    </div>
-                                    <div>
-                                        <dt>Варианты</dt>
-                                        <dd>{product.variants.length}</dd>
-                                    </div>
-                                </dl>
-                            </div>
-                        </article>
-                    );
-                })}
+                                    <button type="button" className={styles.button}
+                                        aria-label={`Удалить пресет ${product.title}`}
+                                        onClick={() => { setDeleteError(''); setDeleteTarget(product); }}>
+                                        <PiTrash aria-hidden /> Удалить
+                                    </button>
+                                    <p className={styles.productModel}>
+                                        <PiPackage aria-hidden />
+                                        <span>
+                                            {product.garment_model_name ?? 'Модель не назначена'}
+                                        </span>
+                                    </p>
+                                    <p className={styles.productCommunity}>
+                                        <PiUsersThree aria-hidden />
+                                        <span>
+                                            {product.community_count === null
+                                                ? 'Нет данных о лендингах'
+                                                : productCommunities.length
+                                                ? `${productCommunities.join(', ')}${hiddenCommunities ? ` · ещё ${hiddenCommunities}` : ''}`
+                                                : 'Без лендинга'}
+                                        </span>
+                                    </p>
+                                    {Boolean(product.tags?.length) && (
+                                        <p className={styles.muted}>{product.tags.join(' · ')}</p>
+                                    )}
+                                    <dl className={styles.productFacts}>
+                                        <div>
+                                            <dt>Цена</dt>
+                                            <dd>{productPrice(product.price)}</dd>
+                                        </div>
+                                        <div>
+                                            <dt>Доступно по ткани</dt>
+                                            <dd>{product.stock_quantity} шт.</dd>
+                                        </div>
+                                        <div>
+                                            <dt>Варианты</dt>
+                                            <dd>{product.variant_count}</dd>
+                                        </div>
+                                    </dl>
+                                </div>
+                            </article>
+                        );
+                    })}
                 </div>
             )}
-            {categoryEditor && (
-                <AssortmentDialog
-                    title={categoryEditor.id ? 'Изменить категорию' : 'Новая категория'}
-                    onClose={() => setCategoryEditor(null)}
-                >
-                    <form onSubmit={submitCategory}>
-                        <div className={styles.formGrid}>
-                            <label>
-                                Название
-                                <input
-                                    required
-                                    value={categoryEditor.name}
-                                    onChange={(event) =>
-                                        setCategoryEditor({
-                                            ...categoryEditor,
-                                            name: event.target.value,
-                                            ...(!categoryEditor.id
-                                                ? {
-                                                      slug: categorySlug(
-                                                          event.target.value,
-                                                      ),
-                                                  }
-                                                : {}),
-                                        })
-                                    }
-                                />
-                            </label>
-                            <label>
-                                Адрес категории
-                                <input
-                                    pattern="[a-z0-9][a-z0-9-]*"
-                                    value={categoryEditor.slug}
-                                    placeholder="Заполнится по названию"
-                                    onChange={(event) =>
-                                        setCategoryEditor({
-                                            ...categoryEditor,
-                                            slug: categorySlug(event.target.value),
-                                        })
-                                    }
-                                />
-                            </label>
-                            <label className={styles.fullField}>
-                                Описание
-                                <textarea
-                                    value={categoryEditor.description ?? ''}
-                                    onChange={(event) =>
-                                        setCategoryEditor({
-                                            ...categoryEditor,
-                                            description: event.target.value || null,
-                                        })
-                                    }
-                                />
-                            </label>
-                            <label className={styles.checkField}>
-                                <input
-                                    type="checkbox"
-                                    checked={categoryEditor.is_active}
-                                    onChange={(event) =>
-                                        setCategoryEditor({
-                                            ...categoryEditor,
-                                            is_active: event.target.checked,
-                                        })
-                                    }
-                                />
-                                Категория активна
-                            </label>
-                        </div>
-                        {formError && <p className={styles.error}>{formError}</p>}
-                        <div className={styles.editorActions}>
-                            <button type="button" onClick={() => setCategoryEditor(null)}>
-                                Отмена
-                            </button>
-                            <button className={styles.primaryButton} disabled={saving}>
-                                Сохранить
-                            </button>
-                        </div>
-                    </form>
+            {products.hasMore &&
+                (workspace === 'blanks' || workspace === 'users' || selectedCommunity) && (
+                    <button
+                        type="button"
+                        className={styles.button}
+                        disabled={products.loadingMore}
+                        onClick={() => void products.loadMore()}
+                    >
+                        {products.loadingMore ? 'Загрузка…' : 'Загрузить ещё'}
+                    </button>
+                )}
+            {deleteTarget && (
+                <AssortmentDialog title="Удалить пресет" onClose={() => { if (!deleting) setDeleteTarget(null); }}>
+                    <p>Удалить «{deleteTarget.title}»? Действие нельзя отменить. Для временного скрытия измените видимость товара.</p>
+                    {deleteError && <p role="alert" className={styles.error}>{deleteError}</p>}
+                    <div className={styles.editorActions}>
+                        <button type="button" disabled={deleting} onClick={() => setDeleteTarget(null)}>Отмена</button>
+                        <button type="button" className={styles.primaryButton} disabled={deleting} onClick={() => void removeProduct()}>
+                            {deleting ? 'Удаляем…' : 'Удалить окончательно'}
+                        </button>
+                    </div>
                 </AssortmentDialog>
             )}
-            {editor && (
-                <AssortmentDialog
-                    title={editor.id ? 'Изменить товар' : 'Новый товар'}
-                    description="Основные данные каталога и точные производственные ссылки вариантов."
-                    onClose={() => setEditor(null)}
-                >
-                    <form onSubmit={submitProduct}>
-                        <fieldset className={styles.formSection}>
-                            <legend>Карточка товара</legend>
-                            <div className={styles.formGrid}>
-                                <label className={styles.fullField}>
-                                    Название
-                                    <input
-                                        required
-                                        value={editor.title}
-                                        onChange={(event) =>
-                                            setEditor({
-                                                ...editor,
-                                                title: event.target.value,
-                                            })
-                                        }
-                                    />
-                                </label>
-                                <label>
-                                    Slug
-                                    <input
-                                        pattern="[a-z0-9][a-z0-9-]*"
-                                        value={editor.slug}
-                                        onChange={(event) =>
-                                            setEditor({
-                                                ...editor,
-                                                slug: event.target.value.toLowerCase(),
-                                            })
-                                        }
-                                    />
-                                </label>
-                                <label>
-                                    Категория
-                                    <select
-                                        value={editor.category_id ?? ''}
-                                        onChange={(event) =>
-                                            setEditor({
-                                                ...editor,
-                                                category_id: event.target.value
-                                                    ? Number(event.target.value)
-                                                    : null,
-                                            })
-                                        }
-                                    >
-                                        <option value="">Без категории</option>
-                                        {(categories.data ?? []).map((category) => (
-                                            <option key={category.id} value={category.id}>
-                                                {category.name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </label>
-                                <label>
-                                    Производственная модель
-                                    <select
-                                        value={editor.garment_model_id ?? ''}
-                                        onChange={(event) =>
-                                            setEditor({
-                                                ...editor,
-                                                garment_model_id: event.target.value
-                                                    ? Number(event.target.value)
-                                                    : null,
-                                                variants: [],
-                                                variantReferences: [],
-                                            })
-                                        }
-                                    >
-                                        <option value="">Не назначена</option>
-                                        {(models.data?.items ?? []).map((model) => (
-                                            <option key={model.id} value={model.id}>
-                                                {model.name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </label>
-                                <label>
-                                    Цена
-                                    <input
-                                        required
-                                        type="number"
-                                        min="0"
-                                        step="0.01"
-                                        value={editor.price}
-                                        onChange={(event) =>
-                                            setEditor({
-                                                ...editor,
-                                                price: Number(event.target.value),
-                                            })
-                                        }
-                                    />
-                                </label>
-                                <label>
-                                    Цена без скидки
-                                    <input
-                                        type="number"
-                                        min="0"
-                                        step="0.01"
-                                        value={editor.old_price ?? ''}
-                                        onChange={(event) =>
-                                            setEditor({
-                                                ...editor,
-                                                old_price: event.target.value
-                                                    ? Number(event.target.value)
-                                                    : null,
-                                            })
-                                        }
-                                    />
-                                </label>
-                                <label>
-                                    Общий остаток
-                                    <input
-                                        type="number"
-                                        min="0"
-                                        value={editor.stock_quantity}
-                                        onChange={(event) =>
-                                            setEditor({
-                                                ...editor,
-                                                stock_quantity: Number(
-                                                    event.target.value,
-                                                ),
-                                            })
-                                        }
-                                    />
-                                </label>
-                                <label>
-                                    Вес, кг
-                                    <input
-                                        type="number"
-                                        min="0"
-                                        step="0.01"
-                                        value={editor.weight}
-                                        onChange={(event) =>
-                                            setEditor({
-                                                ...editor,
-                                                weight: Number(event.target.value),
-                                            })
-                                        }
-                                    />
-                                </label>
-                                <label className={styles.fullField}>
-                                    Описание
-                                    <textarea
-                                        value={editor.description ?? ''}
-                                        onChange={(event) =>
-                                            setEditor({
-                                                ...editor,
-                                                description:
-                                                    event.target.value || null,
-                                            })
-                                        }
-                                    />
-                                </label>
-                                <label className={styles.fullField}>
-                                    Состав
-                                    <input
-                                        value={editor.composition ?? ''}
-                                        onChange={(event) =>
-                                            setEditor({
-                                                ...editor,
-                                                composition:
-                                                    event.target.value || null,
-                                            })
-                                        }
-                                    />
-                                </label>
-                                <div className={`${styles.fullField} ${styles.productImageField}`}>
-                                    <div className={styles.productImagePreview}>
-                                        {safeImage(editor.image_left) ? (
-                                            // eslint-disable-next-line @next/next/no-img-element
-                                            <img
-                                                src={safeImage(editor.image_left) ?? ''}
-                                                alt="Превью товара"
-                                            />
-                                        ) : (
-                                            <PiImage aria-hidden />
-                                        )}
-                                    </div>
-                                    <label>
-                                        Основное изображение
-                                        <input
-                                            type="file"
-                                            accept="image/jpeg,image/png,image/webp"
-                                            disabled={uploading}
-                                            onChange={async (event) => {
-                                                const file = event.target.files?.[0];
-                                                if (!file) return;
-                                                setUploading(true);
-                                                setFormError('');
-                                                setUploadStatus({
-                                                    state: 'uploading',
-                                                    fileName: file.name,
-                                                });
-                                                try {
-                                                    const media =
-                                                        await uploadAssortmentMedia(
-                                                            file,
-                                                            'public',
-                                                        );
-                                                    setEditor((current) =>
-                                                        current
-                                                            ? {
-                                                                  ...current,
-                                                                  image_left:
-                                                                      media.url ?? null,
-                                                              }
-                                                            : current,
-                                                    );
-                                                    setUploadStatus({
-                                                        state: 'success',
-                                                        fileName: file.name,
-                                                    });
-                                                } catch (reason) {
-                                                    const message =
-                                                        reason instanceof Error
-                                                            ? reason.message
-                                                            : 'Не удалось загрузить изображение';
-                                                    setFormError(message);
-                                                    setUploadStatus({
-                                                        state: 'error',
-                                                        fileName: file.name,
-                                                        message,
-                                                    });
-                                                } finally {
-                                                    setUploading(false);
-                                                }
-                                            }}
-                                        />
-                                        <small>JPEG, PNG или WebP</small>
-                                    </label>
-                                    <FileUploadStatus value={uploadStatus} />
-                                </div>
-                                <label className={styles.checkField}>
-                                    <input
-                                        type="checkbox"
-                                        checked={editor.is_active}
-                                        onChange={(event) =>
-                                            setEditor({
-                                                ...editor,
-                                                is_active: event.target.checked,
-                                            })
-                                        }
-                                    />
-                                    Товар активен
-                                </label>
-                            </div>
-                        </fieldset>
-                        <fieldset className={styles.formSection}>
-                            <legend>Варианты</legend>
-                            {!selectedModel ? (
-                                <p className={styles.muted}>
-                                    Сначала выберите производственную модель.
-                                </p>
-                            ) : (
-                                <div className={styles.variantBuilder}>
-                                    <section>
-                                        <h4>Размеры</h4>
-                                        <div className={styles.variantChoiceGrid}>
-                                            {selectedModel.sizes.map((size) => {
-                                                const selected =
-                                                    size.id != null &&
-                                                    selectedSizeIds.includes(size.id);
-                                                return (
-                                                    <button
-                                                        type="button"
-                                                        key={size.id ?? size.code}
-                                                        data-selected={selected}
-                                                        aria-pressed={selected}
-                                                        onClick={() => {
-                                                            if (size.id == null) return;
-                                                            rebuildVariantMatrix(
-                                                                selected
-                                                                    ? selectedSizeIds.filter(
-                                                                          (id) =>
-                                                                              id !== size.id,
-                                                                      )
-                                                                    : [
-                                                                          ...selectedSizeIds,
-                                                                          size.id,
-                                                                      ],
-                                                                selectedFabricIds,
-                                                            );
-                                                        }}
-                                                    >
-                                                        <PiCheck aria-hidden />
-                                                        <strong>{size.code}</strong>
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    </section>
-                                    <section>
-                                        <h4>Ткани и цвета</h4>
-                                        <div className={styles.variantChoiceGrid}>
-                                            {(fabrics.data?.items ?? []).map(
-                                                (fabric) => {
-                                                    const selected =
-                                                        selectedFabricIds.includes(
-                                                            fabric.id,
-                                                        );
-                                                    return (
-                                                        <button
-                                                            type="button"
-                                                            key={fabric.id}
-                                                            data-selected={selected}
-                                                            aria-pressed={selected}
-                                                            onClick={() =>
-                                                                rebuildVariantMatrix(
-                                                                    selectedSizeIds,
-                                                                    selected
-                                                                        ? selectedFabricIds.filter(
-                                                                              (id) =>
-                                                                                  id !==
-                                                                                  fabric.id,
-                                                                          )
-                                                                        : [
-                                                                              ...selectedFabricIds,
-                                                                              fabric.id,
-                                                                          ],
-                                                                )
-                                                            }
-                                                        >
-                                                            <span
-                                                                className={
-                                                                    styles.variantColor
-                                                                }
-                                                                style={{
-                                                                    background:
-                                                                        fabric.color_hex ??
-                                                                        '#f2f0ef',
-                                                                }}
-                                                            />
-                                                            <PiCheck aria-hidden />
-                                                            <strong>
-                                                                {fabric.color_name ||
-                                                                    fabric.name}
-                                                            </strong>
-                                                            <small>{fabric.name}</small>
-                                                        </button>
-                                                    );
-                                                },
-                                            )}
-                                        </div>
-                                    </section>
-                                    {editor.variants.length > 0 && (
-                                        <section>
-                                            <div className={styles.variantSummaryHeading}>
-                                                <h4>Созданные варианты</h4>
-                                                <span>
-                                                    {editor.variants.length} шт.
-                                                </span>
-                                            </div>
-                                            <div className={styles.variantRows}>
-                                                {editor.variants.map(
-                                                    (variant, index) => (
-                                                        <article
-                                                            key={`${editor.variantReferences[index]?.garment_size_id}-${editor.variantReferences[index]?.fabric_id}`}
-                                                        >
-                                                            <div>
-                                                                <strong>
-                                                                    {variant.size ??
-                                                                        'Все размеры'}
-                                                                </strong>
-                                                                <small>
-                                                                    {variant.color ??
-                                                                        'Без ткани'}
-                                                                </small>
-                                                            </div>
-                                                            <label>
-                                                                Остаток
-                                                                <input
-                                                                    type="number"
-                                                                    min="0"
-                                                                    value={
-                                                                        variant.stock_quantity
-                                                                    }
-                                                                    onChange={(event) =>
-                                                                        updateVariant(
-                                                                            index,
-                                                                            {
-                                                                                stock_quantity:
-                                                                                    Number(
-                                                                                        event
-                                                                                            .target
-                                                                                            .value,
-                                                                                    ),
-                                                                            },
-                                                                        )
-                                                                    }
-                                                                />
-                                                            </label>
-                                                        </article>
-                                                    ),
-                                                )}
-                                            </div>
-                                        </section>
-                                    )}
-                                </div>
-                            )}
-                        </fieldset>
-                        {formError && <p className={styles.error}>{formError}</p>}
-                        <div className={styles.editorActions}>
-                            <button type="button" onClick={() => setEditor(null)}>
-                                Отмена
-                            </button>
-                            <button
-                                className={styles.primaryButton}
-                                disabled={saving || uploading}
-                            >
-                                {saving ? 'Сохраняем…' : 'Сохранить товар'}
-                            </button>
-                        </div>
-                    </form>
-                </AssortmentDialog>
+            {categoryTarget!==undefined&&<CategoryEditor key={String(categoryTarget)} kind="product-categories" id={categoryTarget} onBusyChange={setCategoryBusy} onClose={()=>setCategoryTarget(undefined)} onSaved={()=>{setCategoryTarget(undefined);setCategoryRevision(value=>value+1);void products.retry()}}/>}
+            {editingId !== null && (
+                <ProductEditorDialog
+                    key={editingId}
+                    id={editingId === 'new' ? null : editingId}
+                    onClose={closeEditor}
+                    onSaved={() => {
+                        closeEditor();
+                        void products.retry();
+                        counts.reload();
+                    }}
+                />
             )}
+            </fieldset>
         </section>
     );
 }

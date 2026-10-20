@@ -1,11 +1,20 @@
 type OrderStatusMarkProps = {
-    variant: 'success' | 'error';
+    variant: 'success' | 'error' | 'neutral';
+    label?: string;
 };
 
-export const OrderStatusMark = ({ variant }: OrderStatusMarkProps) => {
+export const OrderStatusMark = ({ variant, label }: OrderStatusMarkProps) => {
+    if (variant === 'neutral') return (
+        <div role="img" aria-label="Статус требует ожидания или проверки" className="w-20 h-20 mx-auto mb-4 flex items-center justify-center rounded-full bg-gray-100 border-4 border-gray-400 text-gray-600">
+            <svg aria-hidden="true" width="36" height="36" viewBox="0 0 36 36" fill="none">
+                <circle cx="18" cy="18" r="14" stroke="currentColor" strokeWidth="2.5" />
+                <path d="M18 9V18L24 22" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+        </div>
+    );
     if (variant === 'error') {
         return (
-            <div className="w-[80px] h-[80px] mx-auto mb-4 flex items-center justify-center rounded-full bg-red-100 border-4 border-red-400">
+            <div role="img" aria-label={label ?? 'Заказ отменён или оплата не прошла'} className="w-[80px] h-[80px] mx-auto mb-4 flex items-center justify-center rounded-full bg-red-100 border-4 border-red-400">
                 <svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M10 10L26 26M26 10L10 26" stroke="#ef4444" strokeWidth="3.5" strokeLinecap="round" />
                 </svg>
@@ -14,7 +23,7 @@ export const OrderStatusMark = ({ variant }: OrderStatusMarkProps) => {
     }
 
     return (
-        <div className="w-[80px] h-[115px] mx-auto">
+        <div role="img" aria-label="Заказ оплачен" className="w-[80px] h-[115px] mx-auto">
             <div style={{
                 width: 80, height: 80, position: 'relative',
                 borderRadius: '50%', boxSizing: 'content-box',

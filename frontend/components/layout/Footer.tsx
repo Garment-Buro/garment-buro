@@ -5,7 +5,8 @@ import { usePathname } from 'next/navigation';
 import { Text } from '@/components/shared/Text';
 import { isSiteChromeHidden } from '@/lib/browser/utils/pageChrome';
 
-import { FooterLink } from './FooterLink';
+import { DecryptedText } from '@/components/shared/DecryptedText';
+import { Link } from '@/components/shared/Link';
 
 const PRIMARY_LINKS = [
     { href: '/delivery', label: 'ДОСТАВКА' },
@@ -31,14 +32,14 @@ const FooterLinkList = ({
 }) => (
     <>
         {links.map((link) => (
-            <FooterLink
+            <Link
                 key={link.href}
-                settingKey={link.label}
                 href={link.href}
-                label={mobile && 'mobileLabel' in link ? link.mobileLabel ?? link.label : link.label}
                 size={mobile ? undefined : 10}
                 className={mobile ? 'text-[10px] font-medium uppercase' : 'font-normal uppercase'}
-            />
+            >
+                <DecryptedText text={mobile && 'mobileLabel' in link ? link.mobileLabel ?? link.label : link.label} />
+            </Link>
         ))}
     </>
 );

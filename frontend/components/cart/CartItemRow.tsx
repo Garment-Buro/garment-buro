@@ -1,4 +1,5 @@
 import Image from 'next/image';
+import { CustomerMediaImage } from '@/components/shared/CustomerMediaImage';
 
 import type { CartItem } from '@/lib/cart/types';
 import { formatCartPrice } from '@/lib/cart/utils/cartAction';
@@ -21,7 +22,7 @@ type CartItemRowProps = {
 export const CartItemRow = ({ item, onEdit, onDetails, updateQuantity }: CartItemRowProps) => (
     <div className="cart-action-bar-cart-item-row grid w-full grid-cols-[clamp(56px,15.135vw,97px)_minmax(0,1fr)_clamp(90px,24.324vw,156px)] gap-x-[clamp(23px,6.216vw,40px)] gap-y-[clamp(6px,1.622vw,10px)]">
         <div className="row-span-2 flex h-[clamp(59px,15.946vw,102px)] w-[clamp(56px,15.135vw,97px)] items-center justify-center overflow-hidden">
-            <Image src={item.image || '/landing-bg.webp'} alt="" width={56} height={59} className="h-full w-full object-contain object-center" />
+            <CustomerMediaImage src={item.image || '/landing-bg.webp'} alt="" width={56} height={59} className="h-full w-full object-contain object-center" />
         </div>
         <div className="min-w-0">
             <div className="line-clamp-2 font-manrope text-[10px] font-medium leading-[1.22] text-[#2D2D2D]">{item.title}</div>

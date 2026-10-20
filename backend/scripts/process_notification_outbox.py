@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from app.core.config import get_settings
 from app.db.session import DatabaseManager
 from app.modules.notifications.factory import build_notification_dispatcher
+from app.observability.logging import configure_logging
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +91,7 @@ def _utc_now() -> datetime:
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO)
+    configure_logging(get_settings())
     asyncio.run(run(parse_args()))
 
 

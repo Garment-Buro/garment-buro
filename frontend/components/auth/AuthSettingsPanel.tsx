@@ -82,7 +82,7 @@ type AuthSettingsPanelProps = {
 };
 
 export const AuthSettingsPanel = ({ user, token, updateUser, logout }: AuthSettingsPanelProps) => {
-    const settings = useAuthSettings({ user, token, updateUser, logout });
+    const settings = useAuthSettings({ user, updateUser, logout });
 
     return (
         <div className="flex flex-col gap-6">
@@ -137,6 +137,8 @@ export const AuthSettingsPanel = ({ user, token, updateUser, logout }: AuthSetti
                     </Button>
                 </div>
             </div>
+            {Boolean(settings.error) && <p role="alert">Не удалось сохранить изменения. Попробуйте ещё раз.</p>}
+            {settings.saved && <p role="status">Изменения сохранены.</p>}
             <div className="bg-white rounded-[15px] overflow-hidden">
                 <button onClick={logout} className="w-full p-6 text-left hover:bg-black/[0.02] transition-colors">
                     <Text className="text-[18px] font-bold text-black">Выйти из профиля</Text>

@@ -1,7 +1,5 @@
 "use client";
 
-import { motion } from "framer-motion";
-
 import { useDecryptedText } from "@/hooks/ui/useDecryptedText";
 import type { TextRevealDirection } from "@/lib/text/utils/decryptedText";
 
@@ -58,7 +56,7 @@ export function DecryptedText({
     });
 
     return (
-        <motion.span
+        <span
             ref={containerRef}
             className={`relative inline-block align-baseline ${parentClassName}`}
             style={stableWidth ? { width: stableWidth } : undefined}
@@ -75,6 +73,6 @@ export function DecryptedText({
             <span className={`${className} ${isAnimating ? encryptedClassName : ""} block overflow-hidden whitespace-nowrap`}>
                 {displayText}
             </span>
-        </motion.span>
+        </span>
     );
 }

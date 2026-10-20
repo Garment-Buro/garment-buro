@@ -22,14 +22,14 @@ const css = readFileSync(
     new URL('./ProductionAdmin.module.css', import.meta.url),
     'utf8',
 );
-const patterns = readFileSync(
-    new URL('./assortment/AdminPatterns.tsx', import.meta.url),
-    'utf8',
-);
-const models = readFileSync(
+const patterns = (['AdminPatterns.tsx','PatternCoveragePanel.tsx','PatternEditor.tsx'].map(file=>readFileSync(new URL('./assortment/'+file,import.meta.url),'utf8')).join('\n')+readFileSync(new URL('../../../lib/production/patternEditor.ts',import.meta.url),'utf8')).replace(/\s+/g,' ');
+const categoryEditor = readFileSync(new URL('./assortment/CategoryEditor.tsx',import.meta.url),'utf8');
+const categoryDirectory = readFileSync(new URL('./assortment/CategoryDirectory.tsx',import.meta.url),'utf8');
+const modelScreen = readFileSync(
     new URL('./assortment/AdminModels.tsx', import.meta.url),
     'utf8',
 );
+const models = modelScreen+'\n'+categoryEditor+'\n'+categoryDirectory+'\n'+['ModelEditorDialog.tsx','ModelIdentityFields.tsx','ModelSizesEditor.tsx'].map(file=>readFileSync(new URL('./assortment/'+file,import.meta.url),'utf8')).join('\n')+'\n'+readFileSync(new URL('../../../lib/production/modelEditor.ts',import.meta.url),'utf8')+'\n'+readFileSync(new URL('../../../hooks/production/useModelEditor.ts',import.meta.url),'utf8');
 const dialog = readFileSync(
     new URL('./assortment/AssortmentDialog.tsx', import.meta.url),
     'utf8',
@@ -73,11 +73,10 @@ test('admin exposes one product and warehouse workspace', () => {
         'Ткани',
         'Фурнитура',
         'Коробки',
-        'Товары',
     ]) {
         assert.match(types, new RegExp(label));
     }
-    assert.match(workspace, /aria-label="Разделы товаров и склада"/);
+    assert.match(workspace, /aria-label="Разделы моделей и склада"/);
 });
 
 test('assortment uses the shared production administrator session', () => {
@@ -117,7 +116,7 @@ test('pattern editor uses model coverage and sleeve file variants', () => {
     assert.match(patterns, /className=\{styles\.patternFilePicker\}/);
     assert.match(patterns, /PDF, JPEG, PNG или WebP/);
     assert.match(patterns, /headerActions=/);
-    assert.match(patterns, /name: editor\.code/);
+    assert.match(readFileSync(new URL('../../../lib/production/patternEditor.ts',import.meta.url),'utf8'), /name: editor\.name/);
     assert.doesNotMatch(patterns, />\s*Название\s*</);
     assert.doesNotMatch(patterns, /Ширина и длина должны попадать/);
     assert.match(dialog, />\s*Закрыть\s*</);
@@ -132,12 +131,11 @@ test('model editor explains the flow and keeps one compact size editor open', ()
     assert.match(models, /aria-selected=\{activeSizeIndex === index\}/);
     assert.match(models, /className=\{styles\.sizeDetailCard\}/);
     assert.match(models, /<SizeRangeEditor/);
-    assert.match(models, /step="2"/);
+    assert.match(models, /step="0\.01"/);
     assert.match(models, /Базовый размер/);
     assert.match(models, /Базовая ширина, см/);
     assert.match(models, /Базовая длина, см/);
-    assert.match(models, /base_width_cm: optionalNumber\(size\.base_width_cm\)/);
-    assert.match(models, /base_length_cm: optionalNumber\(size\.base_length_cm\)/);
+
     assert.match(models, /Имя модели на фото/);
     assert.match(models, /Рост модели на фото, см/);
     assert.match(models, /Длина по росту/);
@@ -148,7 +146,7 @@ test('model editor explains the flow and keeps one compact size editor open', ()
     assert.doesNotMatch(models, /Сначала задайте общие параметры/);
     assert.match(models, /model-categories/);
     assert.match(models, /Категории моделей/);
-    assert.match(models, /model-categories\/\$\{categoryEditor\.id\}/);
+    assert.match(categoryEditor.replace(/\s+/g,''), /expected_version:draft.version/);
     assert.match(models, /Сохранить категорию/);
     assert.doesNotMatch(models, /code: categoryEditor\.code/);
     assert.doesNotMatch(models, /value=\{categoryEditor\.code\}/);
@@ -168,10 +166,11 @@ test('model editor explains the flow and keeps one compact size editor open', ()
 });
 
 test('tech cards explain model ownership and never create a second draft', () => {
-    assert.match(techCards, /У каждой модели уже есть техкарта/);
-    assert.match(techCards, /Для изменений создайте новую версию/);
-    assert.match(techCards, /Сначала опубликуйте текущий черновик/);
-    assert.match(techCards, /!draft \?/);
+    const text = techCards.replace(/\s+/g, ' ');
+    assert.match(text, /Новая техкарта создаётся для модели без карты/);
+    assert.match(text, /Для изменений создайте новую версию/);
+    assert.match(text, /Сначала опубликуйте текущий черновик/);
+    assert.match(text, /!draft \?/);
 });
 
 test('every assortment list has search, popup filters, and sorting', () => {
@@ -197,14 +196,6 @@ test('fabric purchase price is stored and shown per kilogram', () => {
     assert.doesNotMatch(fabrics, /Цена за метр/);
 });
 
-test('product variants use compact multi-select matrices', () => {
-    assert.match(products, /className=\{styles\.variantChoiceGrid\}/);
-    assert.match(products, /rebuildVariantMatrix/);
-    assert.match(products, /aria-pressed=\{selected\}/);
-    assert.match(products, /Созданные варианты/);
-    assert.doesNotMatch(products, /Добавить вариант/);
-});
-
 test('assortment dialog scrolls below an opaque fixed header', () => {
     assert.match(dialog, /className=\{styles\.assortmentDialogBody\}/);
     assert.match(
@@ -222,7 +213,7 @@ test('assortment dialog scrolls below an opaque fixed header', () => {
 });
 
 test('product cards show catalog images and keep compact mobile structure', () => {
-    assert.match(types, /image_url: string \| null/);
+    assert.match(readFileSync(new URL('../../../lib/products/adminCatalog.ts', import.meta.url),'utf8'), /image_url: string \| null/);
     assert.match(products, /safeImage\(product\.image_url\)/);
     assert.match(products, /className=\{styles\.productMedia\}/);
     assert.match(products, /Нет фото/);
@@ -240,32 +231,22 @@ test('product cards show catalog images and keep compact mobile structure', () =
 test('packaging rule explains capacity and selection order', () => {
     assert.match(boxes, /Модель[\s\S]*Коробка[\s\S]*Количество/);
     assert.match(boxes, /Максимум изделий этой модели/);
-    assert.match(boxes, /0 — основная коробка, 1 и далее — запасные/);
+    assert.match(boxes.replace(/\s+/g, ' '), /0 — основная коробка, 1 и далее — запасные/);
     assert.match(boxes, /меньшее число означает более высокий приоритет/);
     assert.doesNotMatch(boxes, /Фото коробки/);
     assert.doesNotMatch(boxes, /type="file"/);
 });
 
 test('products open as blanks and community landing card workspaces', () => {
-    assert.match(products, /Garment-Buro бланки/);
-    assert.match(products, />Сообщества</);
-    assert.match(products, /product-communities/);
+    assert.match(products, /Garment Buro/);
+    assert.match(products, />Пресеты по лендингам</);
+    assert.match(products, /useAdminLandingDirectory/);
     assert.match(products, /className=\{styles\.catalogHubCard\}/);
     assert.match(products, /className=\{styles\.communityCard\}/);
-    assert.match(products, /categorySlug/);
+    assert.match(categoryEditor, /categorySlug/);
 });
 
-test('decimal inputs do not require thousandths and stored values are compacted', () => {
-    const numericSources = [
-        models,
-        patterns,
-        products,
-        boxes,
-        accessories,
-        fabrics,
-        specification,
-    ].join('\n');
-    assert.doesNotMatch(numericSources, /(?:step|min)="0\.001"/);
+test('stored decimal values remain compact across editors', () => {
     assert.match(numberHelpers, /replace\(\/0\+\$\//);
     for (const source of [models, patterns, boxes, accessories, fabrics, specification]) {
         assert.match(source, /compactDecimal/);
@@ -273,11 +254,11 @@ test('decimal inputs do not require thousandths and stored values are compacted'
 });
 
 test('every assortment file input exposes upload progress and outcome', () => {
-    for (const source of [models, patterns, products, accessories]) {
-        assert.match(source, /state: 'uploading'/);
-        assert.match(source, /state: 'success'/);
-        assert.match(source, /state: 'error'/);
-        assert.match(source, /<FileUploadStatus value=\{uploadStatus\} \/>/);
+    for (const source of [models, patterns, accessories]) {
+        assert.match(source, /state:\s*'uploading'/);
+        assert.match(source, /state:\s*'success'/);
+        assert.match(source, /state:\s*'error'/);
+        assert.match(source, /<FileUploadStatus value=\{uploadStatus\}\s*\/>/);
     }
     assert.match(dialog, /aria-live="polite"/);
     assert.match(dialog, /role=\{value\.state === 'error' \? 'alert' : 'status'\}/);

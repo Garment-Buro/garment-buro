@@ -28,7 +28,9 @@ export const PwaRegistration = () => {
 
         if (process.env.NODE_ENV !== 'production') {
             void navigator.serviceWorker.getRegistrations().then(registrations => {
-                registrations.forEach(registration => void registration.unregister());
+                return Promise.all(registrations.map(registration => registration.unregister()));
+            }).catch(() => {
+                console.warn('PWA cleanup unavailable');
             });
             return () => {
                 window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt);
@@ -40,6 +42,10 @@ export const PwaRegistration = () => {
             void navigator.serviceWorker.register('/sw.js', {
                 scope: '/',
                 updateViaCache: 'none',
+            }).catch(() => {
+                // Installation is optional; blocked/offline workers must not
+                // create an unhandled rejection in the ordinary browser UI.
+                console.warn('PWA registration unavailable');
             });
         };
 

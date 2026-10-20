@@ -35,17 +35,18 @@ jobs:
   backend:
     name: Backend
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:17-alpine
         env:
-          POSTGRES_DB: garment_buro_ci
+          POSTGRES_DB: test_garment_buro_ci
           POSTGRES_USER: garment_ci
           POSTGRES_PASSWORD: garment-ci-only
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U garment_ci -d garment_buro_ci"
+          --health-cmd "pg_isready -U garment_ci -d test_garment_buro_ci"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
@@ -64,34 +65,113 @@ jobs:
             backend/requirements.txt
             backend/requirements-dev.txt
       - name: Install dependencies
-        run: python -m pip install --requirement requirements-dev.txt
-      - name: Run quality gates
-        run: make PYTHON=python check
+        run: python -m pip install --require-hashes --requirement requirements-dev.txt
+      - name: Audit locked Python dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          audit_env="${RUNNER_TEMP}/garment-pip-audit"
+          python -m venv "$audit_env"
+          "$audit_env/bin/python" -m pip install pip-audit==2.10.1
+          "$audit_env/bin/python" -m pip_audit --strict --disable-pip --require-hashes -r requirements.txt
+          "$audit_env/bin/python" -m pip_audit --strict --disable-pip --require-hashes -r requirements-dev.txt
+      - name: Check dependencies, code and migration SQL
+        run: make PYTHON=python dependency-check lint migration-check
+      - name: Set up Buildx for source-built storage
+        uses: docker/setup-buildx-action@v4
+      - name: Build verified MinIO source for backend tests
+        uses: docker/build-push-action@v7
+        with:
+          context: deploy/minio
+          push: false
+          load: true
+          tags: garment-buro-minio:2025-10-15-garment1
+          cache-from: type=gha,scope=ci-minio-source
+          cache-to: type=gha,mode=max,scope=ci-minio-source
       - name: Exercise migrations on PostgreSQL
         env:
           APP_ENV: test
           DATABASE_ENABLED: "true"
-          DATABASE_URL: postgresql+asyncpg://garment_ci:garment-ci-only@127.0.0.1:5432/garment_buro_ci
+          DATABASE_URL: postgresql+asyncpg://garment_ci:garment-ci-only@127.0.0.1:5432/test_garment_buro_ci
         run: |
           python -m alembic -c alembic.ini upgrade head
           python -m alembic -c alembic.ini downgrade base
           python -m alembic -c alembic.ini upgrade head
-      - name: Check concurrent partner bank withdrawals on PostgreSQL
+      - name: Run complete backend suite with PostgreSQL and MinIO without skips
         env:
-          TOCHKA_TEST_POSTGRES_URL: postgresql+asyncpg://garment_ci:garment-ci-only@127.0.0.1:5432/garment_buro_ci
-        run: python -m pytest -q tests/unit/test_partner_bank_payouts.py -k postgres_concurrent
-      - name: Check concurrent production commands on PostgreSQL
-        env:
-          PRODUCTION_TEST_POSTGRES_URL: postgresql+asyncpg://garment_ci:garment-ci-only@127.0.0.1:5432/garment_buro_ci
-        run: python -m pytest -q tests/unit/test_production_terminal.py -k postgres
-      - name: Check concurrent moderated order workflow on PostgreSQL
-        env:
-          ORDER_WORKFLOW_TEST_POSTGRES_URL: postgresql+asyncpg://garment_ci:garment-ci-only@127.0.0.1:5432/garment_buro_ci
-        run: python -m pytest -q tests/unit/test_order_workflow.py -k postgres
+          POSTGRES_CI_ADMIN_URL: postgresql://garment_ci:garment-ci-only@127.0.0.1:5432/test_garment_buro_ci
+          SCHEMA_TEST_POSTGRES_URL: postgresql+asyncpg://garment_ci:garment-ci-only@127.0.0.1:5432/test_schema_ci
+          TOCHKA_TEST_POSTGRES_URL: postgresql+asyncpg://garment_ci:garment-ci-only@127.0.0.1:5432/test_tochka_ci
+          PRODUCTION_TEST_POSTGRES_URL: postgresql+asyncpg://garment_ci:garment-ci-only@127.0.0.1:5432/test_production_ci
+          ORDER_WORKFLOW_TEST_POSTGRES_URL: postgresql+asyncpg://garment_ci:garment-ci-only@127.0.0.1:5432/test_order_workflow_ci
+          MINIO_ROOT_USER: storage-ci
+          MINIO_ROOT_PASSWORD: storage-ci-tests-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          container="garment-storage-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          export MINIO_TEST_CONFIG_PATH="${RUNNER_TEMP}/garment-storage-tests.json"
+          report="${RUNNER_TEMP}/garment-storage-results.xml"
+          cleanup() {
+            docker rm -fv "$container" >/dev/null 2>&1 || true
+            rm -f "$MINIO_TEST_CONFIG_PATH" "$report"
+          }
+          trap cleanup EXIT
+          docker run -d --pull=never --name "$container" \
+            --publish 127.0.0.1::9000 \
+            --env MINIO_ROOT_USER --env MINIO_ROOT_PASSWORD \
+            garment-buro-minio:2025-10-15-garment1 server /data >/dev/null
+          export MINIO_TEST_ENDPOINT
+          MINIO_TEST_ENDPOINT=$(docker port "$container" 9000/tcp)
+          python - <<'PY'
+          import asyncio
+          import json
+          import os
+          import re
+          import time
+          from urllib.request import urlopen
+
+          import asyncpg
+          from sqlalchemy.engine import make_url
+          from scripts.check_tests import DATABASE_KEYS
+
+          async def prepare():
+              connection = await asyncpg.connect(os.environ['POSTGRES_CI_ADMIN_URL'])
+              try:
+                  for key in DATABASE_KEYS:
+                      name = make_url(os.environ[key]).database
+                      if not re.fullmatch(r'test_[a-zA-Z0-9_]+', name or ''):
+                          raise SystemExit('Test database name is invalid')
+                      await connection.execute('CREATE DATABASE "' + name + '"')
+              finally:
+                  await connection.close()
+
+          asyncio.run(prepare())
+          endpoint = os.environ['MINIO_TEST_ENDPOINT']
+          for attempt in range(60):
+              try:
+                  with urlopen(f'http://{endpoint}/minio/health/live', timeout=1) as response:
+                      if response.status == 200:
+                          break
+              except OSError:
+                  pass
+              time.sleep(1)
+          else:
+              raise SystemExit('Test MinIO did not become ready')
+          descriptor = os.open(os.environ['MINIO_TEST_CONFIG_PATH'], os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+          with os.fdopen(descriptor, 'w') as config:
+              json.dump({'endpoint': endpoint, 'access_key': os.environ['MINIO_ROOT_USER'], 'secret_key': os.environ['MINIO_ROOT_PASSWORD']}, config)
+          PY
+          python -m scripts.check_tests --report "$report"
 
   frontend:
     name: Frontend
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NEXT_PUBLIC_IDENTITY_SESSION_V2_ENABLED: "true"
+      NEXT_PUBLIC_CATALOG_WRITES_ENABLED: "true"
+      NEXT_PUBLIC_CRM_CABINET_ENABLED: "true"
     defaults:
       run:
         working-directory: frontend
@@ -106,8 +186,16 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Install dependencies
         run: npm ci
+      - name: Check production dependency advisories
+        run: npm audit --omit=dev --audit-level=high
       - name: Run quality gates
         run: npm run check
+      - name: Install Chromium for browser gates
+        run: npx playwright install --with-deps chromium
+      - name: Check analytics isolation in standalone Next
+        run: npm run check:analytics
+      - name: Check production cabinet, owner forms and public catalog in standalone Next
+        run: npm run check:admin-catalog
 
   deployment:
     name: Deployment descriptors
@@ -126,16 +214,25 @@ jobs:
       MINIO_ACCESS_KEY: minio-ci
       MINIO_SECRET_KEY: minio-secret-ci
       MINIO_BUCKET_PREFIX: garment-buro
+      MINIO_IMAGE: garment-buro-minio:2025-10-15-garment1
       FRONTEND_HOST_PORT: "3199"
       BACKEND_HOST_PORT: "8199"
       MINIO_HOST_PORT: "9199"
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+      - name: Exercise Nginx private-data logging boundary
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y nginx openssl
+          python3 deploy/scripts/verify-nginx-privacy.py --nginx /usr/sbin/nginx
+      - name: Exercise public release maintenance over HTTPS
+        run: python3 deploy/scripts/verify-nginx-maintenance.py --nginx /usr/sbin/nginx
       - name: Validate Compose and PostgreSQL runtime role
         shell: bash
         run: |
-          bash -n deploy/scripts/remote-deploy.sh deploy/scripts/backup-server.sh deploy/scripts/enable-partner-development.sh
+          bash -n deploy/scripts/remote-deploy.sh deploy/scripts/backup-server.sh deploy/scripts/enable-partner-development.sh deploy/scripts/enable-public-hosts.sh
+          python3 deploy/scripts/verify-backup.py --help >/dev/null
           python deploy/scripts/validate-domain-routing.py
           touch deploy/.env
           compose=(docker compose --project-name garment-role-ci -f deploy/docker-compose.server.yml)
@@ -164,19 +261,30 @@ jobs:
           fi
 
   containers:
-    name: Container build
+    name: Container build and runtime
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: [backend, frontend, deployment]
     steps:
       - name: Checkout
         uses: actions/checkout@v7
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v4
+      - name: Build verified MinIO source image
+        uses: docker/build-push-action@v7
+        with:
+          context: deploy/minio
+          push: false
+          load: true
+          tags: garment-buro-minio:2025-10-15-garment1
+          cache-from: type=gha,scope=ci-minio-source
+          cache-to: type=gha,mode=max,scope=ci-minio-source
       - name: Build backend image
         uses: docker/build-push-action@v7
         with:
           context: backend
           push: false
+          load: true
           tags: garment-buro-backend:ci
           cache-from: type=gha,scope=ci-backend
           cache-to: type=gha,mode=max,scope=ci-backend
@@ -185,10 +293,13 @@ jobs:
         with:
           context: frontend
           push: false
+          load: true
           tags: garment-buro-frontend:ci
           build-args: |
-            NEXT_PUBLIC_IDENTITY_SESSION_V2_ENABLED=false
-            NEXT_PUBLIC_CATALOG_WRITES_ENABLED=false
+            NEXT_PUBLIC_IDENTITY_SESSION_V2_ENABLED=true
+            NEXT_PUBLIC_CATALOG_WRITES_ENABLED=true
             NEXT_PUBLIC_CRM_CABINET_ENABLED=false
           cache-from: type=gha,scope=ci-frontend
           cache-to: type=gha,mode=max,scope=ci-frontend
+      - name: Check release images with PostgreSQL, Redis and MinIO
+        run: python3 deploy/scripts/smoke-containers.py

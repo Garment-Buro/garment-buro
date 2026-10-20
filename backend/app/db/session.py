@@ -48,7 +48,7 @@ class DatabaseManager:
     @property
     def backend_name(self) -> str:
         if not self.enabled or not self.settings.database_url:
-            return "legacy"
+            return "disabled"
         normalized_url = normalize_async_database_url(self.settings.database_url)
         return "sqlite" if normalized_url.startswith("sqlite+") else "postgresql"
 

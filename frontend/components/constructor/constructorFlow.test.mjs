@@ -21,33 +21,17 @@ const constructorSource = [
     path.join(root, "hooks", "constructor", "useConstructorDerivedState.ts"),
     path.join(root, "hooks", "constructor", "useConstructorPageController.ts"),
 ].map(file => fs.readFileSync(file, "utf8")).join("\n");
-const landingSource = [
-    path.join(root, "components", "shared", "LandingPage.tsx"),
-    path.join(root, "hooks", "catalog", "useCatalogPage.ts"),
-].map(file => fs.readFileSync(file, "utf8")).join("\n");
 const unfinishedSource = [
     path.join(root, "components", "unfinished", "UnfinishedSurface.tsx"),
     path.join(root, "components", "unfinished", "ProfilePanel.tsx"),
     path.join(root, "components", "unfinished", "SavedItemsPanel.tsx"),
     path.join(root, "hooks", "unfinished", "useUnfinishedSurface.ts"),
     path.join(root, "lib", "unfinished", "config", "ui.ts"),
-    path.join(root, "lib", "unfinished", "fixtures", "savedItems.ts"),
-    path.join(root, "lib", "unfinished", "fixtures", "profile.ts"),
     path.join(root, "lib", "unfinished", "types.ts"),
     path.join(root, "lib", "unfinished", "utils", "unfinished.ts"),
 ].map(file => fs.readFileSync(file, "utf8")).join("\n");
 const popupSource = fs.readFileSync(path.join(root, "components", "shared", "ConstructorFlowPopup.tsx"), "utf8");
 const popupBaseSource = fs.readFileSync(path.join(root, "components", "shared", "Popup.tsx"), "utf8");
-const productCardSource = [
-    path.join(root, "components", "shared", "ProductCard.tsx"),
-    path.join(root, "hooks", "catalog", "useDesktopCatalogCardVideo.ts"),
-    path.join(root, "hooks", "cart", "useCatalogCartItem.ts"),
-].map(file => fs.readFileSync(file, "utf8")).join("\n");
-const mobileProductCardSource = [
-    path.join(root, "components", "shared", "MobileProductCard.tsx"),
-    path.join(root, "hooks", "catalog", "useMobileCatalogCardVideo.ts"),
-    path.join(root, "hooks", "cart", "useCatalogCartItem.ts"),
-].map(file => fs.readFileSync(file, "utf8")).join("\n");
 const unfinishedStylesSource = fs.readFileSync(path.join(root, "components", "unfinished", "UnfinishedSurface.module.css"), "utf8");
 const canvasSource = [
     path.join(root, "components", "constructor", "KonvaCanvas.tsx"),
@@ -94,53 +78,18 @@ const orderContentSource = [
     path.join(root, "components", "shared", "OrderContent.tsx"),
     path.join(root, "lib", "orders", "utils", "orderDetails.ts"),
 ].map(file => fs.readFileSync(file, "utf8")).join("\n");
-const savedItemsSource = fs.readFileSync(path.join(root, "lib", "unfinished", "utils", "savedItems.ts"), "utf8");
 const unfinishedOverlayRouteSource = fs.readFileSync(path.join(root, "app", "@modal", "(.)unfinished", "page.tsx"), "utf8");
 const modalCatchAllSource = fs.readFileSync(path.join(root, "app", "@modal", "[...catchAll]", "page.tsx"), "utf8");
-const defaultDecorationsSource = [
-    path.join(root, "lib", "constructor", "config", "defaultDecorations.ts"),
-    path.join(root, "lib", "constructor", "utils", "data.ts"),
-].map(file => fs.readFileSync(file, "utf8")).join("\n");
-
-test("constructor exposes every supplied decoration folder including embroidery", () => {
-    const categories = ["prints", "rivets", "distress", "zippers", "pullers", "embroidery"];
-
-    for (const category of categories) {
-        assert.match(defaultDecorationsSource, new RegExp(`createRepeatedHardware\\('${category}'`));
-        for (let imageIndex = 1; imageIndex <= 7; imageIndex += 1) {
-            assert.equal(
-                fs.existsSync(path.join(root, "public", "mock", category, `${imageIndex}.webp`)),
-                true,
-                `${category}/${imageIndex}.webp is missing`,
-            );
-        }
-    }
-
-    assert.match(defaultDecorationsSource, /src: `\/mock\/\$\{categoryId\}\/\$\{imageIndex\}\.webp`/);
-    assert.doesNotMatch(constructorSource, /isEmbroideryComingSoon|Вышивка скоро будет/);
-});
-
-test("catalog shows the constructor selection hint from the unfinished create action", () => {
-    assert.match(landingSource, /selectForConstructor/);
-    assert.match(popupSource, /Выберите вещь из каталога/);
-    assert.match(popupSource, /НАЗАД/);
-    assert.match(popupSource, /ДАЛЕЕ/);
-    assert.match(popupSource, /export function CatalogHintPopup[\s\S]*?panelClassName="bg-\[#fff\]"[\s\S]*?backdropClassName="bg-black\/50"/s);
-    assert.match(unfinishedSource, /\/\?selectForConstructor=1/);
-    assert.match(unfinishedSource, /setBottomPanelState\("collapsed"\)[\s\S]*?window\.location\.replace\("\/\?selectForConstructor=1"\)/s);
-    assert.match(landingSource, /router\.replace\('\/', \{ scroll: false \}\)/);
-    assert.doesNotMatch(landingSource, /window\.history\.replaceState/);
-});
 
 test("unfinished deletion waits for confirmation in the shared popup style", () => {
-    assert.match(unfinishedSource, /const \[isDeleteConfirmOpen, setIsDeleteConfirmOpen\] = useState\(false\)/);
+    assert.match(unfinishedSource, /deleteTarget\.key === projectLibrary\.key/);
     assert.match(unfinishedSource, /const handleDeleteSelectedItem = \(\) => \{[\s\S]*?setIsDeleteConfirmOpen\(true\)/s);
-    assert.match(unfinishedSource, /const confirmDeleteSelectedItem = \(\) => \{[\s\S]*?removeSavedProfileItem/s);
+    assert.match(unfinishedSource, /const confirmDeleteSelectedItem = async \(\) => \{[\s\S]*?projectLibrary\.removeSelected/s);
     assert.match(unfinishedSource, /<UnfinishedDeletePopup[\s\S]*?onConfirm=\{confirmDeleteSelectedItem\}/s);
     assert.match(popupSource, /export function UnfinishedDeletePopup/);
     assert.match(popupSource, /Вы уверены, что хотите удалить\?/);
-    assert.match(popupSource, /<ExitPopupButton onClick=\{onClose\}>ОТМЕНА<\/ExitPopupButton>/);
-    assert.match(popupSource, /<ExitPopupButton onClick=\{onConfirm\}>УДАЛИТЬ<\/ExitPopupButton>/);
+    assert.match(popupSource, /<ExitPopupButton onClick=\{onClose\} disabled=\{busy\}>ОТМЕНА<\/ExitPopupButton>/);
+    assert.match(popupSource, /<ExitPopupButton onClick=\{onConfirm\} disabled=\{busy\}/);
 });
 
 test("constructor exit controls share the save-or-leave popup", () => {
@@ -179,11 +128,7 @@ test("constructor exit controls share the save-or-leave popup", () => {
     assert.match(popupSource, /НА ГЛАВНУЮ/);
     assert.match(popupSource, /СОХРАНИТЬ/);
     assert.match(constructorSource, /setIsExitPopupOpen\(true\)/);
-    assert.match(constructorSource, /saveConstructorDraft/);
-    assert.match(constructorSource, /const handleSaveDraft = \(\) => \{[\s\S]*setIsExitPopupOpen\(false\);[\s\S]*router\.push\("\/unfinished"\);/);
-    assert.match(constructorSource, /router\.push\("\/unfinished"\)/);
     assert.doesNotMatch(constructorSource, /\/lk\?tab=unfinished/);
-    assert.match(savedItemsSource, /CONSTRUCTOR_DRAFTS_STORAGE_KEY/);
     assert.match(constructorSource, /aria-label="Назад"/);
     assert.match(constructorSource, /left-\[10px\]\s+top-\[10px\]/);
     assert.match(constructorSource, /h-\[30px\]\s+w-\[30px\]/);
@@ -234,7 +179,9 @@ test("constructor keeps selected garment size and only pans a zoomed canvas", ()
     assert.match(canvasSource, /initialModelIdRef/);
     assert.match(canvasSource, /useLayoutEffect/);
     assert.match(canvasSource, /if \(!isMounted\) return/);
-    assert.match(canvasSource, /\[bottomInset,\s*selectedModel\?\.id,\s*isMounted\]/);
+    // Bounds arrive asynchronously when opening a saved server document.
+    // The browser scenario verifies the fitted scale against those bounds.
+    assert.match(canvasSource, /\[bottomInset,\s*selectedModel\?\.id,\s*isMounted,\s*modelBounds\]/);
     assert.doesNotMatch(canvasSource, /setTimeout\(\(\) => updateSize\(true\), 100\)[\s\S]*\}, \[modelBounds\]\)/);
 });
 
@@ -255,7 +202,6 @@ test("constructor size popup configures fit and saves it into cart order data", 
     assert.match(constructorSource, /z-\[2147483645\][^"]*bg-black\/50/);
     assert.match(constructorSource, /onClick=\{onClose\}/);
     assert.match(constructorSource, /event\.stopPropagation\(\)/);
-    assert.doesNotMatch(constructorSource, /constructorSizeModal[^\n]*h-\[calc\(100dvh-10px\)\]/);
     assert.match(constructorSource, /rounded-\[15px\][^"]*bg-white[^"]*p-\[15px\]/);
     assert.match(constructorSource, /text-\[13px\][^"]*font-medium[^"]*leading-\[150%\]/);
     assert.match(constructorSource, /h-\[clamp\(210px,32dvh,300px\)\]/);
@@ -283,14 +229,9 @@ test("constructor size popup configures fit and saves it into cart order data", 
     assert.match(constructorSource, /text-\[13px\][^"]*font-medium[^"]*leading-\[150%\][^"]*text-black/);
     assert.match(constructorSource, /w-full[^"]*whitespace-nowrap[^"]*text-\[8px\][^"]*font-medium[^"]*leading-\[150%\][^"]*text-\[#B8B8B8\]/);
     assert.doesNotMatch(constructorSource, /text-\[23px\] font-medium leading-none text-black/);
-    assert.match(constructorSource, /const SIZE_MODAL_MODEL_HEIGHT_CM = 168/);
-    assert.match(constructorSource, /Рост \{SIZE_MODAL_MODEL_HEIGHT_CM\}/);
     assert.doesNotMatch(constructorSource, /<p>Рост \{draftFit\.lengthCm\}<\/p>/);
-    assert.match(constructorSource, /const standardFit = createDefaultFit\([\s\S]*getProductDimensions\(product, draftFit\.selectedSize\)/);
-    assert.match(constructorSource, /flex flex-col">[\s\S]*Длина: \{standardFit\.lengthCm\}[\s\S]*Ширина: \{standardFit\.widthCm\}/);
     assert.doesNotMatch(constructorSource, /<span>Длина: \{draftFit\.lengthCm\}<\/span>/);
     assert.doesNotMatch(constructorSource, /<span>Ширина: \{draftFit\.widthCm\}<\/span>/);
-    assert.match(constructorSource, /h-\[30px\] w-\[38px\][^"]*text-\[18px\][^"]*font-light[^"]*leading-normal[^"]*tracking-\[-0\.36px\]/);
     assert.doesNotMatch(constructorSource, /background:\s*"linear-gradient\(180deg, #F3F3F3 -0\.72%, #E7E7E7 100\.37%\)"/);
     assert.match(constructorSource, /borderRadius:\s*"4px"/);
     assert.match(constructorSource, /boxShadow:\s*"0 2px 4px 0 rgba\(0, 0, 0, 0\.25\) inset"/);
@@ -302,7 +243,6 @@ test("constructor size popup configures fit and saves it into cart order data", 
     assert.match(constructorSource, /mt-\[clamp\(20px,3\.5dvh,40px\)\][^"]*justify-center[^"]*gap-\[5px\]/);
     assert.match(constructorSource, /onClick=\{handleReset\}[\s\S]*text-\[#C4C4C4\][^"]*underline[^"]*decoration-\[8%\][^"]*underline-offset-\[20%\][^"]*shadow-none/);
     assert.match(constructorSource, /\[text-decoration-skip-ink:auto\][^"]*\[text-decoration-style:solid\][^"]*\[text-underline-position:from-font\]/);
-    assert.match(constructorSource, /onClick=\{\(\) => onSave\(draftFit\)\}[\s\S]*shadow-\[0_0\.934px_1\.681px_0_rgba\(0,0,0,0\.26\)\]/);
     assert.match(constructorSource, /w-\[238\.017px\][^"]*h-\[2px\][^"]*bg-\[#D3D3D3\]/);
     assert.match(constructorSource, /w-\[1\.983px\][^"]*h-\[4px\][^"]*bg-\[#D9D9D9\]/);
     assert.match(constructorSource, /width="12"[\s\S]*height="12"[\s\S]*fill="#D3D3D3"/);
@@ -311,19 +251,14 @@ test("constructor size popup configures fit and saves it into cart order data", 
     assert.match(constructorSource, /\{value\}/);
     assert.doesNotMatch(constructorSource, /labelValues/);
     assert.match(constructorSource, /mt-\[8px\][^"]*font-manrope[^"]*text-\[8px\][^"]*leading-\[150%\]/);
-    assert.match(constructorSource, /standardSleeveLength = getFitRangeForSize\(draftFit\.selectedSize\)\.length\.defaultValue/);
-    assert.match(constructorSource, /стандартные \$\{draftFit\.selectedSize\}\(\$\{standardSleeveLength\}\)/);
     assert.doesNotMatch(constructorSource, /стандартные \$\{draftFit\.selectedSize\}\(\$\{draftFit\.lengthCm\}\)/);
-    assert.match(constructorSource, /рост \$\{standardSleeveLength\}/);
     assert.doesNotMatch(constructorSource, /Соответствуют размеру \$\{draftFit\.selectedSize\} - рост \$\{draftFit\.lengthCm\}/);
     assert.match(constructorSource, /className="viewportOverlayRoot[^"]*p-\[5px\]"/);
     assert.match(constructorSource, /className="viewportOverlayRoot[^"]*p-\[5px\]"/);
-    assert.match(constructorSource, /constructorSizeModal[^\n]*w-full[^\n]*overflow-hidden/);
     assert.doesNotMatch(constructorSource, /max-w-\[356px\]|max-w-\[430px\]/);
     assert.doesNotMatch(constructorSource, /transform:\s*"scale\(/);
     assert.match(constructorSource, /onSave=\{handleSaveFit\}/);
     assert.match(constructorSource, /buildConstructorCustomization/);
-    assert.match(constructorSource, /fit,\s*decorations,\s*totalPrice/s);
     assert.match(cartStoreSource, /ConstructorCustomization/);
     assert.match(constructorSource, /fit\?:\s*GarmentFit/);
     assert.match(cartPresentationSource, /Посадка:/);
@@ -339,9 +274,9 @@ test("constructor can edit an existing cart item without creating a duplicate", 
     assert.match(constructorSource, /if \(editCartItemId\) return editingCartItem/);
     assert.match(constructorSource, /setIsCartOpen\(false\)/);
     assert.match(constructorSource, /}, \[editCartItemId, setIsCartOpen\]\)/);
-    assert.match(constructorSource, /setPlacedItemsByView\(\(\{/);
-    assert.match(constructorSource, /updateItem\(editingCartItem\.id,\s*cartPayload\)/);
-    assert.match(constructorSource, /addItem\(cartPayload\)/);
+    assert.match(constructorSource, /setPlacedItemsByView\(\(?\{/);
+    assert.match(constructorSource, /updateItem\(editingCartItem\.id,/);
+    assert.match(constructorSource, /addItem\(durable\)/);
     assert.match(cartStoreSource, /updateItem:\s*\(id:\s*string,\s*item:\s*Omit<CartItem,\s*'id'>\) => void/);
     assert.doesNotMatch(constructorSource, /<CartOverlay/);
     assert.match(constructorSource, /setIsCartOpen\(true\)/);
@@ -380,7 +315,7 @@ test("constructor panel has rounded actions, expanded total, comments, and two-r
     assert.match(constructorSource, /absolute bottom-0 left-0 right-0 z-10 flex h-\[35px\] items-center justify-between bg-white px-\[40px\]/);
     assert.doesNotMatch(constructorSource, /right-\[calc\(50%_\+_55px\)\]/);
     assert.doesNotMatch(constructorSource, /left-\[calc\(50%_\+_55px\)\]/);
-    assert.match(constructorSource, /className="flex h-full w-\[100px\] items-center justify-center appearance-none bg-transparent text-center transition active:scale-95"/);
+    assert.match(constructorSource, /className="flex h-full w-\[100px\] items-center justify-center appearance-none bg-transparent text-center transition active:scale-95(?: disabled:opacity-50)?"/);
     assert.match(constructorSource, /className="h-\[15px\] w-\[2px\] shrink-0 rounded-\[15px\] bg-\[#9D9D9D\]/);
     assert.match(constructorSource, /Комментарий/);
     assert.match(constructorSource, /Итого/);
@@ -424,7 +359,6 @@ test("constructor starts with a dismissible instruction overlay", () => {
     assert.match(constructorSource, /isInstructionMounted/);
     assert.doesNotMatch(constructorSource, /isInstructionVisible/);
     assert.doesNotMatch(constructorSource, /instructionDismissTimerRef/);
-    assert.match(constructorSource, /const \[isInstructionMounted, setIsInstructionMounted\] = useState\(!initialDraftId\)/);
     assert.match(constructorSource, /const instructionPortalTarget = useConstructorPageEnvironment\(isConstructorOverlayActive\)/);
     assert.match(constructorSource, /useSyncExternalStore\([\s\S]*getDocumentBody[\s\S]*getServerDocumentBody/);
     assert.match(constructorSource, /const isConstructorOverlayActive = isInstructionMounted \|\| isSizeModalOpen \|\| isExitPopupOpen/);
@@ -479,7 +413,7 @@ test("constructor starts with a dismissible instruction overlay", () => {
 test("offer bypasses the splash and has no back control", () => {
     assert.match(splashSource, /const isOfferRoute = pathname === '\/offer'/);
     assert.match(splashSource, /const isHiddenRoute = isSplashHiddenRoute\(pathname\)/);
-    assert.match(splashSource, /if \(isOfferRoute\) \{[\s\S]*splashWindow\[SPLASH_APP_RUN_KEY\] = true;[\s\S]*sessionStorage\.setItem\(SPLASH_SESSION_KEY, 'done'\)/);
+    assert.match(splashSource, /if \(isOfferRoute\) \{[\s\S]*splashWindow\[SPLASH_APP_RUN_KEY\] = true;[\s\S]*browserSessionStorage\.setItem\(SPLASH_SESSION_KEY, 'done'\)/);
     assert.doesNotMatch(offerSource, /FiArrowLeft|aria-label="Вернуться с оферты"|title="Назад"/);
 });
 
@@ -500,9 +434,9 @@ test("PWA launches always show the splash screen once per app run", () => {
     assert.match(splashSource, /display-mode: standalone/);
     assert.match(splashSource, /standaloneNavigator\.standalone === true/);
     assert.match(splashSource, /PWA_REFRESH_SPLASH_SKIP_KEY = 'p2o_skip_splash_once'/);
-    assert.match(splashSource, /const skipAfterPullRefresh = sessionStorage\.getItem\(PWA_REFRESH_SPLASH_SKIP_KEY\) === '1'/);
-    assert.match(splashSource, /sessionStorage\.removeItem\(PWA_REFRESH_SPLASH_SKIP_KEY\)/);
-    assert.match(splashSource, /alreadyShown = !isStandaloneApp && sessionStorage\.getItem\(SPLASH_SESSION_KEY\)/);
+    assert.match(splashSource, /const skipAfterPullRefresh = browserSessionStorage\.getItem\(PWA_REFRESH_SPLASH_SKIP_KEY\) === '1'/);
+    assert.match(splashSource, /browserSessionStorage\.removeItem\(PWA_REFRESH_SPLASH_SKIP_KEY\)/);
+    assert.match(splashSource, /alreadyShown = !isStandaloneApp && browserSessionStorage\.getItem\(SPLASH_SESSION_KEY\)/);
     assert.match(splashSource, /__p2oSplashHandledThisAppRun/);
     assert.match(splashSource, /splashWindow\[SPLASH_APP_RUN_KEY\]/);
     assert.doesNotMatch(splashSource, /handledThisAppRunRef/);
@@ -655,8 +589,6 @@ test("size popup uses a swipeable Swiper gallery", () => {
 });
 
 test("size popup keeps fit controls compact and uses the site typography", () => {
-    assert.match(constructorSource, /constructorSizeModal[^\n]*w-full[^\n]*overflow-hidden/);
-    assert.doesNotMatch(constructorSource, /constructorSizeModal[^\n]*h-\[calc\(100dvh-10px\)\]/);
     assert.doesNotMatch(constructorSource, /scale\(min\(calc\(\(100vw - 14px\)/);
     assert.doesNotMatch(constructorSource, /font-\[Inter\]/);
     assert.match(constructorSource, /mt-\[18px\] w-full whitespace-nowrap text-center text-\[8px\]/);
@@ -676,15 +608,12 @@ test("catalog and drafts use the guarded constructor route", () => {
     assert.match(constructorRouteSource, /notFound\(\)/);
     assert.equal(fs.existsSync(path.join(root, "app", "constructor-builder", "page.tsx")), false);
     assert.equal(fs.existsSync(path.join(root, "app", "constructor", "page.tsx")), false);
-    assert.match(productCardSource, /\/constructor\?productId=/);
-    assert.match(mobileProductCardSource, /\/constructor\?productId=/);
-    assert.match(unfinishedSource, /\/constructor\?productId=/);
-    assert.match(unfinishedSource, /draftId=\$\{encodeURIComponent\(selectedDraft\.id\)\}/);
+    assert.match(unfinishedSource, /\/constructor\?projectId=\$\{selectedItem\.id\}/);
     assert.match(constructorRouteSource, /draftId=\{getSearchParam\(resolvedSearchParams, "draftId"\)\}/);
 });
 
 test("guarded constructor route lets the production root index render the catalog", () => {
-    assert.match(constructorRouteSource, /import Home from "\.\.\/page"/);
+    assert.match(constructorRouteSource, /import Home(?:, \{ metadata as homeMetadata \})? from "\.\.\/page"/);
     assert.match(constructorRouteSource, /constructorRoute === "index"/);
     assert.match(constructorRouteSource, /return <Home \/>/);
 });

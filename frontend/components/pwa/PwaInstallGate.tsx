@@ -12,6 +12,7 @@ import {
 } from '@/lib/pwa/installPrompt';
 
 import styles from './PwaInstallGate.module.css';
+import { browserLocalStorage } from '@/lib/browser/utils/storage';
 
 const PENDING_CONSTRUCTOR_KEY = 'gb_pwa_pending_constructor';
 
@@ -25,12 +26,6 @@ const isStandalone = () => (
     window.matchMedia('(display-mode: standalone)').matches
     || (navigator as NavigatorWithStandalone).standalone === true
 );
-
-const isSafeConstructorPath = (value: string | null): value is string => {
-    if (!value) return false;
-    return (value === '/constructor' || value.startsWith('/constructor?'))
-        && !value.includes('\\');
-};
 
 export const PwaInstallGate = ({
     children,
@@ -50,27 +45,22 @@ export const PwaInstallGate = ({
                 if (mounted) callback();
             });
         };
-        const currentPath = `${window.location.pathname}${window.location.search}`;
 
         if (isStandalone()) {
             const launchedFromManifest = new URLSearchParams(window.location.search).get('source') === 'pwa';
-            const pendingPath = window.localStorage.getItem(PENDING_CONSTRUCTOR_KEY);
-            if (launchedFromManifest && isSafeConstructorPath(pendingPath) && pendingPath !== currentPath) {
-                window.localStorage.removeItem(PENDING_CONSTRUCTOR_KEY);
-                window.location.replace(pendingPath);
+            // Older installed icons still launch the former constructor start URL.
+            if (launchedFromManifest) {
+                browserLocalStorage.removeItem(PENDING_CONSTRUCTOR_KEY);
+                window.location.replace('/?source=pwa');
                 return;
             }
-
-            window.localStorage.removeItem(PENDING_CONSTRUCTOR_KEY);
+            browserLocalStorage.removeItem(PENDING_CONSTRUCTOR_KEY);
             updateState(() => setMode('standalone'));
             return () => {
                 mounted = false;
             };
         }
 
-        if (isSafeConstructorPath(currentPath)) {
-            window.localStorage.setItem(PENDING_CONSTRUCTOR_KEY, currentPath);
-        }
         updateState(() => {
             setIos(/iphone|ipad|ipod/i.test(navigator.userAgent));
             setInstallPrompt(getInstallPrompt());
@@ -99,13 +89,12 @@ export const PwaInstallGate = ({
         if (choice.outcome === 'accepted') setMode('installed');
     }, [installPrompt]);
 
+    if (mode === 'checking') return null;
     if (mode === 'standalone') return children;
 
-    const title = mode === 'checking'
-        ? 'Проверяем запуск'
-        : mode === 'installed'
-            ? 'Приложение установлено'
-            : 'Конструктор работает в приложении';
+    const title = mode === 'installed'
+        ? 'Приложение установлено'
+        : 'Конструктор работает в приложении';
 
     return (
         <main className={styles.screen} aria-live="polite">
@@ -121,16 +110,14 @@ export const PwaInstallGate = ({
                 <p className={styles.eyebrow}>Garment Buro</p>
                 <h1 id="pwa-gate-title">{title}</h1>
 
-                {mode === 'checking' ? (
-                    <p className={styles.copy}>Секунду — определяем, открыто ли приложение.</p>
-                ) : mode === 'installed' ? (
+                {mode === 'installed' ? (
                     <p className={styles.copy}>
-                        Откройте Garment Buro с домашнего экрана. Выбранная модель уже сохранена.
+                        Откройте Garment Buro с домашнего экрана.
                     </p>
                 ) : (
                     <>
                         <p className={styles.copy}>
-                            Лендинг можно смотреть в браузере. Для примерки и настройки модели установите PWA — выбранная модель откроется автоматически.
+                            Лендинг можно смотреть в браузере. Для примерки и настройки модели установите приложение Garment Buro. После установки откроется главная страница.
                         </p>
                         {ios ? (
                             <ol className={styles.steps}>
@@ -152,11 +139,9 @@ export const PwaInstallGate = ({
                     </>
                 )}
 
-                {mode !== 'checking' && (
-                    <Link href={returnHref} className={styles.returnLink}>
-                        Вернуться к коллекции
-                    </Link>
-                )}
+                <Link href={returnHref} className={styles.returnLink}>
+                    Вернуться к коллекции
+                </Link>
             </section>
         </main>
     );

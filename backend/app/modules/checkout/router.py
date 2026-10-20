@@ -7,8 +7,9 @@ from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.openapi import json_request_schema
 from app.db.session import get_database_session
-from app.modules.checkout.schemas import CheckoutResponse
+from app.modules.checkout.schemas import CheckoutCommand, CheckoutResponse
 from app.modules.checkout.service import (
     CheckoutActorError,
     CheckoutDeliveryMethodError,
@@ -18,6 +19,9 @@ from app.modules.checkout.service import (
     CheckoutReceiptError,
     CheckoutService,
 )
+from app.modules.delivery.quote_proof import InvalidDeliveryQuoteError
+from app.modules.delivery.quote_service import CdekQuoteValidationError
+from app.modules.design_assets.security import DesignAssetUnavailableError
 from app.modules.identity.exceptions import InvalidEmailError
 from app.modules.identity.models import User
 from app.modules.identity.router import get_optional_current_identity_user
@@ -94,7 +98,7 @@ def get_checkout_service(request: Request) -> CheckoutService:
             "required": True,
             "content": {
                 "application/json": {
-                    "schema": OrderCreationCommand.model_json_schema(),
+                    "schema": json_request_schema(CheckoutCommand, path=router.prefix),
                 }
             },
         },
@@ -139,11 +143,39 @@ async def create_checkout(
         OrderGuestAccessStateError,
     ) as error:
         raise _error(400, "Invalid checkout request") from error
-    except (InvalidEmailError, OrderTotalMismatchError, CheckoutReceiptError) as error:
-        raise _error(422, "Invalid checkout total or receipt") from error
+    except OrderTotalMismatchError as error:
+        # Prices were read in one locked catalog batch, before any order writes.
+        # The transaction has rolled back; a new confirmation is safe.
+        raise _error(
+            409,
+            {
+                "code": "checkout_price_changed",
+                "currency": "RUB",
+                "prices": [
+                    {"id": item.id, "product_id": item.product_id, "price": float(item.price)}
+                    for item in error.prices
+                ],
+            },
+        ) from error
     except (
-        InsufficientStockError,
-        OrderCatalogItemError,
+        InvalidEmailError,
+        CheckoutReceiptError,
+        InvalidDeliveryQuoteError,
+    ) as error:
+        raise _error(422, "Invalid checkout total or receipt") from error
+    except CdekQuoteValidationError as error:
+        if error.code == "cdek_directory_unavailable":
+            raise _error(503, {"code": error.code}, retry_after=60) from error
+        # Verification runs before order writes. The client may safely correct
+        # the destination/cart after this explicit terminal rejection.
+        raise _error(409, {"code": "checkout_delivery_unavailable"}) from error
+    except InsufficientStockError as error:
+        raise _error(409, {"code": "checkout_stock_unavailable"}) from error
+    except OrderCatalogItemError as error:
+        raise _error(409, {"code": "checkout_catalog_unavailable"}) from error
+    except DesignAssetUnavailableError as error:
+        raise _error(409, {"code": "checkout_design_unavailable"}) from error
+    except (
         OrderIdempotencyConflictError,
         PaymentAttemptInProgressError,
         PaymentIdempotencyConflictError,
@@ -169,7 +201,12 @@ async def create_checkout(
             ) from error
         raise _error(
             502,
-            {"code": "payment_rejected", "order_id": error.order_id},
+            {
+                "code": "payment_requires_review"
+                if request.app.state.settings.order_moderation_enabled
+                else "payment_rejected",
+                "order_id": error.order_id,
+            },
         ) from error
     except SQLAlchemyError as error:
         raise _error(503, "Checkout storage is unavailable", retry_after=2) from error
@@ -211,7 +248,7 @@ async def _read_limited_body(request: Request) -> bytes:
 
 def _parse_command(body: bytes) -> OrderCreationCommand:
     try:
-        return OrderCreationCommand.model_validate_json(body)
+        return CheckoutCommand.model_validate_json(body).to_order_command()
     except ValidationError as error:
         detail = [
             {

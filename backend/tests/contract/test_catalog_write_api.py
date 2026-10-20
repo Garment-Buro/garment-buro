@@ -16,14 +16,14 @@ from app.core.config import AppEnvironment, Settings
 from app.db.base import Base
 from app.db.session import DatabaseManager
 from app.integrations.minio import MinioStorage
-from app.modules.catalog.content import (
+from app.modules.catalog.dependencies import require_catalog_writer
+from app.modules.catalog.editor_options import editor_options_router
+from app.modules.catalog.migration.content import (
     CatalogContentMigrationService,
     LegacyCatalogContentPlanner,
 )
-from app.modules.catalog.content_router import router as catalog_content_router
 from app.modules.catalog.models import CatalogAuditEvent, CatalogDocument, CatalogDocumentRevision
 from app.modules.catalog.router import router as catalog_router
-from app.modules.catalog.router import variant_write_router
 from app.modules.catalog.router import write_router as catalog_write_router
 from app.modules.identity.factory import build_identity_service
 from app.modules.identity.models import Role, RoleName, User, UserRole
@@ -115,9 +115,8 @@ def test_catalog_write_api_requires_rbac_and_links_uploaded_minio_media(tmp_path
     application.state.identity_service = identity
     application.include_router(catalog_router)
     application.include_router(catalog_write_router)
-    application.include_router(variant_write_router)
     application.include_router(media_write_router)
-    application.include_router(catalog_content_router)
+    application.include_router(editor_options_router("/api/catalog-editor", require_catalog_writer))
 
     customer_token = jwt.encode(
         {"sub": "1", "exp": datetime.now(timezone.utc) + timedelta(minutes=5)},
@@ -133,6 +132,8 @@ def test_catalog_write_api_requires_rbac_and_links_uploaded_minio_media(tmp_path
     manager_headers = {"Authorization": f"Bearer {manager_token}"}
 
     with TestClient(application) as client:
+        assert client.get("/api/settings").status_code == 404
+        assert client.put("/api/settings", json={}).status_code == 404
         assert (
             client.post(
                 "/api/products",
@@ -148,14 +149,8 @@ def test_catalog_write_api_requires_rbac_and_links_uploaded_minio_media(tmp_path
             ).status_code
             == 403
         )
-        assert (
-            client.put(
-                "/api/settings",
-                headers=customer_headers,
-                json={"logo_video_url": "/denied.mp4"},
-            ).status_code
-            == 403
-        )
+        assert client.get("/api/options").status_code == 404
+        assert client.put("/api/options", headers=manager_headers, json={}).status_code == 404
         assert (
             client.post(
                 "/api/upload",
@@ -187,15 +182,6 @@ def test_catalog_write_api_requires_rbac_and_links_uploaded_minio_media(tmp_path
             ).status_code
             == 415
         )
-        assert (
-            client.put(
-                "/api/settings",
-                headers=manager_headers,
-                json={"logo_video_url": "javascript:alert(1)"},
-            ).status_code
-            == 422
-        )
-
         upload = client.post(
             "/api/upload",
             headers=manager_headers,
@@ -229,35 +215,94 @@ def test_catalog_write_api_requires_rbac_and_links_uploaded_minio_media(tmp_path
         variant_id = created.json()["variants"][0]["id"]
 
         assert (
-            client.put(
-                f"/api/variants/{variant_id}",
-                headers=customer_headers,
-                json={"size": "L", "color": "black", "stock_quantity": 1},
+            client.put(f"/api/variants/{variant_id}", headers=manager_headers, json={}).status_code
+            == 404
+        )
+        payload["expected_version"] = created.json()["version"]
+        assert payload["expected_version"] == 1
+        for invalid in [None, True, 0, -1, "1", 1.5, 2_147_483_648]:
+            invalid_body = {**payload, "expected_version": invalid}
+            if invalid is None:
+                invalid_body.pop("expected_version")
+            assert (
+                client.put(
+                    f"/api/products/{product_id}", headers=manager_headers, json=invalid_body
+                ).status_code
+                == 422
+            )
+        payload["variants"][0].update({"id": variant_id, "size": "L", "stock_quantity": 1})
+        changed = client.put(f"/api/products/{product_id}", headers=manager_headers, json=payload)
+        assert changed.status_code == 200
+        assert changed.json()["version"] == 2
+        stale = client.put(f"/api/products/{product_id}", headers=manager_headers, json=payload)
+        assert stale.status_code == 409
+        assert stale.json()["detail"]["code"] == "catalog_product_version_conflict"
+        assert (
+            client.get(f"/api/products/{product_id}", headers=manager_headers).json()["version"]
+            == 2
+        )
+        assert changed.json()["variants"][0]["id"] == variant_id
+        assert (
+            client.get(f"/api/products/{product_id}/variants", headers=manager_headers).status_code
+            == 404
+        )
+        for path in [
+            "/api/products",
+            "/api/products/counts",
+            f"/api/products/{product_id}",
+            "/api/catalog-editor/models",
+            "/api/catalog-editor/fabrics",
+        ]:
+            assert client.get(path).status_code == 401
+            assert client.get(path, headers=customer_headers).status_code == 403
+        for path in ["/api/catalog-editor/models", "/api/catalog-editor/fabrics"]:
+            options = client.get(path, headers=manager_headers)
+            assert options.status_code == 200 and options.headers["cache-control"] == "no-store"
+            assert options.json() == {"items": [], "next_cursor": None}
+            assert (
+                client.get(path, headers=manager_headers, params={"limit": 101}).status_code == 422
+            )
+        assert (
+            client.get("/api/catalog-editor/models/999", headers=manager_headers).status_code == 404
+        )
+        assert (
+            client.get(
+                "/api/catalog-editor/selected-fabrics?ids=0", headers=manager_headers
             ).status_code
-            == 403
+            == 422
         )
-        updated_variant = client.put(
-            f"/api/variants/{variant_id}",
-            headers=manager_headers,
-            json={
-                "size": "L",
-                "color": "black",
-                "stock_quantity": 1,
-                "preview_image": media_url,
-            },
-        )
-        assert updated_variant.status_code == 200
-        assert updated_variant.json()["id"] == variant_id
-        assert updated_variant.json()["size"] == "L"
-        listed_variants = client.get(f"/api/products/{product_id}/variants")
-        assert listed_variants.status_code == 200
-        assert [variant["id"] for variant in listed_variants.json()] == [variant_id]
-        assert listed_variants.json()[0]["size"] == "L"
-
-        listed = client.get("/api/products")
+        listed = client.get("/api/products", headers=manager_headers, params={"limit": 1})
         assert listed.status_code == 200
-        assert [product["id"] for product in listed.json()] == [product_id]
+        assert listed.headers["cache-control"] == "no-store"
+        assert [product["id"] for product in listed.json()["items"]] == [product_id]
+        assert listed.json()["next_cursor"] is None
+        assert listed.json()["items"][0]["variant_count"] == 1
+        assert "variants" not in listed.json()["items"][0]
+        assert listed.json()["items"][0]["community_count"] is None
+        assert listed.json()["items"][0]["communities"] == []
+        assert (
+            client.get(f"/api/products/{product_id}", headers=manager_headers).json()["variants"][
+                0
+            ]["size"]
+            == "L"
+        )
+        assert client.get("/api/products/counts", headers=manager_headers).json() == {
+            "garment_buro": 1,
+            "user": 0,
+            "communities": None,
+        }
+        for params in [
+            {"limit": 101},
+            {"sort": "price"},
+            {"cursor": "bad"},
+            {"unknown": "ignored?"},
+        ]:
+            assert (
+                client.get("/api/products", headers=manager_headers, params=params).status_code
+                == 422
+            )
 
+        payload["expected_version"] = changed.json()["version"]
         payload["title"] = "Updated product"
         updated = client.put(
             f"/api/products/{product_id}",
@@ -265,6 +310,7 @@ def test_catalog_write_api_requires_rbac_and_links_uploaded_minio_media(tmp_path
             json=payload,
         )
         assert updated.status_code == 200
+        assert updated.json()["version"] == 3
         assert updated.json()["title"] == "Updated product"
 
         deleted = client.delete(
@@ -273,30 +319,7 @@ def test_catalog_write_api_requires_rbac_and_links_uploaded_minio_media(tmp_path
         )
         assert deleted.status_code == 200
         assert deleted.json() == {"status": "deleted"}
-        assert client.get(f"/api/products/{product_id}").status_code == 404
-
-        current_settings = client.get("/api/settings")
-        assert current_settings.status_code == 200
-        settings_payload = current_settings.json()
-        settings_payload["logo_video_url"] = media_url
-        saved_settings = client.put(
-            "/api/settings",
-            headers=manager_headers,
-            json=settings_payload,
-        )
-        assert saved_settings.status_code == 200
-        assert saved_settings.json()["logo_video_url"] == media_url
-
-        saved_options = client.put(
-            "/api/options",
-            headers=manager_headers,
-            json={
-                "colors": [{"label": "Серый", "hex": "#808080"}],
-                "sizes": ["M", "L"],
-            },
-        )
-        assert saved_options.status_code == 200
-        assert saved_options.json()["sizes"] == ["M", "L"]
+        assert client.get(f"/api/products/{product_id}", headers=manager_headers).status_code == 404
 
     async def verify() -> None:
         await database.startup()
@@ -313,18 +336,16 @@ def test_catalog_write_api_requires_rbac_and_links_uploaded_minio_media(tmp_path
                 "product.updated",
                 "product.deleted",
             ]
-            assert audits[1].details["scope"] == "variant"
             settings_document = await session.get(CatalogDocument, "settings")
             options_document = await session.get(CatalogDocument, "options")
-            assert settings_document is not None and settings_document.version == 2
-            assert options_document is not None and options_document.version == 2
+            assert settings_document is not None and settings_document.version == 1
+            assert options_document is not None and options_document.version == 1
             revisions = list(
                 await session.scalars(
                     select(CatalogDocumentRevision).where(CatalogDocumentRevision.version == 2)
                 )
             )
-            assert len(revisions) == 2
-            assert all(revision.actor_user_id == 2 for revision in revisions)
+            assert revisions == []
         await database.shutdown()
 
     asyncio.run(verify())

@@ -3,28 +3,50 @@ from __future__ import annotations
 from collections.abc import Awaitable
 from typing import Annotated, TypeVar
 
-from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, File, HTTPException, Path, Query, Request, Response, UploadFile
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
-from app.modules.catalog.mapper import CatalogResponseMapper
+from app.modules.catalog.admin_api import (
+    get_catalog_admin_service,
+    read_catalog_admin_detail,
+    read_catalog_admin_page,
+)
+from app.modules.catalog.admin_schemas import (
+    CatalogAdminCounts,
+    CatalogAdminDetail,
+    CatalogAdminPage,
+    CatalogAdminQuery,
+)
+from app.modules.catalog.admin_service import CatalogAdminReadService
+from app.modules.catalog.editor_media import (
+    CatalogEditorMediaLimitError,
+    catalog_editor_media_limit_detail,
+)
+from app.modules.catalog.editor_options import editor_options_router
+from app.modules.catalog.editor_repository import (
+    CatalogEditorVariantLimitError,
+    catalog_editor_variant_limit_detail,
+)
 from app.modules.catalog.schemas import (
+    PresetWriteRequest,
     ProductCategoryResponse,
     ProductCategoryUpdate,
     ProductCategoryWrite,
+    ProductDeletedResponse,
     ProductDetailResponse,
-    ProductWriteRequest,
+    ProductUpdateRequest,
 )
 from app.modules.catalog.service import (
     CatalogInventoryReservedError,
     CatalogProductNotFoundError,
+    CatalogProductVersionConflictError,
     CatalogReferenceNotFoundError,
-    CatalogService,
     CatalogVersionConflictError,
     CatalogWriteService,
     UnknownCatalogMediaError,
+    product_version_conflict_detail,
 )
 from app.modules.crm.assortment_schemas import (
     CrmAccessoryCategoryRead,
@@ -33,7 +55,6 @@ from app.modules.crm.assortment_schemas import (
     CrmAccessoryRead,
     CrmAccessoryUpdate,
     CrmAccessoryWrite,
-    CrmCatalogProductReferenceRead,
     CrmGarmentAccessoryRequirementRead,
     CrmGarmentAccessoryRequirementUpdate,
     CrmGarmentAccessoryRequirementWrite,
@@ -56,8 +77,19 @@ from app.modules.crm.assortment_service import (
     CrmAssortmentService,
     CrmAssortmentVersionConflictError,
 )
-from app.modules.crm.read_schemas import CrmFabricPage, CrmGarmentModelPage
-from app.modules.crm.read_service import CrmReadService
+from app.modules.crm.directory_api import read_model_detail
+from app.modules.crm.directory_api import read_reference_page as _directory_read
+from app.modules.crm.directory_schemas import (
+    FabricDirectoryPage,
+    FabricDirectoryQuery,
+    FabricRequirementPage,
+    ModelDirectoryPage,
+    ModelDirectoryQuery,
+    RequirementDirectoryQuery,
+    SelectedReference,
+    SelectedReferenceQuery,
+)
+from app.modules.crm.directory_service import ReferenceDirectoryService
 from app.modules.crm.reference_schemas import (
     CrmFabricReferenceRead,
     CrmFabricUpdate,
@@ -81,26 +113,21 @@ from app.modules.crm.reference_service import (
 )
 from app.modules.media.models import MediaObject, MediaStatus
 from app.modules.media.service import MediaService, UnsupportedMediaError
-from app.modules.partners.repository import PartnerRepository
-from app.modules.production.admin_router import Session
+from app.modules.partners.admin_directory_api import read_admin_landing_page
+from app.modules.partners.admin_directory_schemas import AdminLandingPage, AdminLandingQuery
+from app.modules.production.admin_router import Session, require_system_admin
 from app.modules.production.admin_router import SystemAdmin as Admin
 from app.modules.production.assortment_media_service import (
     AssortmentMediaService,
     UnsupportedCrmFileError,
 )
+from app.modules.production.category_directory_router import category_directory_router
+from app.modules.production.pattern_directory_router import pattern_directory_router
+from app.modules.production.stock_directory_router import stock_directory_router
+from app.modules.production.tech_directory_router import tech_directory_router
 
 router = APIRouter(prefix="/admin/assortment", tags=["production-admin-assortment"])
 T = TypeVar("T")
-
-
-class ProductCommunityRead(BaseModel):
-    id: int
-    title: str
-    slug: str
-    image_url: str | None
-    status: str
-    partner_name: str
-    product_ids: list[int]
 
 
 def _writes_enabled(request: Request) -> None:
@@ -122,11 +149,15 @@ async def _write(session: Session, operation: Awaitable[T]) -> T:
     except (CrmAssortmentNotFoundError, CrmReferenceNotFoundError) as error:
         await session.rollback()
         raise HTTPException(404, str(error)) from error
+    except CrmReferenceVersionConflictError as error:
+        await session.rollback()
+        raise HTTPException(
+            409, {"code": "crm_reference_version_conflict", "message": str(error)}
+        ) from error
     except (
         CrmAssortmentConflictError,
         CrmAssortmentVersionConflictError,
         CrmReferenceConflictError,
-        CrmReferenceVersionConflictError,
     ) as error:
         await session.rollback()
         raise HTTPException(409, str(error)) from error
@@ -135,19 +166,57 @@ async def _write(session: Session, operation: Awaitable[T]) -> T:
         raise HTTPException(409, "Запись уже существует или используется") from error
 
 
-@router.get("/models", response_model=CrmGarmentModelPage)
-async def models(_admin: Admin, session: Session, active: bool | None = None):
-    return await CrmReadService().list_garment_models(
-        session,
-        is_active=active,
-        cursor=None,
-        limit=100,
+@router.get("/directory/models", response_model=ModelDirectoryPage)
+async def model_directory(
+    response: Response,
+    _admin: Admin,
+    session: Session,
+    query: Annotated[ModelDirectoryQuery, Query()],
+):
+    return await _directory_read(response, ReferenceDirectoryService().models(session, query))
+
+
+@router.get("/directory/fabrics", response_model=FabricDirectoryPage)
+async def fabric_directory(
+    response: Response,
+    _admin: Admin,
+    session: Session,
+    query: Annotated[FabricDirectoryQuery, Query()],
+):
+    return await _directory_read(response, ReferenceDirectoryService().fabrics(session, query))
+
+
+@router.get("/directory/selected", response_model=list[SelectedReference])
+async def selected_references(
+    response: Response,
+    _admin: Admin,
+    session: Session,
+    query: Annotated[SelectedReferenceQuery, Query()],
+):
+    response.headers["Cache-Control"] = "no-store"
+    return await ReferenceDirectoryService().selected(session, query)
+
+
+@router.get("/directory/fabric-requirements", response_model=FabricRequirementPage)
+async def fabric_requirement_directory(
+    response: Response,
+    _admin: Admin,
+    session: Session,
+    query: Annotated[RequirementDirectoryQuery, Query()],
+):
+    return await _directory_read(
+        response, ReferenceDirectoryService().fabric_requirements(session, query)
     )
 
 
-@router.get("/model-categories", response_model=list[CrmGarmentModelCategoryRead])
-async def model_categories(_admin: Admin, session: Session):
-    return await CrmReferenceService().repository.list_garment_model_categories(session)
+@router.get("/models/{model_id}", response_model=CrmGarmentModelReferenceRead)
+async def model_detail(
+    response: Response,
+    _admin: Admin,
+    session: Session,
+    model_id: Annotated[int, Path(gt=0, le=2_147_483_647)],
+):
+    return await read_model_detail(response, session, model_id)
 
 
 @router.post(
@@ -239,16 +308,6 @@ async def update_model(
     )
 
 
-@router.get("/fabrics", response_model=CrmFabricPage)
-async def fabrics(_admin: Admin, session: Session, active: bool | None = None):
-    return await CrmReadService().list_fabrics(
-        session,
-        is_active=active,
-        cursor=None,
-        limit=100,
-    )
-
-
 @router.post("/fabrics", response_model=CrmFabricReferenceRead, status_code=201)
 async def create_fabric(
     payload: CrmFabricWrite,
@@ -288,18 +347,6 @@ async def update_fabric(
     )
 
 
-@router.get("/patterns", response_model=list[CrmGarmentPatternRead])
-async def patterns(
-    _admin: Admin,
-    session: Session,
-    model_id: Annotated[int | None, Query(ge=1)] = None,
-    query: Annotated[str | None, Query(min_length=1, max_length=100)] = None,
-):
-    return await CrmAssortmentService().list_patterns(
-        session, model_id=model_id, active=None, query=query
-    )
-
-
 @router.post("/patterns", response_model=CrmGarmentPatternRead, status_code=201)
 async def create_pattern(
     payload: CrmGarmentPatternWrite,
@@ -330,18 +377,6 @@ async def update_pattern(
                 payload.model_dump(exclude={"expected_version"})
             ),
         ),
-    )
-
-
-@router.get("/fabric-requirements", response_model=list[CrmGarmentFabricRequirementRead])
-async def fabric_requirements(
-    _admin: Admin,
-    session: Session,
-    model_id: Annotated[int | None, Query(ge=1)] = None,
-):
-    return await CrmAssortmentService().list_fabric_requirements(
-        session,
-        model_id=model_id,
     )
 
 
@@ -385,18 +420,6 @@ async def update_fabric_requirement(
                 payload.model_dump(exclude={"expected_version"})
             ),
         ),
-    )
-
-
-@router.get("/tech-cards", response_model=list[CrmTechCardRead])
-async def tech_cards(
-    _admin: Admin,
-    session: Session,
-    model_id: Annotated[int | None, Query(ge=1)] = None,
-):
-    return await CrmReferenceService().list_tech_cards(
-        session,
-        garment_model_id=model_id,
     )
 
 
@@ -464,11 +487,6 @@ async def publish_tech_card_revision(
     )
 
 
-@router.get("/accessory-categories", response_model=list[CrmAccessoryCategoryRead])
-async def accessory_categories(_admin: Admin, session: Session):
-    return await CrmAssortmentService().list_categories(session, active=None)
-
-
 @router.post("/accessory-categories", response_model=CrmAccessoryCategoryRead, status_code=201)
 async def create_accessory_category(
     payload: CrmAccessoryCategoryWrite,
@@ -499,16 +517,6 @@ async def update_accessory_category(
                 payload.model_dump(exclude={"expected_version"})
             ),
         ),
-    )
-
-
-@router.get("/accessories", response_model=list[CrmAccessoryRead])
-async def accessories(_admin: Admin, session: Session):
-    return await CrmAssortmentService().list_accessories(
-        session,
-        category_id=None,
-        model_id=None,
-        active=None,
     )
 
 
@@ -543,14 +551,6 @@ async def update_accessory(
             ),
         ),
     )
-
-
-@router.get(
-    "/accessory-requirements",
-    response_model=list[CrmGarmentAccessoryRequirementRead],
-)
-async def accessory_requirements(_admin: Admin, session: Session):
-    return await CrmAssortmentService().list_accessory_requirements(session, model_id=None)
 
 
 @router.post(
@@ -596,11 +596,6 @@ async def update_accessory_requirement(
     )
 
 
-@router.get("/boxes", response_model=list[CrmPackagingBoxRead])
-async def boxes(_admin: Admin, session: Session):
-    return await CrmAssortmentService().list_boxes(session, active=None)
-
-
 @router.post("/boxes", response_model=CrmPackagingBoxRead, status_code=201)
 async def create_box(
     payload: CrmPackagingBoxWrite,
@@ -632,11 +627,6 @@ async def update_box(
             ),
         ),
     )
-
-
-@router.get("/packaging-rules", response_model=list[CrmGarmentPackagingRuleRead])
-async def packaging_rules(_admin: Admin, session: Session):
-    return await CrmAssortmentService().list_packaging_rules(session, model_id=None)
 
 
 @router.post(
@@ -682,29 +672,40 @@ async def update_packaging_rule(
     )
 
 
-@router.get("/products", response_model=list[CrmCatalogProductReferenceRead])
-async def products(request: Request, _admin: Admin, session: Session):
-    return await CrmAssortmentService().list_products(
-        session,
-        model_id=None,
-        category_id=None,
-        active=None,
-        mapper=CatalogResponseMapper(request.app.state.settings),
+@router.get("/products", response_model=CatalogAdminPage)
+async def products(
+    request: Request,
+    response: Response,
+    _admin: Admin,
+    session: Session,
+    query: Annotated[CatalogAdminQuery, Query()],
+):
+    return await read_catalog_admin_page(
+        response, session, get_catalog_admin_service(request), query, include_communities=True
     )
 
 
-@router.get("/products/{product_id}", response_model=ProductDetailResponse)
-async def product(product_id: int, request: Request, _admin: Admin, session: Session):
-    result = await CatalogService(CatalogResponseMapper(request.app.state.settings)).get_product(
-        session,
-        product_id,
+@router.get("/product-counts", response_model=CatalogAdminCounts)
+async def product_counts(response: Response, _admin: Admin, session: Session):
+    response.headers["Cache-Control"] = "no-store"
+    return await CatalogAdminReadService.counts(session, include_communities=True)
+
+
+@router.get("/products/{product_id}", response_model=CatalogAdminDetail)
+async def product(
+    product_id: int, request: Request, response: Response, _admin: Admin, session: Session
+):
+    return await read_catalog_admin_detail(
+        response, session, get_catalog_admin_service(request), product_id
     )
-    if result is None:
-        raise HTTPException(404, "Товар не найден")
-    return result
 
 
-async def _catalog_write(session: Session, operation: Awaitable[T]) -> T:
+async def _catalog_write(
+    session: Session,
+    operation: Awaitable[T],
+    *,
+    conflict_message: str = "Товар или категория уже существует",
+) -> T:
     try:
         result = await operation
         await session.commit()
@@ -712,6 +713,19 @@ async def _catalog_write(session: Session, operation: Awaitable[T]) -> T:
     except CatalogProductNotFoundError as error:
         await session.rollback()
         raise HTTPException(404, "Товар не найден") from error
+    except CatalogProductVersionConflictError as error:
+        await session.rollback()
+        raise HTTPException(409, product_version_conflict_detail()) from error
+    except CatalogEditorVariantLimitError as error:
+        await session.rollback()
+        raise HTTPException(
+            409, catalog_editor_variant_limit_detail(), headers={"Cache-Control": "no-store"}
+        ) from error
+    except CatalogEditorMediaLimitError as error:
+        await session.rollback()
+        raise HTTPException(
+            409, catalog_editor_media_limit_detail(), headers={"Cache-Control": "no-store"}
+        ) from error
     except (
         CatalogInventoryReservedError,
         CatalogReferenceNotFoundError,
@@ -722,12 +736,12 @@ async def _catalog_write(session: Session, operation: Awaitable[T]) -> T:
         raise HTTPException(409, str(error)) from error
     except IntegrityError as error:
         await session.rollback()
-        raise HTTPException(409, "Товар или категория уже существует") from error
+        raise HTTPException(409, conflict_message) from error
 
 
 @router.post("/products", response_model=ProductDetailResponse, status_code=201)
 async def create_product(
-    payload: ProductWriteRequest,
+    payload: PresetWriteRequest,
     request: Request,
     admin: Admin,
     session: Session,
@@ -746,7 +760,7 @@ async def create_product(
 @router.put("/products/{product_id}", response_model=ProductDetailResponse)
 async def update_product(
     product_id: int,
-    payload: ProductWriteRequest,
+    payload: ProductUpdateRequest,
     request: Request,
     admin: Admin,
     session: Session,
@@ -757,34 +771,34 @@ async def update_product(
         CatalogWriteService(request.app.state.settings).update_product(
             session,
             product_id=product_id,
+            expected_version=payload.expected_version,
             payload=payload,
             actor_user_id=admin.id,
         ),
     )
 
 
-@router.get("/product-categories", response_model=list[ProductCategoryResponse])
-async def product_categories(request: Request, _admin: Admin, session: Session):
-    return await CatalogService(CatalogResponseMapper(request.app.state.settings)).list_categories(
-        session
+@router.delete("/products/{product_id}", response_model=ProductDeletedResponse)
+async def delete_product(product_id: int, request: Request, admin: Admin, session: Session):
+    _catalog_writes_enabled(request)
+    await _catalog_write(
+        session,
+        CatalogWriteService(request.app.state.settings).delete_product(
+            session, product_id=product_id, actor_user_id=admin.id
+        ),
+        conflict_message="Товар используется в других данных. Скройте его вместо удаления.",
     )
+    return ProductDeletedResponse()
 
 
-@router.get("/product-communities", response_model=list[ProductCommunityRead])
-async def product_communities(_admin: Admin, session: Session):
-    landings = await PartnerRepository().list_all_landings(session)
-    return [
-        ProductCommunityRead(
-            id=landing.id,
-            title=landing.title,
-            slug=landing.slug,
-            image_url=landing.image_url,
-            status=landing.status,
-            partner_name=landing.partner.display_name,
-            product_ids=landing.product_ids,
-        )
-        for landing in landings
-    ]
+@router.get("/product-communities", response_model=AdminLandingPage)
+async def product_communities(
+    response: Response,
+    _admin: Admin,
+    session: Session,
+    query: Annotated[AdminLandingQuery, Query()],
+):
+    return await read_admin_landing_page(response, session, query)
 
 
 @router.post("/product-categories", response_model=ProductCategoryResponse, status_code=201)
@@ -890,3 +904,12 @@ async def upload_pattern_media(
         "filename": receipt.original_filename,
         "content_type": receipt.content_type,
     }
+
+
+router.include_router(editor_options_router("/editor-options", require_system_admin))
+
+router.include_router(stock_directory_router(require_system_admin))
+router.include_router(tech_directory_router(require_system_admin))
+router.include_router(pattern_directory_router(require_system_admin))
+
+router.include_router(category_directory_router(require_system_admin))

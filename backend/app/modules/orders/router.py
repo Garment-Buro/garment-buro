@@ -83,6 +83,7 @@ async def list_orders(
 @router.get("/{order_id}", response_model=LegacyOrderResponse)
 async def get_order(
     order_id: int,
+    response: Response,
     user: Annotated[User, Depends(get_current_identity_user)],
     session: Annotated[AsyncSession, Depends(get_database_session)],
     identity: Annotated[IdentityService, Depends(get_identity_service)],
@@ -109,7 +110,10 @@ async def get_order(
         )
         await session.commit()
     if order is None:
-        raise HTTPException(status_code=404, detail="Order not found")
+        raise HTTPException(
+            status_code=404, detail="Order not found", headers={"Cache-Control": "no-store"}
+        )
+    response.headers["Cache-Control"] = "no-store"
     return order
 
 

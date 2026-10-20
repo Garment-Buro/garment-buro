@@ -40,8 +40,10 @@ test('bag history, order comments and cutting data follow role rules', () => {
 
     assert.match(bag, /\['tech', 'kit', 'packing'\]\.includes\(station\)/);
     assert.match(journal, /История мешка/);
-    assert.match(bag, /<strong>Комментарий к заказу<\/strong>/);
-    assert.match(bag, /orderComments\.map/);
+    assert.match(bag, /<strong>Комментарий к вещи<\/strong>/);
+    assert.doesNotMatch(bag, /orderComments/);
+    assert.ok(bag.indexOf('<BagActions') > bag.indexOf('project.units.filter'));
+    assert.ok(bag.indexOf('<ProductionJournal') > bag.indexOf('<BagActions'));
     assert.doesNotMatch(bag, /Версия<strong>/);
     assert.doesNotMatch(bag, /Печать QR мешка заказа/);
     assert.match(bag, /<strong>QR мешка заказа<\/strong>/);
@@ -57,11 +59,13 @@ test('bag history, order comments and cutting data follow role rules', () => {
     assert.doesNotMatch(unit, /Комплектность/);
     assert.match(views, /Макет заказчика/);
     assert.match(views, /Наложение на лекало/);
-    assert.match(views, /Открыть оригинал лекала/);
-    assert.match(views, /productionApi\.download\(token, id, station, true\)/);
+    assert.doesNotMatch(views, /Открыть оригинал лекала/);
+    assert.match(unit, /patternsDialog.current\?\.showModal/);
+    assert.match(unit, /Открыть оригинал лекала/);
+    assert.match(unit, /productionApi\.download\(token, id, station, true\)/);
     assert.match(views, /data-tech=\{station === 'tech'\}/);
     assert.match(bag, /station === 'dtf'/);
-    assert.match(unit, /<strong>QR изделия готов<\/strong>/);
+    assert.match(unit, /QR изделия готов/);
     assert.match(unit, /Распечатать QR изделия/);
     assert.match(printSheet, /target === 'bag'/);
     assert.match(printSheet, /target === 'units' \|\| unit\.id === target/);

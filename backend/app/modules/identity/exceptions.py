@@ -9,7 +9,15 @@ class InvalidEmailError(IdentityError):
     pass
 
 
+class InvalidPhoneError(IdentityError):
+    pass
+
+
 class EmailAlreadyUsedError(IdentityError):
+    pass
+
+
+class PhoneAlreadyUsedError(IdentityError):
     pass
 
 
@@ -28,6 +36,18 @@ class ExpiredOtpError(IdentityError):
 
 
 class InvalidSessionError(IdentityError):
+    pass
+
+
+class InvalidCredentialsError(IdentityError):
+    pass
+
+
+class AuthMethodUnavailableError(IdentityError):
+    pass
+
+
+class InvalidExternalAuthPayloadError(IdentityError):
     pass
 
 

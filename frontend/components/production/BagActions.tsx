@@ -73,8 +73,9 @@ export function BagActions({
             !unit.issue &&
             !unit.blockers.length,
     );
+    const requiresDtf = project.units.some(unit => Boolean(unit.specification?.print_file_ids.length));
     const isTechReview = project.state === 'inbox' && canAct(stations, 'tech');
-    const isDtfReview = project.state === 'inbox' && canAct(stations, 'dtf');
+    const isDtfReview = project.state === 'inbox' && requiresDtf && canAct(stations, 'dtf');
     const isReview = isTechReview || isDtfReview;
     const availableIssueUnits = project.units.filter((unit) => !unit.issue);
     const reportIssue = async () => {
@@ -98,7 +99,7 @@ export function BagActions({
                     <div className={styles.intakeHeading}>
                         <div>
                             <h3>Приёмка заказа</h3>
-                            <p>Технолог и DTF подтверждают заказ независимо.</p>
+                            <p>{requiresDtf ? 'Технолог и DTF подтверждают заказ независимо.' : 'Заказ без нанесений подтверждает технолог.'}</p>
                         </div>
                     </div>
                     <div className={styles.approvalGrid}>
@@ -110,14 +111,14 @@ export function BagActions({
                                     : 'Ждём подтверждение технолога'}
                             </strong>
                         </span>
-                        <span data-ready={project.dtf_approved}>
+                        {requiresDtf && <span data-ready={project.dtf_approved}>
                             DTF
                             <strong>
                                 {project.dtf_approved
                                     ? 'Подтверждение DTF получено'
                                     : 'Ждём подтверждение DTF'}
                             </strong>
-                        </span>
+                        </span>}
                     </div>
                     <div className={styles.intakeActions}>
                         {isTechReview && !project.tech_approved && (
@@ -136,6 +137,7 @@ export function BagActions({
                         )}
                         {isTechReview &&
                             project.tech_approved &&
+                            requiresDtf &&
                             !project.qr_ready && (
                                 <button type="button" disabled>
                                     <PiQrCode aria-hidden />

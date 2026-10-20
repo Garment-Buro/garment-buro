@@ -8,24 +8,20 @@ services:
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     environment:
       - APP_ENV=${APP_ENV:-local}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-http://localhost:3000}
       - PARTNER_PUBLIC_BASE_URL=${PARTNER_PUBLIC_BASE_URL:-https://partner.garment-buro.ru}
       - WIDGET_PUBLIC_BASE_URL=${WIDGET_PUBLIC_BASE_URL:-https://widget.garment-buro.ru}
-      - LEGACY_DATABASE_URL=${LEGACY_DATABASE_URL:-sqlite:////app/legacy/ecommerce.db}
       - DATABASE_ENABLED=true
       - DATABASE_URL=postgresql+asyncpg://garment:${POSTGRES_PASSWORD:-garment-local}@postgres:5432/garment_buro
       - DATABASE_ECHO=${DATABASE_ECHO:-false}
       - DATABASE_POOL_SIZE=${DATABASE_POOL_SIZE:-10}
       - DATABASE_MAX_OVERFLOW=${DATABASE_MAX_OVERFLOW:-20}
-      - CATALOG_READS_ENABLED=${CATALOG_READS_ENABLED:-false}
-      - CATALOG_WRITES_ENABLED=${CATALOG_WRITES_ENABLED:-false}
-      - CATALOG_MIGRATION_FINGERPRINT=${CATALOG_MIGRATION_FINGERPRINT:-}
-      - CATALOG_CONTENT_MIGRATION_FINGERPRINT=${CATALOG_CONTENT_MIGRATION_FINGERPRINT:-}
-      - CARTS_V2_ENABLED=${CARTS_V2_ENABLED:-false}
-      - CARTS_MIGRATION_FINGERPRINT=${CARTS_MIGRATION_FINGERPRINT:-}
+      - CATALOG_READS_ENABLED=${CATALOG_READS_ENABLED:-true}
+      - CATALOG_WRITES_ENABLED=${CATALOG_WRITES_ENABLED:-true}
+      - CARTS_V2_ENABLED=${CARTS_V2_ENABLED:-true}
       - INVENTORY_RESERVATION_TTL_SECONDS=${INVENTORY_RESERVATION_TTL_SECONDS:-1800}
-      - ORDER_READS_ENABLED=${ORDER_READS_ENABLED:-false}
-      - ORDER_MIGRATION_FINGERPRINT=${ORDER_MIGRATION_FINGERPRINT:-}
+      - ORDER_READS_ENABLED=${ORDER_READS_ENABLED:-true}
       - CHECKOUT_V2_ENABLED=${CHECKOUT_V2_ENABLED:-false}
       - CRM_API_ENABLED=${CRM_API_ENABLED:-false}
       - CRM_WRITES_ENABLED=${CRM_WRITES_ENABLED:-false}
@@ -39,11 +35,11 @@ services:
       - MINIO_BUCKET_PREFIX=${MINIO_BUCKET_PREFIX:-garment-buro}
       - MINIO_PUBLIC_BASE_URL=${MINIO_PUBLIC_BASE_URL:-http://localhost:9000}
       - MINIO_PRESIGNED_EXPIRE_SECONDS=${MINIO_PRESIGNED_EXPIRE_SECONDS:-900}
+      - MINIO_CONNECT_TIMEOUT_SECONDS=${MINIO_CONNECT_TIMEOUT_SECONDS:-3}
+      - MINIO_READ_TIMEOUT_SECONDS=${MINIO_READ_TIMEOUT_SECONDS:-15}
       - MEDIA_MAX_UPLOAD_BYTES=${MEDIA_MAX_UPLOAD_BYTES:-104857600}
       - CRM_FILE_MAX_UPLOAD_BYTES=${CRM_FILE_MAX_UPLOAD_BYTES:-26214400}
       - REDIS_URL=redis://redis:6379/0
-      - PRODUCTS_CACHE_TTL_SECONDS=3600
-      - PRODUCT_CACHE_TTL_SECONDS=3600
       - CART_CACHE_TTL_SECONDS=2592000
       - JWT_SECRET=${JWT_SECRET}
       - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
@@ -57,10 +53,17 @@ services:
       - IDENTITY_ACCESS_EXPIRE_MINUTES=${IDENTITY_ACCESS_EXPIRE_MINUTES:-15}
       - IDENTITY_REFRESH_EXPIRE_DAYS=${IDENTITY_REFRESH_EXPIRE_DAYS:-30}
       - IDENTITY_MAX_ACTIVE_SESSIONS=${IDENTITY_MAX_ACTIVE_SESSIONS:-10}
-      - IDENTITY_API_ENABLED=${IDENTITY_API_ENABLED:-false}
-      - IDENTITY_MIGRATION_FINGERPRINT=${IDENTITY_MIGRATION_FINGERPRINT:-}
+      - IDENTITY_API_ENABLED=${IDENTITY_API_ENABLED:-true}
       - IDENTITY_LEGACY_TOKEN_GRACE_UNTIL=${IDENTITY_LEGACY_TOKEN_GRACE_UNTIL:-}
       - IDENTITY_REFRESH_COOKIE_NAME=${IDENTITY_REFRESH_COOKIE_NAME:-gb_refresh}
+      - IDENTITY_PASSWORD_AUTH_ENABLED=${IDENTITY_PASSWORD_AUTH_ENABLED:-true}
+      - IDENTITY_PASSWORD_MAX_ATTEMPTS=${IDENTITY_PASSWORD_MAX_ATTEMPTS:-5}
+      - IDENTITY_PASSWORD_LOCKOUT_MINUTES=${IDENTITY_PASSWORD_LOCKOUT_MINUTES:-15}
+      - IDENTITY_PHONE_AUTH_ENABLED=${IDENTITY_PHONE_AUTH_ENABLED:-false}
+      - IDENTITY_TELEGRAM_AUTH_ENABLED=${IDENTITY_TELEGRAM_AUTH_ENABLED:-false}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_AUTH_MAX_AGE_SECONDS=${TELEGRAM_AUTH_MAX_AGE_SECONDS:-86400}
+      - TELEGRAM_API_URL=${TELEGRAM_API_URL:-https://api.telegram.org}
       - NOTIFICATION_ENCRYPTION_KEY=${NOTIFICATION_ENCRYPTION_KEY:-}
       - NOTIFICATION_PREVIOUS_ENCRYPTION_KEYS=${NOTIFICATION_PREVIOUS_ENCRYPTION_KEYS:-}
       - NOTIFICATION_ENCRYPTION_KEY_VERSION=${NOTIFICATION_ENCRYPTION_KEY_VERSION:-1}
@@ -69,6 +72,8 @@ services:
       - NOTIFICATION_RETRY_CAP_SECONDS=${NOTIFICATION_RETRY_CAP_SECONDS:-3600}
       - NOTIFICATION_PROCESSING_TIMEOUT_SECONDS=${NOTIFICATION_PROCESSING_TIMEOUT_SECONDS:-300}
       - NOTIFICATION_POLL_SECONDS=${NOTIFICATION_POLL_SECONDS:-5}
+      - NOTIFICATION_TELEGRAM_ENABLED=${NOTIFICATION_TELEGRAM_ENABLED:-false}
+      - NOTIFICATION_PHONE_ENABLED=${NOTIFICATION_PHONE_ENABLED:-false}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
       - CDEK_API_URL=${CDEK_API_URL:-https://api.cdek.ru/v2}
       - CDEK_CLIENT_ID=${CDEK_CLIENT_ID}
@@ -115,8 +120,6 @@ services:
       - PAYMENT_EVENT_RETRY_CAP_SECONDS=${PAYMENT_EVENT_RETRY_CAP_SECONDS:-1800}
       - PAYMENT_EVENT_PROCESSING_TIMEOUT_SECONDS=${PAYMENT_EVENT_PROCESSING_TIMEOUT_SECONDS:-300}
       - PAYMENT_EVENT_POLL_SECONDS=${PAYMENT_EVENT_POLL_SECONDS:-5}
-      - FULFILLMENT_OUTBOX_ENABLED=${FULFILLMENT_OUTBOX_ENABLED:-false}
-      - FULFILLMENT_MAX_ATTEMPTS=${FULFILLMENT_MAX_ATTEMPTS:-5}
       - PAYMENT_RECONCILIATION_ENABLED=${PAYMENT_RECONCILIATION_ENABLED:-false}
       - PAYMENT_RECONCILIATION_MAX_ATTEMPTS=${PAYMENT_RECONCILIATION_MAX_ATTEMPTS:-288}
       - PAYMENT_RECONCILIATION_INTERVAL_SECONDS=${PAYMENT_RECONCILIATION_INTERVAL_SECONDS:-300}
@@ -124,8 +127,6 @@ services:
       - PAYMENT_RECONCILIATION_RETRY_CAP_SECONDS=${PAYMENT_RECONCILIATION_RETRY_CAP_SECONDS:-1800}
       - PAYMENT_RECONCILIATION_PROCESSING_TIMEOUT_SECONDS=${PAYMENT_RECONCILIATION_PROCESSING_TIMEOUT_SECONDS:-300}
       - PAYMENT_RECONCILIATION_POLL_SECONDS=${PAYMENT_RECONCILIATION_POLL_SECONDS:-5}
-      - FULFILLMENT_OUTBOX_ENABLED=${FULFILLMENT_OUTBOX_ENABLED:-false}
-      - FULFILLMENT_MAX_ATTEMPTS=${FULFILLMENT_MAX_ATTEMPTS:-5}
       - SMTP_SERVER=${SMTP_SERVER:-mail.hosting.reg.ru}
       - SMTP_PORT=${SMTP_PORT:-465}
       - SMTP_USER=${SMTP_USER:-noreply@garment-buro.ru}
@@ -133,8 +134,6 @@ services:
       - SMTP_USE_SSL=${SMTP_USE_SSL:-true}
     volumes:
       - ./backend:/app
-      - backend_data:/app/legacy
-      - ./backend/uploads:/app/uploads
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -173,6 +172,40 @@ services:
         condition: service_healthy
     restart: "no"
 
+  project-media-worker:
+    profiles: ["project-media"]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: ["python", "-m", "scripts.reconcile_project_media"]
+    environment:
+      - APP_ENV=${APP_ENV:-local}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - DATABASE_ENABLED=true
+      - DATABASE_URL=postgresql+asyncpg://garment:${POSTGRES_PASSWORD:-garment-local}@postgres:5432/garment_buro
+      - MINIO_ENABLED=true
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-garment-local}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-garment-local-secret}
+      - MINIO_SECURE=false
+      - MINIO_BUCKET_PREFIX=${MINIO_BUCKET_PREFIX:-garment-buro}
+      - MINIO_CONNECT_TIMEOUT_SECONDS=${MINIO_CONNECT_TIMEOUT_SECONDS:-3}
+      - MINIO_READ_TIMEOUT_SECONDS=${MINIO_READ_TIMEOUT_SECONDS:-15}
+      - IDENTITY_API_ENABLED=${IDENTITY_API_ENABLED:-true}
+      - JWT_SECRET=${JWT_SECRET}
+      - IDENTITY_OTP_PEPPER=${IDENTITY_OTP_PEPPER:-}
+      - NOTIFICATION_ENCRYPTION_KEY=${NOTIFICATION_ENCRYPTION_KEY:-}
+    volumes:
+      - ./backend:/app
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
   notification-worker:
     profiles: ["notifications"]
     build:
@@ -191,6 +224,10 @@ services:
       - NOTIFICATION_RETRY_CAP_SECONDS=${NOTIFICATION_RETRY_CAP_SECONDS:-3600}
       - NOTIFICATION_PROCESSING_TIMEOUT_SECONDS=${NOTIFICATION_PROCESSING_TIMEOUT_SECONDS:-300}
       - NOTIFICATION_POLL_SECONDS=${NOTIFICATION_POLL_SECONDS:-5}
+      - NOTIFICATION_TELEGRAM_ENABLED=${NOTIFICATION_TELEGRAM_ENABLED:-false}
+      - NOTIFICATION_PHONE_ENABLED=${NOTIFICATION_PHONE_ENABLED:-false}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_API_URL=${TELEGRAM_API_URL:-https://api.telegram.org}
       - SMTP_SERVER=${SMTP_SERVER:-mail.hosting.reg.ru}
       - SMTP_PORT=${SMTP_PORT:-465}
       - SMTP_USER=${SMTP_USER:-noreply@garment-buro.ru}
@@ -339,9 +376,10 @@ services:
     restart: unless-stopped
 
   minio:
-    # Local development only. Production storage requires an explicit supported
-    # MinIO/S3 deployment decision; the upstream community server image is archived.
-    image: minio/minio:RELEASE.2025-07-23T15-54-02Z
+    image: ${MINIO_IMAGE:-garment-buro-minio:2025-10-15-garment1}
+    build:
+      context: ./deploy/minio
+    pull_policy: never
     command: ["server", "/data", "--console-address", ":9001"]
     ports:
       - "9000:9000"
@@ -350,7 +388,7 @@ services:
       - MINIO_ROOT_USER=${MINIO_ACCESS_KEY:-garment-local}
       - MINIO_ROOT_PASSWORD=${MINIO_SECRET_KEY:-garment-local-secret}
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live || exit 1"]
+      test: ["CMD", "/usr/local/bin/minio-healthcheck"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -359,20 +397,18 @@ services:
     restart: unless-stopped
 
   minio-init:
-    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - >-
-        mc alias set local http://minio:9000 "$${MINIO_ACCESS_KEY}" "$${MINIO_SECRET_KEY}" &&
-        mc mb --ignore-existing "local/$${MINIO_MEDIA_BUCKET}" &&
-        mc anonymous set download "local/$${MINIO_MEDIA_BUCKET}" &&
-        mc mb --ignore-existing "local/$${MINIO_CRM_BUCKET}" &&
-        mc anonymous set none "local/$${MINIO_CRM_BUCKET}"
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: ["python", "-m", "scripts.bootstrap_storage"]
     environment:
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_SECURE=false
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-garment-local}
       - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-garment-local-secret}
       - MINIO_MEDIA_BUCKET=${MINIO_BUCKET_PREFIX:-garment-buro}-${APP_ENV:-local}-media
       - MINIO_CRM_BUCKET=${MINIO_BUCKET_PREFIX:-garment-buro}-${APP_ENV:-local}-crm-private
+      - MINIO_PROJECTS_BUCKET=${MINIO_BUCKET_PREFIX:-garment-buro}-${APP_ENV:-local}-projects
     depends_on:
       minio:
         condition: service_healthy
@@ -383,16 +419,15 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_IDENTITY_SESSION_V2_ENABLED: ${NEXT_PUBLIC_IDENTITY_SESSION_V2_ENABLED:-false}
-        NEXT_PUBLIC_CATALOG_WRITES_ENABLED: ${NEXT_PUBLIC_CATALOG_WRITES_ENABLED:-false}
+        NEXT_PUBLIC_IDENTITY_SESSION_V2_ENABLED: ${NEXT_PUBLIC_IDENTITY_SESSION_V2_ENABLED:-true}
+        NEXT_PUBLIC_CATALOG_WRITES_ENABLED: ${NEXT_PUBLIC_CATALOG_WRITES_ENABLED:-true}
         NEXT_PUBLIC_CRM_CABINET_ENABLED: ${NEXT_PUBLIC_CRM_CABINET_ENABLED:-false}
         NEXT_PUBLIC_YANDEX_MAPS_API_KEY: ${NEXT_PUBLIC_YANDEX_MAPS_API_KEY:-}
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_USE_MOCK_DATA=false
-      - NEXT_PUBLIC_IDENTITY_SESSION_V2_ENABLED=${NEXT_PUBLIC_IDENTITY_SESSION_V2_ENABLED:-false}
-      - NEXT_PUBLIC_CATALOG_WRITES_ENABLED=${NEXT_PUBLIC_CATALOG_WRITES_ENABLED:-false}
+      - NEXT_PUBLIC_IDENTITY_SESSION_V2_ENABLED=${NEXT_PUBLIC_IDENTITY_SESSION_V2_ENABLED:-true}
+      - NEXT_PUBLIC_CATALOG_WRITES_ENABLED=${NEXT_PUBLIC_CATALOG_WRITES_ENABLED:-true}
       - NEXT_PUBLIC_CRM_CABINET_ENABLED=${NEXT_PUBLIC_CRM_CABINET_ENABLED:-false}
       - NEXT_PUBLIC_YANDEX_MAPS_API_KEY=${NEXT_PUBLIC_YANDEX_MAPS_API_KEY:-}
       - INTERNAL_API_URL=http://backend:8000
@@ -427,8 +462,6 @@ services:
     restart: unless-stopped
 
 volumes:
-  backend_data:
-  backend_uploads:
   redis_data:
   postgres_data:
   minio_data:

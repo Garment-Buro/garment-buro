@@ -3,6 +3,7 @@ import test from 'node:test';
 import ts from 'typescript';
 import vm from 'node:vm';
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 
 const source = fs.readFileSync(new URL('./orderDetails.ts', import.meta.url), 'utf8');
 const compiled = ts.transpile(source, {
@@ -10,7 +11,7 @@ const compiled = ts.transpile(source, {
     target: ts.ScriptTarget.ES2022,
 });
 const runtimeModule = { exports: {} };
-vm.runInNewContext(compiled, { module: runtimeModule, exports: runtimeModule.exports });
+vm.runInNewContext(compiled, { module: runtimeModule, exports: runtimeModule.exports, require: createRequire(import.meta.url) });
 
 const { buildOrderDetailRows, getOrderFitSummary, parseOrderItems } = runtimeModule.exports;
 

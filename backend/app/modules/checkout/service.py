@@ -6,6 +6,7 @@ from typing import Protocol
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
+from app.modules.checkout.delivery import CheckoutDeliveryService
 from app.modules.checkout.schemas import CheckoutResult
 from app.modules.checkout.security import derive_checkout_payment_attempt_key
 from app.modules.delivery.constants import CDEK_DELIVERY_METHODS
@@ -88,6 +89,7 @@ class CheckoutService:
         self.payment_service = payment_service or PaymentService(settings)
         self.payment_creation_service = payment_creation_service
         self.partner_program_service = partner_program_service or PartnerProgramService(settings)
+        self.delivery_service = CheckoutDeliveryService(settings)
 
     async def checkout(
         self,
@@ -106,6 +108,8 @@ class CheckoutService:
         self._validate_actor(user_id=user_id, guest_access_token=guest_access_token)
         if command.payment_method not in SUPPORTED_CHECKOUT_PAYMENT_METHODS:
             raise CheckoutPaymentMethodError("Checkout payment method is not supported")
+        if command.delivery_method not in CDEK_DELIVERY_METHODS:
+            raise CheckoutDeliveryMethodError("Checkout requires CDEK pickup or courier delivery")
         if self.settings.order_moderation_enabled:
             if command.delivery_method not in CDEK_DELIVERY_METHODS:
                 raise CheckoutDeliveryMethodError(
@@ -125,6 +129,7 @@ class CheckoutService:
                 command=command,
                 user_id=user_id,
                 guest_access_token=guest_access_token,
+                delivery_verifier=self.delivery_service,
                 now=now,
             )
             stored_order = await self.order_creation_service.repository.get_order(

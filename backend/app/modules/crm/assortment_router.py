@@ -8,6 +8,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_database_session
+from app.modules.catalog.admin_api import get_catalog_admin_service, read_catalog_admin_page
+from app.modules.catalog.admin_schemas import (
+    CatalogAdminCounts,
+    CatalogAdminPage,
+    CatalogAdminQuery,
+)
+from app.modules.catalog.admin_service import CatalogAdminReadService
 from app.modules.crm.assortment_schemas import (
     CrmAccessoryCategoryRead,
     CrmAccessoryCategoryUpdate,
@@ -15,7 +22,6 @@ from app.modules.crm.assortment_schemas import (
     CrmAccessoryRead,
     CrmAccessoryUpdate,
     CrmAccessoryWrite,
-    CrmCatalogProductReferenceRead,
     CrmGarmentAccessoryRequirementRead,
     CrmGarmentAccessoryRequirementUpdate,
     CrmGarmentAccessoryRequirementWrite,
@@ -39,6 +45,24 @@ from app.modules.crm.assortment_service import (
     CrmAssortmentVersionConflictError,
 )
 from app.modules.crm.dependencies import require_crm_reader
+from app.modules.crm.directory_api import read_reference_page
+from app.modules.crm.directory_schemas import FabricRequirementPage, RequirementDirectoryQuery
+from app.modules.crm.directory_service import ReferenceDirectoryService
+from app.modules.crm.pattern_directory_schemas import PatternFilePage, PatternFileQuery
+from app.modules.crm.pattern_directory_service import PatternDirectoryService
+from app.modules.crm.stock_directory_schemas import (
+    AccessoryCategoryPage,
+    AccessoryCategoryQuery,
+    AccessoryDirectoryPage,
+    AccessoryDirectoryQuery,
+    AccessoryRequirementPage,
+    AccessoryRequirementQuery,
+    BoxDirectoryPage,
+    BoxDirectoryQuery,
+    PackagingRulePage,
+    PackagingRuleQuery,
+)
+from app.modules.crm.stock_directory_service import StockDirectoryService
 from app.modules.identity.models import User
 
 router = APIRouter(prefix="/api/crm/assortment", tags=["crm-assortment"])
@@ -54,23 +78,25 @@ def _no_store(response: Response) -> None:
     response.headers["Cache-Control"] = "no-store"
 
 
-@router.get("/products", response_model=list[CrmCatalogProductReferenceRead])
+@router.get("/products", response_model=CatalogAdminPage)
 async def list_assortment_products(
     response: Response,
     _actor: Annotated[User, Depends(require_crm_reader)],
     session: Annotated[AsyncSession, Depends(get_database_session)],
-    service: Annotated[CrmAssortmentService, Depends(get_assortment_service)],
-    garment_model_id: Annotated[int | None, Query(ge=1)] = None,
-    category_id: Annotated[int | None, Query(ge=1)] = None,
-    active: bool | None = None,
-) -> list[CrmCatalogProductReferenceRead]:
+    service: Annotated[CatalogAdminReadService, Depends(get_catalog_admin_service)],
+    query: Annotated[CatalogAdminQuery, Query()],
+) -> CatalogAdminPage:
+    return await read_catalog_admin_page(response, session, service, query)
+
+
+@router.get("/product-counts", response_model=CatalogAdminCounts)
+async def assortment_product_counts(
+    response: Response,
+    _actor: Annotated[User, Depends(require_crm_reader)],
+    session: Annotated[AsyncSession, Depends(get_database_session)],
+) -> CatalogAdminCounts:
     _no_store(response)
-    return await service.list_products(
-        session,
-        model_id=garment_model_id,
-        category_id=category_id,
-        active=active,
-    )
+    return await CatalogAdminReadService.counts(session)
 
 
 async def _write(session: AsyncSession, operation: Awaitable[T]) -> T:
@@ -92,19 +118,15 @@ async def _write(session: AsyncSession, operation: Awaitable[T]) -> T:
         raise HTTPException(status_code=409, detail="Assortment write conflict") from error
 
 
-@router.get("/patterns", response_model=list[CrmGarmentPatternRead])
+@router.get("/patterns", response_model=PatternFilePage)
 async def list_patterns(
     response: Response,
     _actor: Annotated[User, Depends(require_crm_reader)],
     session: Annotated[AsyncSession, Depends(get_database_session)],
-    service: Annotated[CrmAssortmentService, Depends(get_assortment_service)],
-    garment_model_id: Annotated[int | None, Query(ge=1)] = None,
-    active: bool | None = None,
-    query: Annotated[str | None, Query(min_length=1, max_length=100)] = None,
-) -> list[CrmGarmentPatternRead]:
-    _no_store(response)
-    return await service.list_patterns(
-        session, model_id=garment_model_id, active=active, query=query
+    query: Annotated[PatternFileQuery, Query()],
+) -> PatternFilePage:
+    return await read_reference_page(
+        response, PatternDirectoryService().page(session, "patterns", query)
     )
 
 
@@ -137,19 +159,16 @@ async def update_pattern(
     )
 
 
-@router.get(
-    "/fabric-requirements",
-    response_model=list[CrmGarmentFabricRequirementRead],
-)
+@router.get("/fabric-requirements", response_model=FabricRequirementPage)
 async def list_fabric_requirements(
     response: Response,
     _actor: Annotated[User, Depends(require_crm_reader)],
     session: Annotated[AsyncSession, Depends(get_database_session)],
-    service: Annotated[CrmAssortmentService, Depends(get_assortment_service)],
-    garment_model_id: Annotated[int | None, Query(ge=1)] = None,
-) -> list[CrmGarmentFabricRequirementRead]:
-    _no_store(response)
-    return await service.list_fabric_requirements(session, model_id=garment_model_id)
+    query: Annotated[RequirementDirectoryQuery, Query()],
+) -> FabricRequirementPage:
+    return await read_reference_page(
+        response, ReferenceDirectoryService().fabric_requirements(session, query)
+    )
 
 
 @write_router.post(
@@ -188,16 +207,16 @@ async def update_fabric_requirement(
     )
 
 
-@router.get("/accessory-categories", response_model=list[CrmAccessoryCategoryRead])
+@router.get("/accessory-categories", response_model=AccessoryCategoryPage)
 async def list_accessory_categories(
     response: Response,
     _actor: Annotated[User, Depends(require_crm_reader)],
     session: Annotated[AsyncSession, Depends(get_database_session)],
-    service: Annotated[CrmAssortmentService, Depends(get_assortment_service)],
-    active: bool | None = None,
-) -> list[CrmAccessoryCategoryRead]:
-    _no_store(response)
-    return await service.list_categories(session, active=active)
+    query: Annotated[AccessoryCategoryQuery, Query()],
+) -> AccessoryCategoryPage:
+    return await read_reference_page(
+        response, StockDirectoryService().page(session, "accessory-categories", query)
+    )
 
 
 @write_router.post(
@@ -236,22 +255,15 @@ async def update_accessory_category(
     )
 
 
-@router.get("/accessories", response_model=list[CrmAccessoryRead])
+@router.get("/accessories", response_model=AccessoryDirectoryPage)
 async def list_accessories(
     response: Response,
     _actor: Annotated[User, Depends(require_crm_reader)],
     session: Annotated[AsyncSession, Depends(get_database_session)],
-    service: Annotated[CrmAssortmentService, Depends(get_assortment_service)],
-    category_id: Annotated[int | None, Query(ge=1)] = None,
-    garment_model_id: Annotated[int | None, Query(ge=1)] = None,
-    active: bool | None = None,
-) -> list[CrmAccessoryRead]:
-    _no_store(response)
-    return await service.list_accessories(
-        session,
-        category_id=category_id,
-        model_id=garment_model_id,
-        active=active,
+    query: Annotated[AccessoryDirectoryQuery, Query()],
+) -> AccessoryDirectoryPage:
+    return await read_reference_page(
+        response, StockDirectoryService().page(session, "accessories", query)
     )
 
 
@@ -284,19 +296,16 @@ async def update_accessory(
     )
 
 
-@router.get(
-    "/accessory-requirements",
-    response_model=list[CrmGarmentAccessoryRequirementRead],
-)
+@router.get("/accessory-requirements", response_model=AccessoryRequirementPage)
 async def list_accessory_requirements(
     response: Response,
     _actor: Annotated[User, Depends(require_crm_reader)],
     session: Annotated[AsyncSession, Depends(get_database_session)],
-    service: Annotated[CrmAssortmentService, Depends(get_assortment_service)],
-    garment_model_id: Annotated[int | None, Query(ge=1)] = None,
-) -> list[CrmGarmentAccessoryRequirementRead]:
-    _no_store(response)
-    return await service.list_accessory_requirements(session, model_id=garment_model_id)
+    query: Annotated[AccessoryRequirementQuery, Query()],
+) -> AccessoryRequirementPage:
+    return await read_reference_page(
+        response, StockDirectoryService().page(session, "accessory-requirements", query)
+    )
 
 
 @write_router.post(
@@ -335,16 +344,16 @@ async def update_accessory_requirement(
     )
 
 
-@router.get("/boxes", response_model=list[CrmPackagingBoxRead])
+@router.get("/boxes", response_model=BoxDirectoryPage)
 async def list_boxes(
     response: Response,
     _actor: Annotated[User, Depends(require_crm_reader)],
     session: Annotated[AsyncSession, Depends(get_database_session)],
-    service: Annotated[CrmAssortmentService, Depends(get_assortment_service)],
-    active: bool | None = None,
-) -> list[CrmPackagingBoxRead]:
-    _no_store(response)
-    return await service.list_boxes(session, active=active)
+    query: Annotated[BoxDirectoryQuery, Query()],
+) -> BoxDirectoryPage:
+    return await read_reference_page(
+        response, StockDirectoryService().page(session, "boxes", query)
+    )
 
 
 @write_router.post("/boxes", response_model=CrmPackagingBoxRead, status_code=201)
@@ -376,16 +385,16 @@ async def update_box(
     )
 
 
-@router.get("/packaging-rules", response_model=list[CrmGarmentPackagingRuleRead])
+@router.get("/packaging-rules", response_model=PackagingRulePage)
 async def list_packaging_rules(
     response: Response,
     _actor: Annotated[User, Depends(require_crm_reader)],
     session: Annotated[AsyncSession, Depends(get_database_session)],
-    service: Annotated[CrmAssortmentService, Depends(get_assortment_service)],
-    garment_model_id: Annotated[int | None, Query(ge=1)] = None,
-) -> list[CrmGarmentPackagingRuleRead]:
-    _no_store(response)
-    return await service.list_packaging_rules(session, model_id=garment_model_id)
+    query: Annotated[PackagingRuleQuery, Query()],
+) -> PackagingRulePage:
+    return await read_reference_page(
+        response, StockDirectoryService().page(session, "packaging-rules", query)
+    )
 
 
 @write_router.post(

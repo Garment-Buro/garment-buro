@@ -37,6 +37,7 @@ from app.modules.payments.provider import YooKassaProviderError
 from app.modules.payments.schemas import ProviderPaymentSnapshot
 from app.modules.payments.security import PAYMENT_ATTEMPT_KEY_PATTERN
 from app.modules.payments.service import PaymentService
+from tests.checkout_quotes import quote_checkout_command, seed_checkout_point
 
 PROVIDER_KEY = "00000000-0000-4000-8000-000000000001"
 PROVIDER_PAYMENT_ID = "2c111111-000f-5000-a000-111111111111"
@@ -59,14 +60,11 @@ def _settings(
         minio_secret_key="test-secret",
         minio_public_base_url="https://cdn.example.test",
         catalog_reads_enabled=True,
-        catalog_migration_fingerprint="a" * 64,
         identity_api_enabled=True,
-        identity_migration_fingerprint="b" * 64,
         jwt_secret="j" * 32,
         identity_otp_pepper="p" * 32,
         notification_encryption_key="bm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm4=",
         order_reads_enabled=True,
-        order_migration_fingerprint="c" * 64,
         yookassa_shop_id="shop-id",
         yookassa_api_key="payment-secret",
         payment_creation_enabled=True,
@@ -166,6 +164,7 @@ async def _seed_catalog(database: DatabaseManager) -> int:
             )
         )
         session.add(product)
+        await seed_checkout_point(session)
         await session.commit()
         return product.id
 
@@ -241,6 +240,10 @@ def test_guest_checkout_commits_each_phase_and_replays_without_duplicates(
         await database.startup()
         try:
             product_id = await _seed_catalog(database)
+            async with database.session() as quote_session:
+                command = await quote_checkout_command(
+                    database.settings, quote_session, _command(product_id)
+                )
             guest_token = generate_order_guest_access_token()
             provider = ObservingProvider(database, [])
             service = _checkout_service(database.settings, provider)
@@ -249,7 +252,7 @@ def test_guest_checkout_commits_each_phase_and_replays_without_duplicates(
                 order = await service.order_creation_service.create(
                     session,
                     idempotency_key="target_checkout_attempt_0001",
-                    command=_command(product_id),
+                    command=command,
                     guest_access_token=guest_token,
                 )
                 await session.commit()
@@ -259,7 +262,7 @@ def test_guest_checkout_commits_each_phase_and_replays_without_duplicates(
                 created = await service.checkout(
                     session,
                     idempotency_key="target_checkout_attempt_0001",
-                    command=_command(product_id),
+                    command=command,
                     guest_access_token=guest_token,
                 )
             assert created.order_id == order.order_id
@@ -273,7 +276,7 @@ def test_guest_checkout_commits_each_phase_and_replays_without_duplicates(
                 replayed = await service.checkout(
                     session,
                     idempotency_key="target_checkout_attempt_0001",
-                    command=_command(product_id),
+                    command=command,
                     guest_access_token=guest_token,
                 )
             assert replayed.order_replayed and replayed.payment_replayed
@@ -337,6 +340,10 @@ def test_unknown_provider_outcome_replays_exact_checkout_without_new_order(
         await database.startup()
         try:
             product_id = await _seed_catalog(database)
+            async with database.session() as quote_session:
+                command = await quote_checkout_command(
+                    database.settings, quote_session, _command(product_id)
+                )
             guest_token = generate_order_guest_access_token()
             provider = ObservingProvider(
                 database,
@@ -355,7 +362,7 @@ def test_unknown_provider_outcome_replays_exact_checkout_without_new_order(
                     await service.checkout(
                         session,
                         idempotency_key="target_checkout_attempt_0002",
-                        command=_command(product_id),
+                        command=command,
                         guest_access_token=guest_token,
                     )
             assert failed.value.code == "timeout"
@@ -367,7 +374,7 @@ def test_unknown_provider_outcome_replays_exact_checkout_without_new_order(
                 recovered = await service.checkout(
                     session,
                     idempotency_key="target_checkout_attempt_0002",
-                    command=_command(product_id),
+                    command=command,
                     guest_access_token=guest_token,
                 )
             assert recovered.order_replayed and recovered.payment_replayed
@@ -395,6 +402,10 @@ def test_payment_preparation_failure_rolls_back_order_reservation_and_guest_acce
         await database.startup()
         try:
             product_id = await _seed_catalog(database)
+            async with database.session() as quote_session:
+                command = await quote_checkout_command(
+                    database.settings, quote_session, _command(product_id)
+                )
             provider = ObservingProvider(database, [])
             real_payment_service = PaymentService(
                 database.settings,
@@ -416,7 +427,7 @@ def test_payment_preparation_failure_rolls_back_order_reservation_and_guest_acce
                     await service.checkout(
                         session,
                         idempotency_key="target_checkout_attempt_atomic",
-                        command=_command(product_id),
+                        command=command,
                         guest_access_token=generate_order_guest_access_token(),
                     )
 
@@ -449,6 +460,10 @@ def test_authenticated_checkout_owns_order_without_guest_capability(tmp_path: Pa
         await database.startup()
         try:
             product_id = await _seed_catalog(database)
+            async with database.session() as quote_session:
+                command = await quote_checkout_command(
+                    database.settings, quote_session, _command(product_id)
+                )
             async with database.session() as session:
                 user = User(
                     email="owner@example.test",
@@ -462,7 +477,6 @@ def test_authenticated_checkout_owns_order_without_guest_capability(tmp_path: Pa
             provider = ObservingProvider(database, [])
             service = _checkout_service(database.settings, provider)
 
-            command = _command(product_id)
             provider.outcomes.append(_snapshot(1, status="succeeded"))
             async with database.session() as session:
                 result = await service.checkout(
@@ -505,6 +519,10 @@ def test_succeeded_checkout_atomically_schedules_pii_free_fulfillment_jobs(
         await database.startup()
         try:
             product_id = await _seed_catalog(database)
+            async with database.session() as quote_session:
+                command = await quote_checkout_command(
+                    database.settings, quote_session, _command(product_id)
+                )
             provider = ObservingProvider(database, [_snapshot(1, status="succeeded")])
             service = _checkout_service(database.settings, provider)
             guest_token = generate_order_guest_access_token()
@@ -513,7 +531,7 @@ def test_succeeded_checkout_atomically_schedules_pii_free_fulfillment_jobs(
                 result = await service.checkout(
                     session,
                     idempotency_key="target_checkout_fulfillment_0001",
-                    command=_command(product_id),
+                    command=command,
                     guest_access_token=guest_token,
                 )
             assert result.order_status == "processing"
@@ -547,7 +565,7 @@ def test_succeeded_checkout_atomically_schedules_pii_free_fulfillment_jobs(
                 replay = await service.checkout(
                     session,
                     idempotency_key="target_checkout_fulfillment_0001",
-                    command=_command(product_id),
+                    command=command,
                     guest_access_token=guest_token,
                 )
             assert replay.payment_replayed
@@ -569,9 +587,12 @@ def test_checkout_guards_actor_method_and_default_off_before_writes(tmp_path: Pa
         await enabled_database.startup()
         try:
             product_id = await _seed_catalog(enabled_database)
+            async with enabled_database.session() as quote_session:
+                command = await quote_checkout_command(
+                    enabled_database.settings, quote_session, _command(product_id)
+                )
             provider = ObservingProvider(enabled_database, [])
             service = _checkout_service(enabled_database.settings, provider)
-            command = _command(product_id)
 
             with pytest.raises(CheckoutActorError, match="Guest"):
                 async with enabled_database.session() as session:
@@ -594,7 +615,7 @@ def test_checkout_guards_actor_method_and_default_off_before_writes(tmp_path: Pa
                     await service.checkout(
                         session,
                         idempotency_key="target_checkout_attempt_0006",
-                        command=_command(product_id, payment_method="cash"),
+                        command=command.model_copy(update={"payment_method": "cash"}),
                         guest_access_token=generate_order_guest_access_token(),
                     )
             assert provider.calls == []
@@ -616,7 +637,7 @@ def test_checkout_guards_actor_method_and_default_off_before_writes(tmp_path: Pa
                     await service.checkout(
                         session,
                         idempotency_key="target_checkout_attempt_0007",
-                        command=_command(product_id),
+                        command=command,
                         guest_access_token=generate_order_guest_access_token(),
                     )
             assert provider.calls == []
@@ -632,6 +653,10 @@ def test_qr_checkout_maps_to_sbp_provider_request(tmp_path: Path) -> None:
         await database.startup()
         try:
             product_id = await _seed_catalog(database)
+            async with database.session() as quote_session:
+                command = await quote_checkout_command(
+                    database.settings, quote_session, _command(product_id)
+                )
             provider = ObservingProvider(database, [])
             service = _checkout_service(database.settings, provider)
             provider.outcomes.append(_snapshot(1, payment_method="sbp"))
@@ -640,7 +665,7 @@ def test_qr_checkout_maps_to_sbp_provider_request(tmp_path: Path) -> None:
                 result = await service.checkout(
                     session,
                     idempotency_key="target_checkout_attempt_0010",
-                    command=_command(product_id, payment_method="qr"),
+                    command=command.model_copy(update={"payment_method": "qr"}),
                     guest_access_token=generate_order_guest_access_token(),
                 )
             assert result.payment_attempt_status == "pending"
@@ -661,6 +686,10 @@ def test_known_provider_rejection_keeps_one_failed_attempt_for_operator_action(
         await database.startup()
         try:
             product_id = await _seed_catalog(database)
+            async with database.session() as quote_session:
+                command = await quote_checkout_command(
+                    database.settings, quote_session, _command(product_id)
+                )
             provider = ObservingProvider(
                 database,
                 [YooKassaProviderError("request_rejected", retryable=False)],
@@ -674,7 +703,7 @@ def test_known_provider_rejection_keeps_one_failed_attempt_for_operator_action(
                         await service.checkout(
                             session,
                             idempotency_key="target_checkout_attempt_0011",
-                            command=_command(product_id),
+                            command=command,
                             guest_access_token=guest_token,
                         )
                 assert rejected.value.code == "request_rejected"

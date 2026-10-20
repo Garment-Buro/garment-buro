@@ -7,56 +7,64 @@ import { Navigation } from "swiper/modules";
 import { Swiper, SwiperSlide } from "swiper/react";
 
 import { FitSlider } from "@/components/constructor/FitSlider";
-import { CONSTRUCTOR_OVERLAY_VIEWPORT_STYLE, SIZE_MODAL_MODEL_HEIGHT_CM } from "@/lib/constructor/constants";
+import { CONSTRUCTOR_OVERLAY_VIEWPORT_STYLE } from "@/lib/constructor/constants";
 import type { GarmentFit, SleeveMode } from "@/lib/constructor/types";
 import {
     createDefaultFit,
     getFitRangeForSize,
     getProductDimensions,
     getProductSizeOptions,
+    getProductImageList,
     versionConstructorMedia,
 } from "@/lib/constructor/utils/constructor";
-import type { ProductData } from "@/lib/products/types";
+import type { ConstructorProduct } from "@/lib/constructor/product";
+import { constructorColorOptions, constructorSelectionStock, constructorVariantImages, selectConstructorSize } from '@/lib/constructor/selection';
 import "swiper/css";
 import "swiper/css/navigation";
 
 type SizeFitModalProps = {
-    product: ProductData | null;
+    product: ConstructorProduct | null;
     selectedSize: string;
+    selectedColor: string | null;
     selectedFit: GarmentFit | null;
     productImageSrc: string | null;
-    onSave: (fit: GarmentFit) => void;
+    onSave: (fit: GarmentFit, color: string | null) => void;
     onClose: () => void;
 };
 
 export function SizeFitModal({
     product,
     selectedSize,
+    selectedColor,
     selectedFit,
     productImageSrc,
     onSave,
     onClose,
 }: SizeFitModalProps) {
     const sizeOptions = getProductSizeOptions(product);
-    const initialSize = selectedFit?.selectedSize || selectedSize || sizeOptions[0]?.size || "M";
+    const initialSize = selectedFit?.selectedSize ?? selectedSize;
+    const [draftColor, setDraftColor] = useState(selectedColor);
     const [draftFit, setDraftFit] = useState<GarmentFit>(() => (
         selectedFit?.selectedSize === initialSize
             ? selectedFit
-            : createDefaultFit(initialSize, getProductDimensions(product, initialSize))
+            : createDefaultFit(initialSize, getProductDimensions(product, initialSize, selectedColor))
     ));
-    const imageSrc = productImageSrc
-        || versionConstructorMedia(product?.mobile_card_image || product?.image_left)
+    const colors = constructorColorOptions(product, draftFit.selectedSize);
+    const selectionAvailable = constructorSelectionStock(product, { size: draftFit.selectedSize, color: draftColor }) > 0;
+    const imageSrc = versionConstructorMedia(constructorVariantImages(product, { size: draftFit.selectedSize, color: draftColor })[0]) || productImageSrc
+        || versionConstructorMedia(getProductImageList(product)[0])
         || "/mock/hoodie.webp";
-    const standardFit = createDefaultFit(draftFit.selectedSize, getProductDimensions(product, draftFit.selectedSize));
-    const standardSleeveLength = getFitRangeForSize(draftFit.selectedSize).length.defaultValue;
+    const standardDimensions = getProductDimensions(product, draftFit.selectedSize, draftColor);
 
     const handleSelectSize = (size: string) => {
-        const nextFit = createDefaultFit(size, getProductDimensions(product, size));
+        const selection = selectConstructorSize(product, size, draftColor);
+        setDraftColor(selection.color);
+        const nextFit = createDefaultFit(size, getProductDimensions(product, size, selection.color));
         setDraftFit({ ...nextFit, sleeveMode: draftFit.sleeveMode });
     };
 
     const handleReset = () => {
-        setDraftFit(createDefaultFit(draftFit.selectedSize, getProductDimensions(product, draftFit.selectedSize)));
+        setDraftFit(createDefaultFit(draftFit.selectedSize, getProductDimensions(product, draftFit.selectedSize, draftColor)));
     };
 
     return (
@@ -66,7 +74,7 @@ export function SizeFitModal({
             onClick={onClose}
         >
             <div
-                className="constructorSizeModal relative flex w-full flex-col overflow-hidden rounded-[15px] bg-white p-[15px] font-manrope shadow-[0_4px_16.8px_-1px_rgba(0,0,0,0.25)]"
+                className="constructorSizeModal relative flex max-h-[calc(100dvh-10px)] w-full flex-col overflow-y-auto overscroll-contain rounded-[15px] bg-white p-[15px] font-manrope shadow-[0_4px_16.8px_-1px_rgba(0,0,0,0.25)]"
                 onClick={(event) => event.stopPropagation()}
             >
                 <div className="flex items-start justify-between">
@@ -95,8 +103,7 @@ export function SizeFitModal({
                             <span className="sr-only">Фото товара</span>
                             <div className="relative h-full w-full">
                                 <div className="absolute left-0 top-[20px] pl-[10px] text-[8px] font-medium leading-normal text-[#B8B8B8] [leading-trim:both] [text-edge:cap]">
-                                    <p>На Алексее размер {draftFit.selectedSize}</p>
-                                    <p>Рост {SIZE_MODAL_MODEL_HEIGHT_CM}</p>
+                                    <p>Размер {draftFit.selectedSize || 'Единый'}</p>
                                 </div>
                                 <div className="flex h-full w-full justify-center pl-[20px]">
                                     <Image
@@ -110,14 +117,14 @@ export function SizeFitModal({
                                 </div>
                                 <div className="absolute bottom-0 left-0 pl-[10px] text-[8px] font-medium leading-[150%] text-[#B8B8B8] [leading-trim:both] [text-edge:cap]">
                                     <div className="flex flex-col">
-                                        <span>Длина: {standardFit.lengthCm}</span>
-                                        <span>Ширина: {standardFit.widthCm}</span>
+                                        <span>Длина изделия: {standardDimensions.heightCm} см</span>
+                                        <span>Ширина изделия: {standardDimensions.widthCm} см</span>
                                     </div>
                                     <p className="mt-[15px] whitespace-nowrap">
                                         Рукава:<br />
                                         {draftFit.sleeveMode === "standard"
-                                            ? `стандартные ${draftFit.selectedSize}(${standardSleeveLength})`
-                                            : `под рост ${draftFit.lengthCm}`}
+                                            ? `стандартные ${draftFit.selectedSize || 'Единый'}`
+                                            : `под рост ${draftFit.lengthCm} см`}
                                     </p>
                                 </div>
                             </div>
@@ -132,7 +139,7 @@ export function SizeFitModal({
                     </Swiper>
                 </div>
 
-                <div className="mt-[clamp(15px,2.5dvh,25px)] flex items-center justify-center gap-[15px]">
+                <div className="mt-[clamp(15px,2.5dvh,25px)] flex flex-wrap items-center justify-center gap-[15px]" role="group" aria-label="Размер товара">
                     {sizeOptions.map(({ size, stock }) => {
                         const isActive = draftFit.selectedSize === size;
                         return (
@@ -140,18 +147,28 @@ export function SizeFitModal({
                                 key={size}
                                 type="button"
                                 disabled={stock === 0}
+                                aria-pressed={isActive}
                                 onClick={() => stock !== 0 && handleSelectSize(size)}
-                                className={`flex h-[30px] w-[38px] items-center justify-center rounded-[5px] bg-white p-0 text-[18px] font-light leading-normal tracking-[-0.36px] transition [leading-trim:both] [text-edge:cap] ${stock === 0 ? "cursor-not-allowed text-[#B6B6B6]" : "text-black"}`}
+                                className={`flex h-[30px] min-w-[38px] items-center justify-center rounded-[5px] bg-white px-2 text-[18px] font-light leading-normal tracking-[-0.36px] transition [leading-trim:both] [text-edge:cap] ${stock === 0 ? "cursor-not-allowed text-[#B6B6B6]" : "text-black"}`}
                                 style={isActive ? {
                                     boxShadow: "0 2px 4px 0 rgba(0, 0, 0, 0.25) inset",
                                     borderRadius: "4px",
                                 } : {}}
                             >
-                                {isActive ? `${size}*` : size}
+                                {isActive ? `${size || 'Единый'}*` : size || 'Единый'}
                             </button>
                         );
                     })}
                 </div>
+
+                {colors.length > 0 && <label className="mt-3 flex items-center justify-center gap-3 text-sm">
+                    Цвет
+                    <select aria-label="Цвет товара" value={colors.findIndex(option => option.color === draftColor)} onChange={event => setDraftColor(colors[Number(event.target.value)]?.color ?? null)} className="min-w-0 max-w-full rounded border px-2 py-1">
+                        {!colors.some(option => option.color === draftColor) && <option value={-1} disabled>Выберите цвет</option>}
+                        {colors.map((option, index) => <option key={option.color} value={index} disabled={option.stock === 0}>{option.color || 'Без цвета'}{option.stock === 0 ? ' — нет в наличии' : ''}</option>)}
+                    </select>
+                </label>}
+                {!selectionAvailable && <p role="status" className="mt-2 text-center text-sm text-[#686868]">Выберите доступный размер и цвет товара.</p>}
 
                 <div className="mt-[clamp(12px,2dvh,20px)] grid w-full grid-cols-[minmax(70px,85px)_minmax(0,238.017px)] items-center justify-around gap-x-[5px] font-manrope">
                     <span className="min-w-0 text-[10px] font-medium leading-[150%] text-[#686868] [leading-trim:both] [text-edge:cap]">Рукава</span>
@@ -174,15 +191,14 @@ export function SizeFitModal({
                     </div>
                     <p className="col-start-2 mt-[7px] text-[8px] font-medium leading-[150%] text-[#B8B8B8] [leading-trim:both] [text-edge:cap]">
                         {draftFit.sleeveMode === "standard"
-                            ? `Соответствуют размеру ${draftFit.selectedSize} - рост ${standardSleeveLength}`
-                            : "Рукава подстраиваются под выбранную длину изделия"}
+                            ? `Соответствуют размеру ${draftFit.selectedSize || 'Единый'}`
+                            : "Пожелание по рукавам для выбранного роста"}
                     </p>
                 </div>
 
                 <div className="mt-[clamp(20px,3dvh,35px)] flex flex-col gap-[clamp(20px,3dvh,35px)]">
                     <FitSlider
-                        label="Длина"
-                        helper="Соответствует росту:"
+                        label="Рост, см"
                         value={draftFit.lengthCm}
                         range={getFitRangeForSize(draftFit.selectedSize).length}
                         tickStep={4}
@@ -207,7 +223,8 @@ export function SizeFitModal({
                     </button>
                     <button
                         type="button"
-                        onClick={() => onSave(draftFit)}
+                        onClick={() => onSave(draftFit, draftColor)}
+                        disabled={!selectionAvailable}
                         className="flex h-[30px] min-w-0 max-w-[150px] flex-1 items-center justify-center rounded-[5px] bg-white text-center text-[14px] font-semibold leading-[11.582px] text-[#676767] shadow-[0_0.934px_1.681px_0_rgba(0,0,0,0.26)] transition [leading-trim:both] [text-edge:cap] active:scale-95"
                     >
                         СОХРАНИТЬ

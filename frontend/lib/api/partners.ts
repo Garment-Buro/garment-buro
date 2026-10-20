@@ -1,83 +1,53 @@
 import type {
-    PartnerCommission,
-    PartnerDashboard,
     PartnerLanding,
     PartnerPayout,
-    PartnerRequisites,
-    PartnerRequisitesPayload,
+    PartnerRequisitesWrite,
     PartnerCreatePayload,
     PartnerLandingCreatePayload,
     PartnerLandingUpdatePayload,
     PartnerProfile,
 } from '@/lib/partners/types';
 
-import { requestJson } from './http';
+import { requestJson, requestReadJson } from './http';
+import { readPartnerDashboard, readPartnerRequisites } from '../partners/privateReads';
 
 const authorizedHeaders = (token: string, json = false) => ({
     Authorization: `Bearer ${token}`,
     ...(json ? { 'Content-Type': 'application/json' } : {}),
 });
 
-export const getPartnerDashboard = (token: string, signal?: AbortSignal) => (
-    requestJson<PartnerDashboard>('/partner/dashboard', {
-        headers: authorizedHeaders(token),
-        signal,
-    })
-);
+export const getPartnerDashboard = async (token: string, signal?: AbortSignal) =>
+    readPartnerDashboard(await requestReadJson<unknown>('/partner/dashboard', {
+        headers: authorizedHeaders(token), signal, cache: 'no-store',
+    }));
 
-export const getPartnerLandings = (token: string, signal?: AbortSignal) => (
-    requestJson<PartnerLanding[]>('/partner/landings', {
-        headers: authorizedHeaders(token),
-        signal,
-    })
-);
+export const getPartnerRequisites = async (token: string, signal?: AbortSignal) =>
+    readPartnerRequisites(await requestReadJson<unknown>('/partner/requisites', {
+        headers: authorizedHeaders(token), signal, cache: 'no-store',
+    }));
 
-export const getPartnerCommissions = (token: string, signal?: AbortSignal) => (
-    requestJson<PartnerCommission[]>('/partner/commissions', {
-        headers: authorizedHeaders(token),
-        signal,
-    })
-);
+export const updatePartnerRequisites = async (
+    token: string, payload: PartnerRequisitesWrite, signal?: AbortSignal,
+) => {
+    const saved = readPartnerRequisites(await requestJson<unknown>('/partner/requisites', {
+        method: 'PUT', headers: authorizedHeaders(token, true), body: JSON.stringify(payload), signal,
+    }));
+    if (!saved) throw new Error('Сервер не подтвердил реквизиты.');
+    return saved;
+};
 
-export const getPartnerPayouts = (token: string, signal?: AbortSignal) => (
-    requestJson<PartnerPayout[]>('/partner/payouts', {
-        headers: authorizedHeaders(token),
-        signal,
-    })
-);
-
-export const getPartnerRequisites = (token: string, signal?: AbortSignal) => (
-    requestJson<PartnerRequisites | null>('/partner/requisites', {
-        headers: authorizedHeaders(token),
-        signal,
-    })
-);
-
-export const updatePartnerRequisites = (
-    token: string,
-    payload: PartnerRequisitesPayload,
-) => requestJson<PartnerRequisites>('/partner/requisites', {
-    method: 'PUT',
-    headers: authorizedHeaders(token, true),
-    body: JSON.stringify(payload),
-});
-
-export const createPartnerPayout = (token: string, amount: string) => (
+export const createPartnerPayout = (token: string, amount: string, signal?: AbortSignal) => (
     requestJson<PartnerPayout>('/partner/payouts', {
         method: 'POST',
         headers: authorizedHeaders(token, true),
         body: JSON.stringify({ amount }),
+        signal,
     })
 );
 
 export const registerPartnerVisit = (slug: string) => requestJson<{ attributed: boolean }>(
     `/partner/landings/${encodeURIComponent(slug)}/visits`,
     { method: 'POST' },
-);
-
-export const getAdminPartners = (token: string) => requestJson<PartnerProfile[]>(
-    '/admin/partners',
-    { headers: authorizedHeaders(token) },
 );
 
 export const createAdminPartner = (token: string, payload: PartnerCreatePayload) => (
@@ -97,11 +67,6 @@ export const createAdminPartnerLanding = (
     headers: authorizedHeaders(token, true),
     body: JSON.stringify(payload),
 });
-
-export const getAdminPartnerLandings = (token: string) => requestJson<PartnerLanding[]>(
-    '/admin/partners/landings',
-    { headers: authorizedHeaders(token) },
-);
 
 export const updateAdminPartnerLanding = (
     token: string,

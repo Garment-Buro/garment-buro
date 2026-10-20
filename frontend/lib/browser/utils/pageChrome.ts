@@ -76,15 +76,24 @@ export const PAGE_CHROME: PageChromeConfig[] = [
 
 const SITE_CHROME_HIDDEN_ROUTES = new Set([
     '/',
+    '/index',
+    '/catalog',
+    '/presentation',
     '/checkout',
     '/constructor',
     '/unfinished',
     '/lk',
     '/mycollection',
     '/profile',
+    '/profile/public',
     '/light-running',
     '/nikitamoiseev',
 ]);
+
+const isOrderDetailsRoute = (pathname: string | null) => pathname !== null
+    && /^\/order\/[^/]+$/.test(pathname)
+    && pathname !== '/order/success'
+    && pathname !== '/order/error';
 
 export const isSiteChromeHidden = (pathname: string | null) => (
     pathname !== null && (
@@ -92,12 +101,15 @@ export const isSiteChromeHidden = (pathname: string | null) => (
         || pathname.startsWith('/partner')
         || pathname.startsWith('/production')
         || pathname.startsWith('/p/')
+        || pathname.startsWith('/people/')
+        || isOrderDetailsRoute(pathname)
     )
 );
 
 export const getPageChrome = (pathname: string | null): PageChromeConfig => {
     if (pathname?.startsWith('/production')) return { ...DEFAULT_PAGE_CHROME, page: 'production', topColor: '#f2f0ef', pageColor: '#f2f0ef' };
-    if (pathname === '/' || pathname === '/presentation') return PAGE_CHROME[8];
+    if (pathname === '/' || pathname === '/index' || pathname === '/catalog' || isOrderDetailsRoute(pathname)) return { ...DEFAULT_PAGE_CHROME, page: 'home', topColor: '#77745A', pageColor: '#77745A' };
+    if (pathname === '/presentation') return PAGE_CHROME[8];
     if (pathname?.startsWith('/constructor')) return PAGE_CHROME[1];
     if (pathname?.startsWith('/product')) return PAGE_CHROME[2];
     if (pathname?.startsWith('/unfinished')) return PAGE_CHROME[3];

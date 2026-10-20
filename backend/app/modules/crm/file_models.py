@@ -63,7 +63,7 @@ class CrmFileAttachment(Base, IntegerIdMixin):
         ForeignKey("media_objects.id", ondelete="RESTRICT"),
         nullable=False,
         unique=True,
-        index=True,
+        index=False,
     )
     tech_card_revision_id: Mapped[int | None] = mapped_column(
         ForeignKey("crm_tech_card_revisions.id", ondelete="RESTRICT"),

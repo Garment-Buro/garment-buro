@@ -16,9 +16,11 @@ export interface CartServerPayload {
     cart_id: string;
     items: CartItem[];
     updated_at_ms: number;
+    revision: string | null;
 }
 
 export interface CartServerUpdate {
     items: CartItem[];
-    updated_at_ms: number;
+    expected_revision: string | null;
+    operation_id: string;
 }

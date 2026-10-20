@@ -8,22 +8,22 @@ const projectRoot = path.dirname(frontendRoot);
 const readFrontend = (...parts) => fs.readFileSync(path.join(frontendRoot, ...parts), 'utf8');
 const readProject = (...parts) => fs.readFileSync(path.join(projectRoot, ...parts), 'utf8');
 
-test('session v2 remains guarded and is compiled into container builds explicitly', () => {
+test('modern session is enabled consistently in new release build defaults', () => {
     const config = readFrontend('lib', 'auth', 'config.ts');
     const dockerfile = readFrontend('Dockerfile');
     const environment = readProject('.env.example');
     const compose = [
-        readProject('docker-compose.yml'),
         readProject('docker-compose.local.yml'),
     ].join('\n');
 
     assert.match(config, /NEXT_PUBLIC_IDENTITY_SESSION_V2_ENABLED\s*===\s*['"]true['"]/);
-    assert.match(dockerfile, /ARG NEXT_PUBLIC_IDENTITY_SESSION_V2_ENABLED=false/);
+    assert.match(dockerfile, /ARG NEXT_PUBLIC_IDENTITY_SESSION_V2_ENABLED=true/);
     assert.match(dockerfile, /ENV NEXT_PUBLIC_IDENTITY_SESSION_V2_ENABLED=/);
-    assert.match(environment, /NEXT_PUBLIC_IDENTITY_SESSION_V2_ENABLED=false/);
+    assert.match(environment, /NEXT_PUBLIC_IDENTITY_SESSION_V2_ENABLED=true/);
+    assert.match(compose, /NEXT_PUBLIC_IDENTITY_SESSION_V2_ENABLED:\s*\$\{NEXT_PUBLIC_IDENTITY_SESSION_V2_ENABLED:-true\}/);
     assert.equal(
         (compose.match(/NEXT_PUBLIC_IDENTITY_SESSION_V2_ENABLED:\s*\$\{/g) || []).length,
-        2,
+        1,
     );
 });
 
@@ -40,11 +40,6 @@ test('app bootstrap and authenticated calls participate in the refresh lifecycle
     const layout = readFrontend('app', 'layout.tsx');
     const api = readFrontend('lib', 'api', 'auth.ts');
     const bootstrap = readFrontend('providers', 'AuthSessionBootstrap.tsx');
-    const hooks = [
-        readFrontend('hooks', 'auth', 'useAuthOrders.ts'),
-        readFrontend('hooks', 'auth', 'useAuthSettings.ts'),
-        readFrontend('hooks', 'auth', 'useEmailLinker.ts'),
-    ];
 
     assert.match(layout, /<AuthSessionBootstrap\s*\/>/);
     assert.match(api, /['"]\/auth\/refresh['"]/);
@@ -52,38 +47,33 @@ test('app bootstrap and authenticated calls participate in the refresh lifecycle
     assert.match(api, /['"]\/auth\/logout['"]/);
     assert.match(bootstrap, /sessionRestorePending/);
     assert.match(bootstrap, /setInterval\(retry, 15_000\)/);
-    hooks.forEach(source => assert.match(source, /runAuthenticated\(/));
 });
 
-test('catalog mutations preserve legacy mode and require coordinated auth in v2', () => {
-    const catalogWrite = readFrontend('store', 'catalogWrite.ts');
+test('new release enables catalog mutations together with coordinated session auth', () => {
     const config = readFrontend('lib', 'auth', 'config.ts');
     const nextConfig = readFrontend('next.config.ts');
     const dockerfile = readFrontend('Dockerfile');
     const environment = readProject('.env.example');
     const compose = [
-        readProject('docker-compose.yml'),
         readProject('docker-compose.local.yml'),
     ].join('\n');
     const writeApis = [
         readFrontend('lib', 'api', 'products.ts'),
         readFrontend('lib', 'api', 'uploads.ts'),
-        readFrontend('lib', 'api', 'settings.ts'),
-        readFrontend('lib', 'api', 'options.ts'),
+        readFrontend('lib', 'products', 'editorClient.ts'),
     ].join('\n');
 
-    assert.match(catalogWrite, /if \(!isCatalogWritesV2Enabled\(\)\) return operation\(\)/);
-    assert.match(catalogWrite, /runAuthenticated\(token => operation\(token\)\)/);
     assert.match(config, /NEXT_PUBLIC_CATALOG_WRITES_ENABLED\s*===\s*['"]true['"]/);
     assert.match(
         nextConfig,
         /CATALOG_WRITES_ENABLED\s*&&\s*!IDENTITY_SESSION_V2_ENABLED/,
     );
-    assert.match(dockerfile, /ARG NEXT_PUBLIC_CATALOG_WRITES_ENABLED=false/);
-    assert.match(environment, /NEXT_PUBLIC_CATALOG_WRITES_ENABLED=false/);
+    assert.match(dockerfile, /ARG NEXT_PUBLIC_CATALOG_WRITES_ENABLED=true/);
+    assert.match(environment, /NEXT_PUBLIC_CATALOG_WRITES_ENABLED=true/);
+    assert.match(compose, /NEXT_PUBLIC_CATALOG_WRITES_ENABLED:\s*\$\{NEXT_PUBLIC_CATALOG_WRITES_ENABLED:-true\}/);
     assert.equal(
         (compose.match(/NEXT_PUBLIC_CATALOG_WRITES_ENABLED:\s*\$\{/g) || []).length,
-        2,
+        1,
     );
-    assert.equal((writeApis.match(/bearerHeaders\(token\)/g) || []).length, 5);
+    assert.match(writeApis, /bearerHeaders\(token\)/);
 });

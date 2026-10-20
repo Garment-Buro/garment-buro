@@ -29,6 +29,14 @@ from app.modules.crm.command_service import (
     CrmStaffCommandService,
 )
 from app.modules.crm.dependencies import require_crm_reader
+from app.modules.crm.directory_api import read_model_detail, read_reference_page
+from app.modules.crm.directory_schemas import (
+    FabricDirectoryPage,
+    FabricDirectoryQuery,
+    ModelDirectoryPage,
+    ModelDirectoryQuery,
+)
+from app.modules.crm.directory_service import ReferenceDirectoryService
 from app.modules.crm.material_models import CrmMaterialMovement, CrmMaterialReservation
 from app.modules.crm.material_schemas import (
     CrmMaterialAdjustmentWrite,
@@ -47,17 +55,13 @@ from app.modules.crm.production_service import (
     CrmProductionNotFoundError,
     CrmProductionVersionConflictError,
 )
-from app.modules.crm.read_schemas import (
-    CrmFabricPage,
-    CrmGarmentModelPage,
-    CrmProjectDetail,
-    CrmProjectPage,
-)
+from app.modules.crm.read_schemas import CrmProjectDetail, CrmProjectPage
 from app.modules.crm.read_service import (
     CrmReadEvidenceError,
     CrmReadNotFoundError,
     CrmReadService,
 )
+from app.modules.crm.reference_schemas import CrmGarmentModelReferenceRead
 from app.modules.crm.service import (
     CrmProjectNotFoundError,
     CrmProjectStateError,
@@ -135,45 +139,34 @@ async def get_project(
         raise HTTPException(status_code=409, detail="CRM evidence is inconsistent") from error
 
 
-@router.get("/reference/fabrics", response_model=CrmFabricPage)
+@router.get("/reference/fabrics", response_model=FabricDirectoryPage)
 async def list_fabrics(
     response: Response,
     _actor: Annotated[User, Depends(require_crm_reader)],
     session: Annotated[AsyncSession, Depends(get_database_session)],
-    service: Annotated[CrmReadService, Depends(get_crm_read_service)],
-    is_active: bool | None = None,
-    cursor: Annotated[int | None, Query(ge=1)] = None,
-    limit: Annotated[int, Query(ge=1, le=100)] = 50,
-) -> CrmFabricPage:
-    _no_store(response)
-    return await service.list_fabrics(
-        session,
-        is_active=is_active,
-        cursor=cursor,
-        limit=limit,
-    )
+    query: Annotated[FabricDirectoryQuery, Query()],
+) -> FabricDirectoryPage:
+    return await read_reference_page(response, ReferenceDirectoryService().fabrics(session, query))
 
 
-@router.get("/reference/garment-models", response_model=CrmGarmentModelPage)
+@router.get("/reference/garment-models", response_model=ModelDirectoryPage)
 async def list_garment_models(
     response: Response,
     _actor: Annotated[User, Depends(require_crm_reader)],
     session: Annotated[AsyncSession, Depends(get_database_session)],
-    service: Annotated[CrmReadService, Depends(get_crm_read_service)],
-    is_active: bool | None = None,
-    cursor: Annotated[int | None, Query(ge=1)] = None,
-    limit: Annotated[int, Query(ge=1, le=100)] = 50,
-) -> CrmGarmentModelPage:
-    _no_store(response)
-    try:
-        return await service.list_garment_models(
-            session,
-            is_active=is_active,
-            cursor=cursor,
-            limit=limit,
-        )
-    except CrmReadEvidenceError as error:
-        raise HTTPException(status_code=409, detail="CRM evidence is inconsistent") from error
+    query: Annotated[ModelDirectoryQuery, Query()],
+) -> ModelDirectoryPage:
+    return await read_reference_page(response, ReferenceDirectoryService().models(session, query))
+
+
+@router.get("/reference/garment-models/{model_id}", response_model=CrmGarmentModelReferenceRead)
+async def garment_model_detail(
+    response: Response,
+    _actor: Annotated[User, Depends(require_crm_reader)],
+    session: Annotated[AsyncSession, Depends(get_database_session)],
+    model_id: Annotated[int, Path(gt=0, le=2_147_483_647)],
+) -> CrmGarmentModelReferenceRead:
+    return await read_model_detail(response, session, model_id)
 
 
 def _no_store(response: Response) -> None:

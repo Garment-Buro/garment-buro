@@ -22,6 +22,7 @@ const clientDetails = readFileSync(
     new URL('./AdminClientDetails.tsx', import.meta.url),
     'utf8',
 );
+const clientHistory = readFileSync(new URL('./AdminClientHistory.tsx', import.meta.url), 'utf8');
 const createTicket = readFileSync(
     new URL('../../support/CreateTicket.tsx', import.meta.url),
     'utf8',
@@ -119,16 +120,16 @@ test('orders and payouts expose sorting, client navigation and readable details'
     assert.doesNotMatch(orderDetails, /JSON\.stringify/);
     assert.match(orderItem, /Настройки конструктора/);
     assert.match(orderItem, /Комментарий клиента/);
-    assert.match(clientDetails, /История заказов/);
-    assert.match(clientDetails, /История обращений/);
+    assert.match(clientHistory, /История заказов/);
+    assert.match(clientHistory, /История обращений/);
     assert.match(clientDetails, /Данные клиента/);
     assert.match(clientDetails, /clients\/detail\?key=/);
-    assert.match(clientDetails, /onTicket\(ticket\.id\)/);
+    assert.match(clientHistory, /onTicket\(ticket\.id\)/);
     assert.match(clientDetails, /<CreateTicket/);
     assert.match(clientDetails, /customerUserId=\{client\.user_id \?\? undefined\}/);
     assert.match(clientDetails, /role="tablist"/);
     assert.match(clientDetails, /role="tabpanel"/);
-    assert.match(clientDetails, /orderOptions=\{data\.orders\.map/);
+    assert.match(clientDetails, /orderOptions=\{orders\.items\.map/);
     assert.match(clientDetails, /label: `Заказ №\$\{order\.id\}/);
     assert.match(createTicket, /orderOptions\.map/);
     assert.match(createTicket, /<select/);

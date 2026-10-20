@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from urllib.parse import quote
+from collections.abc import Mapping, Sequence
 
 from app.core.config import Settings
+from app.modules.catalog.availability import available_stock
 from app.modules.catalog.models import Product, ProductVariant
 from app.modules.catalog.schemas import (
     ProductDetailResponse,
+    ProductMediaAsset,
     ProductResponse,
     ProductVariantResponse,
 )
@@ -18,6 +20,8 @@ from app.modules.media.models import (
     ProductVariantMedia,
     ProductVariantMediaRole,
 )
+from app.modules.media.read_models import CatalogMediaLinkView, CatalogMediaView
+from app.modules.media.urls import public_media_url
 
 PRODUCT_MULTI_MEDIA_ROLES = {
     ProductMediaRole.GALLERY_IMAGES.value,
@@ -42,21 +46,58 @@ class CatalogResponseMapper:
         )
 
     def product_detail(self, product: Product) -> ProductDetailResponse:
-        return ProductDetailResponse(
-            **self._product_scalars(product),
-            **self._product_media(product.media_links),
-            variants=[self.variant(variant) for variant in product.variants],
+        return self.product_detail_from_parts(
+            product,
+            product.variants,
+            product.media_links,
+            {variant.id: variant.media_links for variant in product.variants},
         )
 
-    def variant(self, variant: ProductVariant) -> ProductVariantResponse:
-        media = self._group_media(variant.media_links)
+    def product_detail_from_parts(
+        self,
+        product: Product,
+        variants: list[ProductVariant],
+        media_links: Sequence[ProductMedia | CatalogMediaLinkView],
+        variant_media: Mapping[int, Sequence[ProductVariantMedia | CatalogMediaLinkView]],
+    ) -> ProductDetailResponse:
+        return ProductDetailResponse(
+            version=product.version,
+            **self._product_scalars(product),
+            **self._product_media(media_links),
+            variants=[
+                self.variant(variant, media_links=variant_media[variant.id]) for variant in variants
+            ],
+            media_assets=[
+                ProductMediaAsset(
+                    id=link.media.id,
+                    role=link.role,
+                    sort_order=link.sort_order,
+                    url=self._media_url(link.media),
+                    content_type=link.media.content_type,
+                )
+                for link in sorted(
+                    media_links, key=lambda item: (item.role, item.sort_order, item.id)
+                )
+                if link.media.is_public
+                and link.media.status == MediaStatus.READY.value
+                and link.media.content_type in {"image/jpeg", "image/png", "image/webp"}
+            ],
+        )
+
+    def variant(
+        self,
+        variant: ProductVariant,
+        *,
+        media_links: Sequence[ProductVariantMedia | CatalogMediaLinkView] | None = None,
+    ) -> ProductVariantResponse:
+        media = self._group_media(variant.media_links if media_links is None else media_links)
         return ProductVariantResponse(
             id=variant.id,
             product_id=variant.product_id,
             size=variant.size,
             color=variant.color,
             color_hex=variant.color_hex,
-            stock_quantity=variant.stock_quantity - variant.reserved_quantity,
+            stock_quantity=available_stock(variant),
             width_cm=self._optional_float(variant.width_cm),
             height_cm=self._optional_float(variant.height_cm),
             preview_image=self._first_url(
@@ -83,10 +124,17 @@ class CatalogResponseMapper:
             "height": float(product.height_cm),
             "width": float(product.width_cm),
             "length": float(product.length_cm),
-            "stock_quantity": product.stock_quantity - product.reserved_quantity,
+            "stock_quantity": available_stock(product),
+            "preset_source": product.preset_source or "garment_buro",
+            "tags": product.tags or [],
+            "slug": product.slug,
+            "garment_model_id": product.garment_model_id,
+            "category_id": product.category_id,
         }
 
-    def _product_media(self, links: list[ProductMedia]) -> dict[str, str | None]:
+    def _product_media(
+        self, links: Sequence[ProductMedia | CatalogMediaLinkView]
+    ) -> dict[str, str | None]:
         grouped = self._group_media(links)
         payload: dict[str, str | None] = {}
         for role in ProductMediaRole:
@@ -100,27 +148,22 @@ class CatalogResponseMapper:
 
     @staticmethod
     def _group_media(
-        links: list[ProductMedia] | list[ProductVariantMedia],
-    ) -> dict[str, list[MediaObject]]:
-        grouped: dict[str, list[MediaObject]] = defaultdict(list)
+        links: Sequence[ProductMedia | ProductVariantMedia | CatalogMediaLinkView],
+    ) -> dict[str, list[MediaObject | CatalogMediaView]]:
+        grouped: dict[str, list[MediaObject | CatalogMediaView]] = defaultdict(list)
         for link in sorted(links, key=lambda item: (item.role, item.sort_order, item.id)):
-            if link.media.status == MediaStatus.READY.value:
+            if link.media.is_public and link.media.status == MediaStatus.READY.value:
                 grouped[link.role].append(link.media)
         return grouped
 
-    def _first_url(self, media: list[MediaObject]) -> str | None:
+    def _first_url(self, media: Sequence[MediaObject | CatalogMediaView]) -> str | None:
         return self._media_url(media[0]) if media else None
 
-    def _joined_urls(self, media: list[MediaObject]) -> str | None:
+    def _joined_urls(self, media: Sequence[MediaObject | CatalogMediaView]) -> str | None:
         return ",".join(self._media_url(item) for item in media) if media else None
 
-    def _media_url(self, media: MediaObject) -> str:
-        if media.object_key.startswith("uploads/"):
-            return f"/{media.object_key}"
-        public_base_url = (self.settings.minio_public_base_url or "").rstrip("/")
-        if not public_base_url:
-            raise RuntimeError("MINIO_PUBLIC_BASE_URL is required to map catalog media")
-        return f"{public_base_url}/{media.bucket_name}/{quote(media.object_key, safe='/')}"
+    def _media_url(self, media: MediaObject | CatalogMediaView) -> str:
+        return public_media_url(self.settings, media)
 
     @staticmethod
     def _optional_float(value: object | None) -> float | None:

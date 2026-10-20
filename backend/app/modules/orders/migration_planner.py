@@ -10,7 +10,6 @@ from pathlib import Path
 
 from app.modules.identity.exceptions import InvalidEmailError
 from app.modules.identity.security import normalize_email
-from app.modules.orders.legacy import ORDER_COLUMNS
 from app.modules.orders.migration_types import (
     LegacyOrderItemRecord,
     LegacyOrderRecord,
@@ -22,6 +21,31 @@ MONEY_QUANTUM = Decimal("0.01")
 MAX_MONEY = Decimal("9999999999.99")
 VALID_ORDER_STATUSES = {status.value for status in OrderStatus}
 VALID_PAYMENT_STATUSES = {status.value for status in OrderPaymentStatus}
+
+# Source format belongs to the one-off import planner, never to HTTP runtime.
+ORDER_COLUMNS = (
+    "id",
+    "email",
+    "phone",
+    "first_name",
+    "last_name",
+    "patronymic",
+    "delivery_city",
+    "delivery_method",
+    "delivery_address",
+    "payment_method",
+    "cart_items",
+    "total_price",
+    "status",
+    "cdek_uuid",
+    "cdek_point_code",
+    "delivery_price",
+    "payment_id",
+    "payment_status",
+    "created_at",
+    "cdek_number",
+    "cdek_status",
+)
 
 
 @dataclass(slots=True)

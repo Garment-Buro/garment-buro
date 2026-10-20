@@ -1,5 +1,6 @@
 'use client';
 import { useEffect } from 'react';
+import Link from 'next/link';
 import { useProductionAuthStore } from '@/store/productionAuthStore';
 import { ProductionAdminTerminal } from './admin/ProductionAdminTerminal';
 import { ProductionLogin } from './ProductionLogin';
@@ -8,8 +9,12 @@ import styles from './ProductionTerminal.module.css';
 
 export function ProductionTerminal({
     mode = 'auto',
+    initialSection,
+    initialProduct,
 }: {
     mode?: 'auto' | 'floor';
+    initialSection?: 'presets';
+    initialProduct?: number | 'new';
 }) {
     const initialize = useProductionAuthStore((state) => state.initialize);
     useEffect(() => {
@@ -20,6 +25,7 @@ export function ProductionTerminal({
         (state) => state.isAuthenticated,
     );
     const userId = useProductionAuthStore((state) => state.user?.id);
+    const sessionEpoch = useProductionAuthStore((state) => state.sessionEpoch);
     const canAdminister = useProductionAuthStore(
         (state) => state.user?.can_administer,
     );
@@ -43,6 +49,19 @@ export function ProductionTerminal({
         );
     if (!authenticated) return <ProductionLogin />;
     if (canAdminister && mode !== 'floor')
-        return <ProductionAdminTerminal key={userId} />;
-    return <ProductionWorkspace key={userId} />;
+        return (
+            <ProductionAdminTerminal
+                key={`${userId}:${sessionEpoch}:${initialSection}:${initialProduct}`}
+                initialSection={initialSection}
+                initialProduct={initialProduct}
+            />
+        );
+    if (initialSection === 'presets')
+        return (
+            <main className={styles.login}>
+                <p>Управление пресетами доступно системному администратору.</p>
+                <Link href="/production">В кабинет производства</Link>
+            </main>
+        );
+    return <ProductionWorkspace key={`${userId}:${sessionEpoch}`} />;
 }

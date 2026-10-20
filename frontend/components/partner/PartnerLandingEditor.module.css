@@ -1,0 +1,107 @@
+.editor {
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid #d9dfe2;
+    min-width: 0;
+}
+.editor p {
+    font-size: 14px;
+    line-height: 1.5;
+    margin: 12px 0;
+}
+.heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+.heading h3 {
+    margin: 0;
+    font-size: 20px;
+}
+.fields {
+    border: 0;
+    padding: 0;
+    margin: 18px 0;
+    display: grid;
+    gap: 16px;
+    min-width: 0;
+}
+.field {
+    display: grid;
+    gap: 7px;
+    min-width: 0;
+    font-size: 14px;
+}
+.field input,
+.field textarea {
+    width: 100%;
+    min-width: 0;
+    padding: 12px;
+    border: 1px solid #b6c1c7;
+    border-radius: 10px;
+    font: inherit;
+    background: #fff;
+    color: #171717;
+}
+.field textarea {
+    resize: vertical;
+}
+.editor small {
+    display: block;
+    color: #52616a;
+    font-size: 12px;
+    overflow-wrap: anywhere;
+}
+.editor button,
+.editor a {
+    padding: 10px 14px;
+    border: 1px solid #b6c1c7;
+    border-radius: 10px;
+    font-size: 14px;
+    background: #fff;
+    cursor: pointer;
+    text-decoration: none;
+    color: #171717;
+}
+.editor button:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+.editor .primary {
+    background: #171717;
+    color: #fff;
+    border-color: #171717;
+}
+.editor :is(button, input, textarea, a, summary):focus-visible {
+    outline: 2px solid #356b88;
+    outline-offset: 3px;
+}
+.actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+.faq {
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid #d9dfe2;
+    border-radius: 12px;
+}
+.error {
+    color: #a12b28;
+}
+.editor summary {
+    cursor: pointer;
+    font-size: 14px;
+}
+@media (max-width: 480px) {
+    .heading {
+        align-items: flex-start;
+    }
+    .actions {
+        align-items: stretch;
+    }
+}

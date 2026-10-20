@@ -52,13 +52,7 @@ def _webhook_body(*, include_type: bool = True, amount: str = "125.50") -> bytes
 
 
 def _application(settings: Settings, database: DatabaseManager) -> FastAPI:
-    legacy = FastAPI()
-
-    @legacy.post("/api/webhooks/yookassa")
-    async def legacy_webhook() -> dict[str, str]:
-        return {"source": "legacy"}
-
-    return create_app(settings=settings, database=database, legacy_app=legacy)
+    return create_app(settings=settings, database=database)
 
 
 def _create_schema(database: DatabaseManager) -> None:
@@ -181,22 +175,15 @@ def test_guarded_webhook_rejects_untrusted_source_spoof_and_invalid_payloads(
         )
 
 
-def test_default_flag_preserves_legacy_webhook_owner() -> None:
+def test_disabled_webhook_has_no_fallback() -> None:
     settings = Settings(
         _env_file=None,
         app_env=AppEnvironment.TEST,
         database_enabled=False,
         payment_webhook_v2_enabled=False,
     )
-    legacy = FastAPI()
-
-    @legacy.post("/api/webhooks/yookassa")
-    async def legacy_webhook() -> dict[str, str]:
-        return {"source": "legacy"}
-
-    application = create_app(settings=settings, legacy_app=legacy)
+    application = create_app(settings=settings)
     with TestClient(application) as client:
         response = client.post("/api/webhooks/yookassa", json={})
 
-    assert response.status_code == 200
-    assert response.json() == {"source": "legacy"}
+    assert response.status_code == 404

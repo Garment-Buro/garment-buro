@@ -23,8 +23,10 @@ from app.modules.crm.reference_models import (
 )
 from app.modules.crm.reference_repository import CrmReferenceRepository
 from app.modules.crm.reference_schemas import (
+    GARMENT_MODEL_SIZE_LIMIT,
     CrmFabricWrite,
     CrmGarmentModelCategoryWrite,
+    CrmGarmentModelReferenceRead,
     CrmGarmentModelWrite,
     CrmGarmentSizeWrite,
     CrmTechCardCreate,
@@ -208,13 +210,13 @@ class CrmReferenceService:
         payload: CrmGarmentModelWrite,
         actor_user_id: int | None,
         now: datetime | None = None,
-    ) -> CrmGarmentModel:
+    ) -> CrmGarmentModelReferenceRead:
         await self._validate_garment_model_category(session, payload.category_id)
         await self._validate_size_chart_media(session, payload.size_chart_media_object_id)
         garment_model = CrmGarmentModel(version=1)
         self._apply_garment_model(garment_model, payload)
         garment_model.sizes.extend(self._new_size(size) for size in payload.sizes)
-        self._sync_legacy_base_dimensions(garment_model)
+        self._sync_legacy_base_dimensions(garment_model, garment_model.sizes)
         await self.repository.add(session, garment_model)
         await self._audit(
             session,
@@ -227,7 +229,7 @@ class CrmReferenceService:
             details={"active_sizes_count": len(payload.sizes)},
             now=now,
         )
-        return garment_model
+        return self._model_result(garment_model, garment_model.sizes)
 
     async def update_garment_model(
         self,
@@ -238,7 +240,7 @@ class CrmReferenceService:
         payload: CrmGarmentModelWrite,
         actor_user_id: int | None,
         now: datetime | None = None,
-    ) -> CrmGarmentModel:
+    ) -> CrmGarmentModelReferenceRead:
         garment_model = await self.repository.get_garment_model_for_update(
             session,
             garment_model_id=garment_model_id,
@@ -246,26 +248,46 @@ class CrmReferenceService:
         if garment_model is None:
             raise CrmReferenceNotFoundError("CRM garment model was not found")
         self._require_version(garment_model.version, expected_version)
+        active_sizes = await self.repository.active_garment_sizes(
+            session, garment_model_id=garment_model_id
+        )
+        if len(active_sizes) > GARMENT_MODEL_SIZE_LIMIT:
+            raise CrmReferenceConflictError(
+                "Model has more than 100 active sizes; split its size grid before editing"
+            )
+        requested_codes = {size.code for size in payload.sizes}
+        requested_sizes = await self.repository.garment_sizes_by_codes(
+            session, garment_model_id=garment_model_id, codes=requested_codes
+        )
         await self._validate_garment_model_category(session, payload.category_id)
         await self._validate_size_chart_media(session, payload.size_chart_media_object_id)
         self._apply_garment_model(garment_model, payload)
 
-        existing_by_code = {size.code: size for size in garment_model.sizes}
-        requested_codes = {size.code for size in payload.sizes}
+        existing_by_code = {size.code: size for size in requested_sizes}
+        desired_sizes = []
+        created_count = 0
+        reactivated_count = 0
         for size_payload in payload.sizes:
             size = existing_by_code.get(size_payload.code)
             if size is None:
-                garment_model.sizes.append(self._new_size(size_payload))
+                size = self._new_size(size_payload)
+                size.garment_model_id = garment_model_id
+                session.add(size)
+                created_count += 1
             else:
+                reactivated_count += int(not size.is_active)
                 self._apply_size(size, size_payload)
                 size.is_active = True
                 size.version += 1
-        for code, size in existing_by_code.items():
-            if code not in requested_codes and size.is_active:
+            desired_sizes.append(size)
+        archived_count = 0
+        for size in active_sizes:
+            if size.code not in requested_codes:
                 size.is_active = False
                 size.version += 1
+                archived_count += 1
 
-        self._sync_legacy_base_dimensions(garment_model)
+        self._sync_legacy_base_dimensions(garment_model, desired_sizes)
 
         garment_model.version += 1
         await session.flush()
@@ -279,11 +301,13 @@ class CrmReferenceService:
             snapshot=payload.model_dump(mode="json"),
             details={
                 "active_sizes_count": len(payload.sizes),
-                "retained_sizes_count": len(garment_model.sizes),
+                "created_sizes_count": created_count,
+                "reactivated_sizes_count": reactivated_count,
+                "archived_sizes_count": archived_count,
             },
             now=now,
         )
-        return garment_model
+        return self._model_result(garment_model, desired_sizes)
 
     async def link_catalog_product(
         self,
@@ -315,6 +339,7 @@ class CrmReferenceService:
         if product.garment_model_id == garment_model.id:
             return product
         product.garment_model_id = garment_model.id
+        product.version += 1
         await session.flush()
         await self._audit(
             session,
@@ -387,17 +412,6 @@ class CrmReferenceService:
         )
         return card
 
-    async def list_tech_cards(
-        self,
-        session: AsyncSession,
-        *,
-        garment_model_id: int | None = None,
-    ) -> list[CrmTechCard]:
-        return await self.repository.list_tech_cards(
-            session,
-            garment_model_id=garment_model_id,
-        )
-
     async def create_tech_card_revision(
         self,
         session: AsyncSession,
@@ -410,11 +424,18 @@ class CrmReferenceService:
     ) -> CrmTechCardRevision:
         card = await self._require_card(session, tech_card_id)
         self._require_version(card.latest_revision_number, expected_latest_revision)
-        if self._find_revision(card, status=CrmTechCardRevisionStatus.DRAFT) is not None:
+        if (
+            await self.repository.find_tech_card_revision(
+                session, tech_card_id=card.id, status=CrmTechCardRevisionStatus.DRAFT.value
+            )
+            is not None
+        ):
             raise CrmReferenceConflictError(
                 "Tech card already has a draft; publish or discard it first"
             )
-        published = self._find_revision(card, status=CrmTechCardRevisionStatus.PUBLISHED)
+        published = await self.repository.find_tech_card_revision(
+            session, tech_card_id=card.id, status=CrmTechCardRevisionStatus.PUBLISHED.value
+        )
         revision_number = card.latest_revision_number + 1
         revision = self._new_revision(
             revision_number=revision_number,
@@ -424,7 +445,8 @@ class CrmReferenceService:
             now=self._now(now),
         )
         card.latest_revision_number = revision_number
-        card.revisions.append(revision)
+        revision.tech_card_id = card.id
+        session.add(revision)
         await session.flush()
         await self._audit(
             session,
@@ -455,13 +477,17 @@ class CrmReferenceService:
         if actor_user_id <= 0:
             raise CrmReferenceConflictError("Published tech-card revision requires an actor")
         card = await self._require_card(session, tech_card_id)
-        revision = self._find_revision(card, revision_number=revision_number)
+        revision = await self.repository.find_tech_card_revision(
+            session, tech_card_id=card.id, revision_number=revision_number, checkpoints=True
+        )
         if revision is None:
             raise CrmReferenceNotFoundError("CRM tech-card revision was not found")
         if revision.status != CrmTechCardRevisionStatus.DRAFT.value:
             raise CrmReferenceConflictError("Only a draft tech-card revision can be published")
 
-        current = self._find_revision(card, status=CrmTechCardRevisionStatus.PUBLISHED)
+        current = await self.repository.find_tech_card_revision(
+            session, tech_card_id=card.id, status=CrmTechCardRevisionStatus.PUBLISHED.value
+        )
         if current is not None:
             current.status = CrmTechCardRevisionStatus.ARCHIVED.value
             await session.flush()
@@ -496,7 +522,9 @@ class CrmReferenceService:
         now: datetime | None = None,
     ) -> CrmTechCardRevision:
         card = await self._require_card(session, tech_card_id)
-        revision = self._find_revision(card, revision_number=revision_number)
+        revision = await self.repository.find_tech_card_revision(
+            session, tech_card_id=card.id, revision_number=revision_number, checkpoints=True
+        )
         if revision is None:
             raise CrmReferenceNotFoundError("CRM tech-card revision was not found")
         if revision.status != CrmTechCardRevisionStatus.DRAFT.value:
@@ -528,23 +556,6 @@ class CrmReferenceService:
         if card is None:
             raise CrmReferenceNotFoundError("CRM tech card was not found")
         return card
-
-    @staticmethod
-    def _find_revision(
-        card: CrmTechCard,
-        *,
-        revision_number: int | None = None,
-        status: CrmTechCardRevisionStatus | None = None,
-    ) -> CrmTechCardRevision | None:
-        return next(
-            (
-                revision
-                for revision in card.revisions
-                if (revision_number is None or revision.revision_number == revision_number)
-                and (status is None or revision.status == status.value)
-            ),
-            None,
-        )
 
     @staticmethod
     def _apply_fabric(fabric: CrmFabric, payload: CrmFabricWrite) -> None:
@@ -640,17 +651,34 @@ class CrmReferenceService:
         size.currency = payload.currency
 
     @staticmethod
-    def _sync_legacy_base_dimensions(garment_model: CrmGarmentModel) -> None:
+    def _sync_legacy_base_dimensions(
+        garment_model: CrmGarmentModel, sizes: list[CrmGarmentSize]
+    ) -> None:
         base_size = next(
             (
                 size
-                for size in garment_model.sizes
+                for size in sizes
                 if size.is_active and size.code == garment_model.base_size_code
             ),
             None,
         )
         garment_model.base_length_cm = base_size.base_length_cm if base_size else None
         garment_model.base_width_cm = base_size.base_width_cm if base_size else None
+
+    @staticmethod
+    def _model_result(
+        garment_model: CrmGarmentModel, sizes: list[CrmGarmentSize]
+    ) -> CrmGarmentModelReferenceRead:
+        return CrmGarmentModelReferenceRead.model_validate(
+            {
+                **{
+                    field: getattr(garment_model, field)
+                    for field in CrmGarmentModelReferenceRead.model_fields
+                    if field != "sizes"
+                },
+                "sizes": sorted(sizes, key=lambda size: (size.sort_order, size.id)),
+            }
+        )
 
     async def _next_garment_model_category_code(
         self,

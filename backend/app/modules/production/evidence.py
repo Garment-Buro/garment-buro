@@ -52,6 +52,20 @@ async def validate_files(session, *, unit_id, card_id, pattern_ids, print_ids):
             )
         ).all()
     )
+    return file_evidence(
+        files,
+        unit_id=unit_id,
+        card_id=card_id,
+        pattern_ids=pattern_ids,
+        print_ids=print_ids,
+    )
+
+
+def file_evidence(files, *, unit_id, card_id, pattern_ids, print_ids):
+    """The same ownership/integrity checks for command reads and batched page reads."""
+    ids = set(pattern_ids + print_ids)
+    if set(pattern_ids) & set(print_ids):
+        raise ProductionConflict("Лекала и печать должны быть отдельными файлами")
     if len(files) != len(ids):
         raise ProductionConflict("Не все файлы сохранены в базе")
     for attachment, media in files:
@@ -89,13 +103,9 @@ async def validate_files(session, *, unit_id, card_id, pattern_ids, print_ids):
 
 
 async def verify_specification(session, unit, spec, item):
-    if spec.unit_id != unit.id or spec.order_digest != digest(order_evidence(item)):
-        raise ProductionConflict("Данные заказа изменились относительно утверждённого снимка")
-    if spec.specification_digest != digest(spec.specification):
-        raise ProductionConflict("Нарушена целостность производственной спецификации")
+    _verify_specification_digest(unit, spec, item)
     plan = await session.get(CrmProductionPlanRevision, spec.plan_id)
-    if plan is None or plan.production_unit_id != unit.id or plan.status != "active":
-        raise ProductionConflict("Закреплённый производственный план больше не активен")
+    _verify_plan(unit, plan)
     files = await validate_files(
         session,
         unit_id=unit.id,
@@ -103,6 +113,36 @@ async def verify_specification(session, unit, spec, item):
         pattern_ids=spec.specification["pattern_file_ids"],
         print_ids=spec.specification["print_file_ids"],
     )
+    _verify_file_snapshot(spec, files)
+
+
+def verify_loaded_specification(unit, spec, item, *, plan, files):
+    """Validate a request-local database batch without further SQL or weaker checks."""
+    _verify_specification_digest(unit, spec, item)
+    _verify_plan(unit, plan)
+    evidence = file_evidence(
+        files,
+        unit_id=unit.id,
+        card_id=plan.tech_card_revision_id,
+        pattern_ids=spec.specification["pattern_file_ids"],
+        print_ids=spec.specification["print_file_ids"],
+    )
+    _verify_file_snapshot(spec, evidence)
+
+
+def _verify_specification_digest(unit, spec, item):
+    if spec.unit_id != unit.id or spec.order_digest != digest(order_evidence(item)):
+        raise ProductionConflict("Данные заказа изменились относительно утверждённого снимка")
+    if spec.specification_digest != digest(spec.specification):
+        raise ProductionConflict("Нарушена целостность производственной спецификации")
+
+
+def _verify_plan(unit, plan):
+    if plan is None or plan.production_unit_id != unit.id or plan.status != "active":
+        raise ProductionConflict("Закреплённый производственный план больше не активен")
+
+
+def _verify_file_snapshot(spec, files):
     if sorted(files, key=lambda x: x["id"]) != sorted(
         spec.specification["files"], key=lambda x: x["id"]
     ):

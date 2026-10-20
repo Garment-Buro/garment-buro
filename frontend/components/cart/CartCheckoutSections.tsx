@@ -1,11 +1,7 @@
-import Image from 'next/image';
-import { AppIcon } from '@/components/icons/AppIcon';
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
 
-import type { CartActionCoupon, CartPaymentMethod } from '@/lib/cart/actionTypes';
+import type { CartPaymentMethod } from '@/lib/cart/actionTypes';
 import {
-    CART_ACTION_COUPON_BUTTON_SHADOW,
-    CART_ACTION_COUPONS,
     CART_ACTION_PRODUCT_SECTION_BACKGROUND,
 } from '@/lib/cart/constants';
 import { formatCartPrice } from '@/lib/cart/utils/cartAction';
@@ -13,124 +9,16 @@ import { formatCartPrice } from '@/lib/cart/utils/cartAction';
 import { CartChoiceOption } from './CartChoiceOption';
 import { CartSbpOption } from './CartSbpOption';
 
-type CartCouponSectionProps = {
-    isOpen: boolean;
-    pendingCoupon: CartActionCoupon | null;
-    setIsOpen: Dispatch<SetStateAction<boolean>>;
-    setPendingCoupon: Dispatch<SetStateAction<CartActionCoupon | null>>;
-    setAppliedCoupon: Dispatch<SetStateAction<CartActionCoupon | null>>;
-};
-
-export const CartCouponSection = ({
-    isOpen,
-    pendingCoupon,
-    setIsOpen,
-    setPendingCoupon,
-    setAppliedCoupon,
-}: CartCouponSectionProps) => {
-    const couponButtonLabel = pendingCoupon
-        ? `Скидка на ${pendingCoupon.label.toLowerCase()} — ${pendingCoupon.amount}`
-        : 'Выберите купон';
-
-    const renderCouponTicket = (coupon: CartActionCoupon) => {
-        const isSelected = pendingCoupon?.value === coupon.value;
-
-        return (
-            <button
-                key={coupon.value}
-                type="button"
-                className="relative grid h-[clamp(41px,11.081vw,71px)] w-full grid-cols-[clamp(76px,20.541vw,131px)_minmax(0,1fr)] items-center overflow-hidden rounded-[4px] text-left font-manrope text-[#2D2D2D]"
-                style={{
-                    backgroundImage: `url(${isSelected ? '/used_sell.webp' : '/unused_sell.webp'})`,
-                    backgroundRepeat: 'no-repeat',
-                    backgroundSize: '100% 100%',
-                }}
-                onClick={() => {
-                    setPendingCoupon(coupon);
-                    setIsOpen(false);
-                }}
-            >
-                <span className="flex h-full items-center justify-center border-r border-dotted border-[#C7C7C7] text-[15px] font-extrabold">
-                    {coupon.amount}
-                </span>
-                <span className="px-[18px] text-[10px] font-medium">{coupon.label}</span>
-            </button>
-        );
-    };
-
-    return (
-        <section
-            className="cart-action-bar-coupon-section relative overflow-visible px-[clamp(22px,5.946vw,38px)] py-[clamp(14px,3.784vw,24px)]"
-            style={{ background: CART_ACTION_PRODUCT_SECTION_BACKGROUND }}
-        >
-            <div className="font-manrope text-[12px] font-bold leading-normal text-[#2D2D2D]">Купон</div>
-            <div className="mt-[clamp(10px,2.703vw,17px)] grid w-full grid-cols-[minmax(0,1fr)_clamp(75px,20.27vw,130px)] gap-[clamp(11px,2.973vw,19px)]">
-                <button
-                    type="button"
-                    className="grid h-[clamp(25px,6.757vw,43px)] min-w-0 grid-cols-[clamp(32px,8.649vw,55px)_minmax(0,1fr)_clamp(22px,5.946vw,38px)] items-center rounded-[3px] bg-white font-manrope text-[10px] font-medium text-[#2D2D2D]"
-                    style={{ boxShadow: CART_ACTION_COUPON_BUTTON_SHADOW }}
-                    onClick={() => setIsOpen(current => !current)}
-                    aria-expanded={isOpen}
-                >
-                    <span className="flex items-center justify-center">
-                        <Image
-                            src="/discount_header_icon.svg"
-                            alt=""
-                            width={18}
-                            height={13}
-                            aria-hidden="true"
-                            className="h-[13px] w-[18px] object-contain"
-                        />
-                    </span>
-                    <span className="truncate text-left">{couponButtonLabel}</span>
-                    <span className="flex items-center justify-center" aria-hidden="true">
-                        <AppIcon
-                            name="arrow-up"
-                            width={8}
-                            height={7}
-                            className={`h-[7px] w-[8px] text-[#2D2D2D] transition-transform ${isOpen ? '' : 'rotate-180'}`}
-                        />
-                    </span>
-                </button>
-                <button
-                    type="button"
-                    className="h-[clamp(25px,6.757vw,43px)] rounded-[3px] border border-[#E5E5E5] bg-[rgba(255,255,255,0.6)] font-manrope text-[10px] font-medium text-[#2D2D2D]"
-                    style={{ boxShadow: CART_ACTION_COUPON_BUTTON_SHADOW }}
-                    disabled={!pendingCoupon}
-                    onClick={() => {
-                        setAppliedCoupon(pendingCoupon);
-                        setIsOpen(false);
-                    }}
-                >
-                    Применить
-                </button>
-            </div>
-            {isOpen && (
-                <div
-                    className="cart-action-bar-coupon-dropdown absolute left-[clamp(22px,5.946vw,38px)] top-[calc(clamp(64px,17.297vw,111px)+5px)] z-[40] flex h-[clamp(130px,35.135vw,225px)] w-[clamp(230px,62.162vw,398px)] flex-col gap-[0px] rounded-[5px] bg-white p-[3px]"
-                    style={{ boxShadow: '0 2px 4px 0 rgba(0, 0, 0, 0.25)' }}
-                >
-                    {CART_ACTION_COUPONS.map(renderCouponTicket)}
-                </div>
-            )}
-        </section>
-    );
-};
-
 type CartTotalsSectionProps = {
     deliveryLabel?: string;
     productsTotal: number;
     deliveryPrice: number;
-    appliedCoupon: CartActionCoupon | null;
-    discount: number;
 };
 
 export const CartTotalsSection = ({
     deliveryLabel,
     productsTotal,
     deliveryPrice,
-    appliedCoupon,
-    discount,
 }: CartTotalsSectionProps) => (
     <section
         className="cart-action-bar-totals-section px-[clamp(28px,7.568vw,48px)] py-[clamp(14px,3.784vw,24px)]"
@@ -145,12 +33,6 @@ export const CartTotalsSection = ({
                 <span>Доставка</span>
                 <span>{deliveryLabel || (deliveryPrice > 0 ? formatCartPrice(deliveryPrice) : 'Бесплатно')}</span>
             </div>
-            {appliedCoupon ? (
-                <div className="flex justify-between text-[#45F472]">
-                    <span>Скидка</span>
-                    <span>{discount > 0 ? `-${formatCartPrice(discount)}` : '0 ₽'}</span>
-                </div>
-            ) : null}
         </div>
     </section>
 );
@@ -196,6 +78,7 @@ const renderAgreementCheckbox = ({
 );
 
 type CartGrandTotalSectionProps = {
+    qrAvailable: boolean;
     paymentMethod: CartPaymentMethod;
     setPaymentMethod: Dispatch<SetStateAction<CartPaymentMethod>>;
     grandTotal: number;
@@ -207,6 +90,7 @@ type CartGrandTotalSectionProps = {
 };
 
 export const CartGrandTotalSection = ({
+    qrAvailable,
     paymentMethod,
     setPaymentMethod,
     grandTotal,
@@ -240,6 +124,7 @@ export const CartGrandTotalSection = ({
                 style={{ paddingInline: 'max(0px, calc(clamp(28px, 7.568vw, 48px) - 5px))' }}
             >
                 <CartSbpOption
+                    allowed={qrAvailable}
                     active={paymentMethod === 'qr'}
                     onSelect={() => setPaymentMethod('qr')}
                 />

@@ -1,5 +1,6 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
+import { canOptimizePublicImage } from './lib/media/imagePolicy';
 
 /**
  * Set this to false to re-enable all frontend pages.
@@ -16,6 +17,12 @@ const PARTNER_PUBLIC_FILES = new Set([
 export function proxy(request: NextRequest) {
     const hostname = request.headers.get('host')?.split(':')[0].toLowerCase();
     const { pathname } = request.nextUrl;
+    if (pathname === '/_next/image' && !canOptimizePublicImage(request.nextUrl.searchParams.get('url') || '')) {
+        return new NextResponse('Image source is not public.', {
+            status: 400,
+            headers: { 'Cache-Control': 'private, no-store', 'Referrer-Policy': 'no-referrer' },
+        });
+    }
     if (hostname === 'production.garment-buro.ru') {
         const url = request.nextUrl.clone();
         if (pathname === '/') {
@@ -76,5 +83,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-    matcher: ['/((?!_next/static|_next/image|favicon.ico|uploads).*)'],
+    matcher: ['/_next/image', '/((?!_next/static|_next/image|favicon.ico|uploads).*)'],
 };

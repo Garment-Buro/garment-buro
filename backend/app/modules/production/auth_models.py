@@ -47,7 +47,7 @@ class ProductionEmployee(Base, IntegerIdMixin, TimestampMixin):
     )
 
     user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, unique=True, index=True
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, unique=True, index=False
     )
     primary_station: Mapped[str] = mapped_column(String(24), nullable=False)
     availability: Mapped[str] = mapped_column(

@@ -8,7 +8,7 @@ from functools import lru_cache
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import SecretStr, field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from .exceptions import ConfigurationError
@@ -45,11 +45,11 @@ class Settings(BaseSettings):
 
     app_env: AppEnvironment = AppEnvironment.LOCAL
     app_name: str = "Garment Buro API"
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     public_base_url: str = "https://garment-buro.ru"
     partner_public_base_url: str = "https://partner.garment-buro.ru"
     widget_public_base_url: str = "https://widget.garment-buro.ru"
 
-    legacy_database_url: str = "sqlite:///./ecommerce.db"
     database_enabled: bool = False
     database_url: str | None = None
     database_echo: bool = False
@@ -57,12 +57,8 @@ class Settings(BaseSettings):
     database_max_overflow: int = 20
     catalog_reads_enabled: bool = False
     catalog_writes_enabled: bool = False
-    catalog_migration_fingerprint: str | None = None
-    catalog_content_migration_fingerprint: str | None = None
     carts_v2_enabled: bool = False
-    carts_migration_fingerprint: str | None = None
     order_reads_enabled: bool = False
-    order_migration_fingerprint: str | None = None
     checkout_v2_enabled: bool = False
     order_moderation_enabled: bool = False
     cdek_tracking_enabled: bool = False
@@ -87,12 +83,12 @@ class Settings(BaseSettings):
     minio_bucket_prefix: str = "garment-buro"
     minio_public_base_url: str | None = None
     minio_presigned_expire_seconds: int = 900
+    minio_connect_timeout_seconds: float = Field(default=3.0, gt=0, le=30, allow_inf_nan=False)
+    minio_read_timeout_seconds: float = Field(default=15.0, gt=0, le=60, allow_inf_nan=False)
     media_max_upload_bytes: int = 104_857_600
     crm_file_max_upload_bytes: int = 26_214_400
 
     redis_url: str = "redis://localhost:6379/0"
-    products_cache_ttl_seconds: int = 3_600
-    product_cache_ttl_seconds: int = 3_600
     cart_cache_ttl_seconds: int = 2_592_000
     inventory_reservation_ttl_seconds: int = 1_800
     order_guest_access_ttl_days: int = 30
@@ -110,9 +106,16 @@ class Settings(BaseSettings):
     identity_refresh_expire_days: int = 30
     identity_max_active_sessions: int = 10
     identity_api_enabled: bool = False
-    identity_migration_fingerprint: str | None = None
     identity_legacy_token_grace_until: datetime | None = None
     identity_refresh_cookie_name: str = "gb_refresh"
+    identity_password_auth_enabled: bool = True
+    identity_password_max_attempts: int = 5
+    identity_password_lockout_minutes: int = 15
+    identity_phone_auth_enabled: bool = False
+    identity_telegram_auth_enabled: bool = False
+    telegram_bot_token: SecretStr | None = None
+    telegram_auth_max_age_seconds: int = 86_400
+    telegram_api_url: str = "https://api.telegram.org"
 
     notification_encryption_key: SecretStr | None = None
     notification_previous_encryption_keys: SecretStr | None = None
@@ -122,6 +125,8 @@ class Settings(BaseSettings):
     notification_retry_cap_seconds: int = 3_600
     notification_processing_timeout_seconds: int = 300
     notification_poll_seconds: int = 5
+    notification_telegram_enabled: bool = False
+    notification_phone_enabled: bool = False
 
     cors_origins: str = (
         "https://garment-buro.ru,"
@@ -248,14 +253,6 @@ class Settings(BaseSettings):
             raise ValueError("DATABASE_ENABLED must be true when CATALOG_READS_ENABLED is true")
         if self.catalog_reads_enabled and not self.minio_enabled:
             raise ValueError("MINIO_ENABLED must be true when CATALOG_READS_ENABLED is true")
-        if self.catalog_reads_enabled and not re.fullmatch(
-            r"[0-9a-f]{64}",
-            self.catalog_migration_fingerprint or "",
-        ):
-            raise ValueError(
-                "CATALOG_MIGRATION_FINGERPRINT must be a reviewed 64-character SHA-256 "
-                "when CATALOG_READS_ENABLED is true"
-            )
         if self.catalog_writes_enabled and not self.catalog_reads_enabled:
             raise ValueError(
                 "CATALOG_READS_ENABLED must be true when CATALOG_WRITES_ENABLED is true"
@@ -264,36 +261,12 @@ class Settings(BaseSettings):
             raise ValueError(
                 "IDENTITY_API_ENABLED must be true when CATALOG_WRITES_ENABLED is true"
             )
-        if self.catalog_writes_enabled and not re.fullmatch(
-            r"[0-9a-f]{64}",
-            self.catalog_content_migration_fingerprint or "",
-        ):
-            raise ValueError(
-                "CATALOG_CONTENT_MIGRATION_FINGERPRINT must be a reviewed 64-character "
-                "SHA-256 when CATALOG_WRITES_ENABLED is true"
-            )
         if self.carts_v2_enabled and not self.database_enabled:
             raise ValueError("DATABASE_ENABLED must be true when CARTS_V2_ENABLED is true")
-        if self.carts_v2_enabled and not re.fullmatch(
-            r"[0-9a-f]{64}",
-            self.carts_migration_fingerprint or "",
-        ):
-            raise ValueError(
-                "CARTS_MIGRATION_FINGERPRINT must be a reviewed 64-character SHA-256 "
-                "when CARTS_V2_ENABLED is true"
-            )
         if self.order_reads_enabled and not self.database_enabled:
             raise ValueError("DATABASE_ENABLED must be true when ORDER_READS_ENABLED is true")
         if self.order_reads_enabled and not self.identity_api_enabled:
             raise ValueError("IDENTITY_API_ENABLED must be true when ORDER_READS_ENABLED is true")
-        if self.order_reads_enabled and not re.fullmatch(
-            r"[0-9a-f]{64}",
-            self.order_migration_fingerprint or "",
-        ):
-            raise ValueError(
-                "ORDER_MIGRATION_FINGERPRINT must be a reviewed 64-character SHA-256 "
-                "when ORDER_READS_ENABLED is true"
-            )
         if self.checkout_v2_enabled:
             required_checkout_flags = {
                 "CATALOG_READS_ENABLED": self.catalog_reads_enabled,
@@ -462,6 +435,32 @@ class Settings(BaseSettings):
             raise ValueError("IDENTITY_OTP_DIGITS must be between 4 and 8")
         if not 1 <= self.identity_otp_max_attempts <= 10:
             raise ValueError("IDENTITY_OTP_MAX_ATTEMPTS must be between 1 and 10")
+        if not 1 <= self.identity_password_max_attempts <= 20:
+            raise ValueError("IDENTITY_PASSWORD_MAX_ATTEMPTS must be between 1 and 20")
+        if self.identity_phone_auth_enabled or self.notification_phone_enabled:
+            raise ValueError(
+                "Phone auth and notifications must stay disabled until a provider is configured"
+            )
+        if (
+            self.identity_telegram_auth_enabled or self.notification_telegram_enabled
+        ) and not self.secret_value(self.telegram_bot_token):
+            raise ValueError("TELEGRAM_BOT_TOKEN is required when Telegram features are enabled")
+        telegram_url = urlsplit(self.telegram_api_url)
+        if (
+            telegram_url.scheme != "https"
+            or not telegram_url.netloc
+            or telegram_url.username
+            or telegram_url.password
+            or telegram_url.query
+            or telegram_url.fragment
+        ):
+            raise ValueError("TELEGRAM_API_URL must be an absolute HTTPS URL without credentials")
+        if self.app_env in {AppEnvironment.STAGING, AppEnvironment.PRODUCTION} and (
+            telegram_url.hostname != "api.telegram.org" or telegram_url.path.rstrip("/")
+        ):
+            raise ValueError(
+                "TELEGRAM_API_URL must use https://api.telegram.org outside local/test"
+            )
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", self.identity_refresh_cookie_name):
             raise ValueError("IDENTITY_REFRESH_COOKIE_NAME contains unsupported characters")
         if (
@@ -482,6 +481,8 @@ class Settings(BaseSettings):
             "IDENTITY_ACCESS_EXPIRE_MINUTES": self.identity_access_expire_minutes,
             "IDENTITY_REFRESH_EXPIRE_DAYS": self.identity_refresh_expire_days,
             "IDENTITY_MAX_ACTIVE_SESSIONS": self.identity_max_active_sessions,
+            "IDENTITY_PASSWORD_LOCKOUT_MINUTES": self.identity_password_lockout_minutes,
+            "TELEGRAM_AUTH_MAX_AGE_SECONDS": self.telegram_auth_max_age_seconds,
         }
         invalid_identity_fields = [
             name for name, value in identity_positive_fields.items() if value <= 0
@@ -494,11 +495,6 @@ class Settings(BaseSettings):
         if self.identity_api_enabled:
             if not self.database_enabled:
                 raise ValueError("DATABASE_ENABLED must be true when IDENTITY_API_ENABLED is true")
-            if not re.fullmatch(r"[0-9a-f]{64}", self.identity_migration_fingerprint or ""):
-                raise ValueError(
-                    "IDENTITY_MIGRATION_FINGERPRINT must be a reviewed 64-character "
-                    "SHA-256 when IDENTITY_API_ENABLED is true"
-                )
             required_identity_secrets = {
                 "JWT_SECRET": self.jwt_secret,
                 "IDENTITY_OTP_PEPPER": self.identity_otp_pepper,
@@ -619,6 +615,7 @@ class Settings(BaseSettings):
             required_cdek_quote = {
                 "CDEK_CLIENT_ID": self.cdek_client_id,
                 "CDEK_CLIENT_SECRET": self.cdek_client_secret,
+                "JWT_SECRET": self.jwt_secret,
             }
             missing_cdek_quote = [
                 name for name, value in required_cdek_quote.items() if not self.secret_value(value)
@@ -1045,6 +1042,10 @@ class Settings(BaseSettings):
     @property
     def minio_crm_bucket(self) -> str:
         return f"{self.minio_bucket_prefix}-{self.app_env.value}-crm-private"
+
+    @property
+    def minio_customer_projects_bucket(self) -> str:
+        return f"{self.minio_bucket_prefix}-{self.app_env.value}-projects"
 
     def require_secret(self, field_name: str, label: str) -> str:
         value = self.secret_value(getattr(self, field_name))

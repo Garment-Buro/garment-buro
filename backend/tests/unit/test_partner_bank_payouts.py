@@ -46,7 +46,6 @@ def runtime_settings(tmp_path, **overrides):
         database_enabled=True,
         database_url=f"sqlite+aiosqlite:///{tmp_path / 'bank.db'}",
         identity_api_enabled=True,
-        identity_migration_fingerprint="1" * 64,
         jwt_secret="test-identity-jwt-secret-long-enough",
         identity_otp_pepper="test-identity-otp-pepper-long-enough",
         notification_encryption_key="bm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm4=",
@@ -161,6 +160,7 @@ async def setup(tmp_path, postgres_url=None):
             await partners.save_requisites(
                 session,
                 user_id=profile.user_id,
+                expected_version=0,
                 payload=PartnerRequisitesRequest(
                     entity_type="sole_proprietor",
                     recipient_name="ИП Тестовый Получатель",
@@ -312,10 +312,11 @@ def test_process_crash_does_not_resend_or_release_balance(tmp_path):
             with pytest.raises(asyncio.CancelledError):
                 await create(db, service, payout, admin)
             bank.error = None
-            assert (await create(db, service, payout, admin)).state == "submitting"
+            pending = await create(db, service, payout, admin)
+            assert pending.state == "submitting"
             async with db.session() as session:
                 row = await service.reconcile(
-                    session, payout_id=payout.id, now=NOW + timedelta(minutes=5)
+                    session, payout_id=payout.id, now=pending.created_at + timedelta(minutes=5)
                 )
                 assert row.state == "unknown" and row.last_error == "bank_receipt_missing"
                 assert (await session.get(PartnerPayoutRequest, payout.id)).status == "approved"

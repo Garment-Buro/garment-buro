@@ -1,12 +1,17 @@
-import { requestJson } from '@/lib/api/http';
+import { requestJson, requestReadJson } from '@/lib/api/http';
+import { useProductionAuthStore } from '@/store/productionAuthStore';
 
 const root = '/production/admin/assortment';
 
 export const assortmentRequest = <T>(path: string, init?: RequestInit) =>
-    requestJson<T>(`${root}/${path.replace(/^\//, '')}`, {
+    useProductionAuthStore.getState().runAuthenticated(() => requestJson<T>(`${root}/${path.replace(/^\//, '')}`, {
         cache: 'no-store',
         ...init,
-    });
+    }));
+
+export const readAssortment = <T>(path: string, signal?: AbortSignal) =>
+    useProductionAuthStore.getState().runAuthenticated(() =>
+        requestReadJson<T>(`${root}/${path.replace(/^\//, '')}`, {signal, cache: 'no-store'}));
 
 export const saveAssortment = <T>(
     path: string,

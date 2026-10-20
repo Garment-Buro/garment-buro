@@ -26,33 +26,38 @@ class Cart(Base, IntegerIdMixin, TimestampMixin):
     __tablename__ = "carts"
     __table_args__ = (
         CheckConstraint("length(token_digest_sha256) = 64", name="cart_token_digest_length"),
-        CheckConstraint("client_updated_at_ms >= 0", name="cart_client_updated_nonnegative"),
-        CheckConstraint("version > 0", name="cart_version_positive"),
+        CheckConstraint("updated_at_ms >= 0", name="cart_updated_nonnegative"),
+        CheckConstraint("revision IS NULL OR length(revision) = 32", name="cart_revision_length"),
+        CheckConstraint(
+            "last_operation_id IS NULL OR length(last_operation_id) = 32",
+            name="cart_operation_length",
+        ),
+        CheckConstraint(
+            "last_write_sha256 IS NULL OR length(last_write_sha256) = 64",
+            name="cart_write_digest_length",
+        ),
     )
 
     token_digest_sha256: Mapped[str] = mapped_column(
         String(64),
         nullable=False,
         unique=True,
-        index=True,
+        index=False,
     )
     user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
-    client_updated_at_ms: Mapped[int] = mapped_column(
+    updated_at_ms: Mapped[int] = mapped_column(
         BigInteger,
         nullable=False,
         default=0,
         server_default="0",
     )
-    version: Mapped[int] = mapped_column(
-        Integer,
-        nullable=False,
-        default=1,
-        server_default="1",
-    )
+    revision: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    last_operation_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    last_write_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
     expires_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

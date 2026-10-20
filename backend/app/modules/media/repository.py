@@ -8,6 +8,14 @@ from app.modules.media.models import MediaObject, MediaStatus
 
 
 class MediaRepository:
+    async def lock_pending(self, session: AsyncSession, *, media_id: int) -> MediaObject | None:
+        return await session.scalar(
+            select(MediaObject)
+            .where(MediaObject.id == media_id, MediaObject.status == MediaStatus.PENDING.value)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+
     async def get_ready_by_keys(
         self,
         session: AsyncSession,

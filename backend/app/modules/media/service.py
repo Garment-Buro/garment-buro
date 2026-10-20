@@ -5,7 +5,6 @@ import warnings
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from io import BytesIO
-from pathlib import Path
 from uuid import uuid4
 
 from anyio import to_thread
@@ -14,9 +13,11 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.minio import MinioStorage
+from app.modules.media.errors import UnsupportedMediaError
+from app.modules.media.filenames import safe_media_filename
+from app.modules.media.images import optimize_image_bytes
 from app.modules.media.models import MediaObject
 from app.modules.media.repository import MediaRepository
-from image_optimization import optimize_image_bytes
 
 IMAGE_FORMATS = {
     "JPEG": ("image/jpeg", ".jpg"),
@@ -40,10 +41,6 @@ class MediaUploadResult:
     content_type: str
     size_bytes: int
     checksum_sha256: str
-
-
-class UnsupportedMediaError(ValueError):
-    pass
 
 
 def prepare_catalog_media(data: bytes) -> PreparedMedia:
@@ -105,7 +102,7 @@ class MediaService:
         prepared = await to_thread.run_sync(prepare_catalog_media, data)
         checksum_sha256 = hashlib.sha256(prepared.data).hexdigest()
         object_key = self._new_object_key(prepared.extension)
-        safe_filename = self._safe_filename(original_filename)
+        safe_filename = safe_media_filename(original_filename)
 
         media = await self.repository.create_pending(
             session,
@@ -144,12 +141,6 @@ class MediaService:
     def _new_object_key(extension: str) -> str:
         today = datetime.now(timezone.utc)
         return f"catalog/{today:%Y/%m/%d}/{uuid4().hex}{extension}"
-
-    @staticmethod
-    def _safe_filename(filename: str) -> str:
-        basename = Path((filename or "upload").replace("\\", "/")).name
-        printable = "".join(character for character in basename if character.isprintable())
-        return (printable.strip() or "upload")[:255]
 
     @staticmethod
     def _result(media: MediaObject, public_url: str) -> MediaUploadResult:

@@ -25,10 +25,8 @@ export const useCartActionBarController = ({
     title,
     color,
     price,
-    image,
     cartItemId,
     usePreferredCartItemOnly = false,
-    showAddProductCard = false,
     collapsedVariant = 'glass-compact',
     allowEmptyExpand = false,
     liquidV2Shifted = false,
@@ -40,12 +38,11 @@ export const useCartActionBarController = ({
     const pathname = usePathname();
     const { items, activeItemId, isCartOpen, setIsCartOpen, updateQuantity } = useCartStore();
     const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-    const authUser = useAuthStore((state) => state.user);
+    const [isExpanded, setIsExpanded] = React.useState(false);
     const {
         totalQuantity,
         productsTotal,
         deliveryPrice,
-        discount,
         grandTotal,
         deliveryMethod,
         setDeliveryMethod,
@@ -56,12 +53,11 @@ export const useCartActionBarController = ({
         retryQuote,
         quoteLoading,
         deliveryQuoted,
-        isCouponOpen,
-        setIsCouponOpen,
-        pendingCoupon,
-        setPendingCoupon,
-        appliedCoupon,
-        setAppliedCoupon,
+        qrAvailable,
+        pending,
+        resumePurchase,
+        retryPayment,
+        newPurchase,
         isOfferAccepted,
         setIsOfferAccepted,
         isPolicyAccepted,
@@ -70,8 +66,7 @@ export const useCartActionBarController = ({
         setIsAuthPopupOpen,
         resetCheckout,
         startPayment: handleExpandedPayment,
-    } = useCartActionCheckout({ items, isAuthenticated, user: authUser });
-    const [isExpanded, setIsExpanded] = React.useState(false);
+    } = useCartActionCheckout({ items, isAuthenticated, active: isExpanded });
     const [selectedDetailsItem, setSelectedDetailsItem] = React.useState<CartItem | null>(null);
     const agreementIdPrefix = React.useId().replaceAll(':', '');
 
@@ -95,6 +90,7 @@ export const useCartActionBarController = ({
     const expandedTouchStartedAtTop = React.useRef(false);
     const expandedTouchDragging = React.useRef(false);
     const expandedTouchMoveHandler = React.useRef<(event: TouchEvent) => void>(() => undefined);
+    const dispatchExpandedTouchMove = React.useCallback((event: TouchEvent) => expandedTouchMoveHandler.current(event), []);
 
     const currentCartItem = React.useMemo(
         () => getPreferredCartItem(items, activeItemId, cartItemId, usePreferredCartItemOnly),
@@ -104,7 +100,6 @@ export const useCartActionBarController = ({
     const displayTitle = currentCartItem?.title || title;
     const displayColor = currentCartItem?.color || color;
     const displayPrice = currentCartItem?.price || price;
-    const displayImage = currentCartItem?.image || image || '/landing-bg.webp';
     const shouldShowCartAction = visible || isExpanded || (isCartOpen && items.length > 0);
     const {
         isRendered,
@@ -139,7 +134,6 @@ export const useCartActionBarController = ({
         dragOffset,
         dragStartedExpanded,
         isExpanded,
-        collapsedVariant,
     });
 
     React.useEffect(() => {
@@ -448,17 +442,6 @@ export const useCartActionBarController = ({
         expandedTouchMoveHandler.current = handleExpandedContentTouchMove;
     });
 
-    React.useEffect(() => {
-        const expandedContent = expandedContentRef.current;
-        if (!isExpanded || !expandedContent) return;
-        const handleTouchMove = (event: TouchEvent) => expandedTouchMoveHandler.current(event);
-
-        expandedContent.addEventListener('touchmove', handleTouchMove, { passive: false });
-
-        return () => {
-            expandedContent.removeEventListener('touchmove', handleTouchMove);
-        };
-    }, [isExpanded]);
 
     const handleExpandedContentTouchEnd = (event: React.TouchEvent<HTMLDivElement>) => {
         const touch = event.changedTouches[0];
@@ -560,7 +543,6 @@ export const useCartActionBarController = ({
     }, [items, selectedDetailsItem]);
 
     return {
-        showAddProductCard,
         collapsedVariant,
         liquidV2Shifted,
         disabled,
@@ -574,7 +556,6 @@ export const useCartActionBarController = ({
         totalQuantity,
         productsTotal,
         deliveryPrice,
-        discount,
         grandTotal,
         deliveryMethod,
         setDeliveryMethod,
@@ -585,12 +566,11 @@ export const useCartActionBarController = ({
         retryQuote,
         quoteLoading,
         deliveryQuoted,
-        isCouponOpen,
-        setIsCouponOpen,
-        pendingCoupon,
-        setPendingCoupon,
-        appliedCoupon,
-        setAppliedCoupon,
+        qrAvailable,
+        pending,
+        resumePurchase,
+        retryPayment,
+        newPurchase,
         isOfferAccepted,
         setIsOfferAccepted,
         isPolicyAccepted,
@@ -614,7 +594,6 @@ export const useCartActionBarController = ({
         displayTitle,
         displayColor,
         displayPrice,
-        displayImage,
         shouldShowCartAction,
         panelDragHeight,
         expansionProgress,
@@ -630,6 +609,7 @@ export const useCartActionBarController = ({
         setExpandedFromHandle,
         handleExpandedContentWheel,
         handleExpandedContentTouchStart,
+        handleExpandedContentTouchMove: dispatchExpandedTouchMove,
         handleExpandedContentTouchEnd,
         handleHandlePointerDown,
         handleHandlePointerMove,

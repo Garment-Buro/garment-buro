@@ -1,4 +1,4 @@
-import Image from 'next/image';
+import { CustomerMediaImage } from '@/components/shared/CustomerMediaImage';
 
 import { DecryptedText } from '@/components/shared/DecryptedText';
 import { Text } from '@/components/shared/Text';
@@ -22,7 +22,7 @@ export function CheckoutOrderSummary({ controller }: { controller: CheckoutContr
                     const fitSummary = getCartItemFitSummary(item);
                     return (
                         <div key={item.id} className="flex items-start gap-4 py-8 relative border-t-0 border-b border-black/10">
-                            <div className="w-[60px] h-[60px] lg:w-[80px] lg:h-[80px] bg-[#E5E5E5] rounded-md shrink-0 overflow-hidden"><Image src={item.image || '/landing-bg.webp'} alt={item.title} width={80} height={80} className="object-cover w-full h-full" /></div>
+                            <div className="w-[60px] h-[60px] lg:w-[80px] lg:h-[80px] bg-[#E5E5E5] rounded-md shrink-0 overflow-hidden"><CustomerMediaImage src={item.image || '/landing-bg.webp'} alt={item.title} width={80} height={80} className="object-cover w-full h-full" /></div>
                             <div className="flex-1 flex flex-col min-h-[60px] lg:min-h-[80px]">
                                 <Text size={13} weight="medium" className="text-black leading-tight max-w-[200px] mb-2 lg:font-normal lg:max-w-[220px]">{item.title}</Text>
                                 <div className="flex w-full items-end justify-between mt-auto">

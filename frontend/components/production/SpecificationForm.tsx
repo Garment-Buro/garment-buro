@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { visibleInstructions } from '@/lib/production/workflow';
 import {
     labels,
     stages,
@@ -36,7 +37,7 @@ export function SpecificationForm({
                   })),
                   pattern_file_ids: unit.specification.pattern_file_ids,
                   print_file_ids: unit.specification.print_file_ids,
-                  instructions: unit.specification.instructions,
+                  instructions: visibleInstructions(unit.specification.instructions),
                   quality_checks: unit.specification.quality_checks,
               }
             : {
@@ -117,11 +118,11 @@ export function SpecificationForm({
         }
     };
     return (
-        <details className={styles.section} open={!unit.specification}>
-            <summary>
-                Спецификация технолога
+        <section className={styles.section}>
+            <h3>
+                Задание на вещь
                 {unit.revision ? ` · версия ${unit.revision}` : ''}
-            </summary>
+            </h3>
             <form
                 onSubmit={(event) => {
                     event.preventDefault();
@@ -133,12 +134,12 @@ export function SpecificationForm({
                 }}
             >
                 <p>
-                    Сверьте конструкцию, мерки и все нанесения с заказом. После
+                    Техкарта модели здесь не редактируется. Выберите её опубликованную версию и уточните задание на эту вещь. После
                     выпуска в работу эта версия фиксируется.
                 </p>
                 <div className={styles.grid2}>
                     <label>
-                        Опубликованная техкарта
+                        Опубликованная техкарта модели
                         <select
                             required
                             value={value.tech_card_revision_id || ''}
@@ -421,6 +422,6 @@ export function SpecificationForm({
                     Закрепить спецификацию и файлы
                 </button>
             </form>
-        </details>
+        </section>
     );
 }

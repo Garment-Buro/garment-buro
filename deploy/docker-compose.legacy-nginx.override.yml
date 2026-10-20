@@ -1,4 +1,9 @@
 services:
   nginx:
+    volumes:
+      - ./garment-nginx-logging/http.conf:/etc/nginx/conf.d/00-garment-logging.conf:ro
+      - ./garment-nginx-logging/server.conf:/etc/nginx/garment-buro/server-logging.conf:ro
+      - ./garment-nginx-maintenance/server.conf:/etc/nginx/garment-buro/maintenance.conf:ro
+      - /srv/garment-buro/maintenance:/srv/garment-buro/maintenance:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"

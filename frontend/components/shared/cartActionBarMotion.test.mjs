@@ -8,7 +8,6 @@ const cartActionBarSource = [
     path.join(root, "components", "checkout", "CartDeliveryDetails.tsx"),
     path.join(root, "components", "checkout", "DeliverySheet.tsx"),
     path.join(root, "components", "cart", "CartActionBar.tsx"),
-    path.join(root, "components", "cart", "CartAddProductCard.tsx"),
     path.join(root, "components", "cart", "CartChoiceOption.tsx"),
     path.join(root, "components", "cart", "CartCheckoutSections.tsx"),
     path.join(root, "components", "cart", "CartSbpOption.tsx"),
@@ -28,13 +27,6 @@ const cartActionBarSource = [
     path.join(root, "lib", "api", "orders.ts"),
 ].map(file => fs.readFileSync(file, "utf8")).join("\n");
 const globalsSource = fs.readFileSync(path.join(root, "app", "globals.css"), "utf8");
-const productPageSource = [
-    path.join(root, "components", "product", "ProductPageClient.tsx"),
-    path.join(root, "components", "product", "ProductMobileLayout.tsx"),
-    path.join(root, "hooks", "product", "useProductPage.ts"),
-    path.join(root, "lib", "products", "constants.ts"),
-].map(file => fs.readFileSync(file, "utf8")).join("\n");
-const landingPageSource = fs.readFileSync(path.join(root, "components", "shared", "LandingPage.tsx"), "utf8");
 
 test("cart action bar has a staged mount lifecycle so slide-up can play on enter", () => {
     assert.match(cartActionBarSource, /const CART_ACTION_ENTER_MS = 420/);
@@ -116,13 +108,9 @@ test("collapsed cart height is measured from inner content, not from the panel h
     assert.match(cartActionBarSource, /setCollapsedPanelHeight\(Math\.round\(COLLAPSED_PRODUCT_MIN_HEIGHT \* widthRatio\)\)/);
 });
 
-test("new compact glass cart keeps the legacy collapsed version and restores expanded visuals", () => {
-    assert.match(cartActionBarSource, /export type CartCollapsedVariant = 'legacy' \| 'glass-compact' \| 'liquid-v2'/);
+test("compact cart restores expanded visuals", () => {
     assert.match(cartActionBarSource, /collapsedVariant = 'glass-compact'/);
-    assert.match(cartActionBarSource, /isCompactCollapsedPresentation:\s*\([\s\S]*?collapsedVariant === 'glass-compact' && expansionProgress <= 0\.001[\s\S]*?\) \|\| \([\s\S]*?collapsedVariant === 'liquid-v2' && expansionProgress <= 0\.001/);
-    assert.match(cartActionBarSource, /\{!isCompactCollapsedPresentation && !isPanelExpandedPresentation \? \([\s\S]*?cart-action-bar-content-glow[\s\S]*?\) : null\}/);
     assert.match(cartActionBarSource, /\{isPanelExpandedPresentation \? \([\s\S]*?cart-action-bar-content-glow pointer-events-none absolute bottom-\[-30px\] left-0 z-0[\s\S]*?width:\s*'100%'[\s\S]*?height:\s*CART_ACTION_CONTENT_GLOW_EXPANDED_HEIGHT/);
-    assert.match(cartActionBarSource, /collapsedVariant === 'legacy' && !isPanelExpandedPresentation && totalQuantity > 0/);
     assert.match(cartActionBarSource, /cart-action-bar-footer-reveal[\s\S]*?maxHeight:\s*`\$\{30 \* footerRevealProgress\}px`/s);
     assert.match(cartActionBarSource, /background:\s*'transparent'/);
     assert.match(cartActionBarSource, /border:\s*0/);
@@ -146,16 +134,8 @@ test("expanded cart renders the requested Figma cart sections", () => {
     assert.match(cartActionBarSource, /Корзина/);
     assert.match(cartActionBarSource, /items\.map\(item => \([\s\S]*?<CartItemRow/);
     assert.match(cartActionBarSource, /<span>Подробнее<\/span>/);
-    assert.match(cartActionBarSource, /cart-action-bar-coupon-section/);
-    assert.match(cartActionBarSource, /Купон/);
-    assert.match(cartActionBarSource, /Выберите купон/);
-    assert.match(cartActionBarSource, /cart-action-bar-coupon-dropdown/);
-    assert.match(cartActionBarSource, /Первый заказ/);
-    assert.match(cartActionBarSource, /Уровень L/);
-    assert.match(cartActionBarSource, /10 изделий/);
     assert.match(cartActionBarSource, /cart-action-bar-totals-section/);
     assert.match(cartActionBarSource, /Товары/);
-    assert.match(cartActionBarSource, /Скидка/);
     assert.match(cartActionBarSource, /Итого/);
     assert.match(cartActionBarSource, /Способ оплаты/);
     assert.match(cartActionBarSource, /const PaymentCardIcon = \(\) => \(/);
@@ -171,7 +151,6 @@ test("expanded cart content uses transparent framing with thirty-percent inner s
     assert.match(cartActionBarSource, /className="flex h-full w-full flex-col overflow-y-auto"/);
     assert.match(cartActionBarSource, /className="cart-action-bar-content[\s\S]*?backgroundColor:\s*isLiquidV2[\s\S]*?\? isPanelExpandedPresentation \? 'rgb\(255 255 255 \/ 80%\)' : 'transparent'[\s\S]*?: isCompactCollapsedPresentation \? 'rgb\(255 255 255 \/ 0%\)' : cartActionSurfaceBackground/s);
     assert.match(cartActionBarSource, /const CART_ACTION_PRODUCT_SECTION_BACKGROUND = 'rgb\(255 255 255 \/ 30%\)'/);
-    assert.equal((cartActionBarSource.match(/background:\s*CART_ACTION_PRODUCT_SECTION_BACKGROUND/g) ?? []).length, 7);
     assert.match(cartActionBarSource, /cart-action-bar-collapsed-layer[\s\S]*?height:\s*`\$\{collapsedPanelHeight\}px`[\s\S]*?backgroundColor:\s*collapsedLayerBackground/s);
     assert.doesNotMatch(cartActionBarSource, /className="flex h-full w-full flex-col overflow-y-auto"[\s\S]{0,500}?background:/);
     assert.match(cartActionBarSource, /const ExpandedCartSeparator = \(\) => \(/);
@@ -190,55 +169,13 @@ test("expanded cart opens editable recipient and delivery sheets", () => {
     assert.match(cartActionBarSource, /cart-action-bar-grand-total-section px-\[5px\]/);
 });
 
-test("expanded cart product and add-product blocks match the 370px Figma layout", () => {
+test("expanded cart item rows match the 370px Figma layout", () => {
     assert.match(cartActionBarSource, /cart-action-bar-cart-item-row grid w-full grid-cols-\[clamp\(56px,15\.135vw,97px\)_minmax\(0,1fr\)_clamp\(90px,24\.324vw,156px\)\]/);
     assert.match(cartActionBarSource, /row-span-2 flex h-\[clamp\(59px,15\.946vw,102px\)\] w-\[clamp\(56px,15\.135vw,97px\)\]/);
     assert.match(cartActionBarSource, /cart-action-bar-expanded-cart-items flex w-full flex-col gap-\[clamp\(16px,4\.324vw,28px\)\]/);
     assert.match(cartActionBarSource, /<div className="flex flex-col gap-\[clamp\(16px,4\.324vw,28px\)\]">/);
     assert.match(cartActionBarSource, /col-span-2 col-start-1 ml-\[6px\]/);
     assert.match(cartActionBarSource, /\{items\.length > 0 \? \([\s\S]*?cart-action-bar-expanded-cart-items[\s\S]*?\) : null\}/);
-    assert.match(cartActionBarSource, /\{showAddProductCard \? \([\s\S]*?<CartAddProductCard/);
-    assert.doesNotMatch(cartActionBarSource, /\) : \(\s*<CartAddProductCard/);
-    assert.match(cartActionBarSource, /cart-action-bar-add-product-card grid w-full grid-cols-\[clamp\(96px,25\.946vw,166px\)_minmax\(0,1fr\)_clamp\(124px,33\.514vw,214px\)\]/);
-    assert.match(cartActionBarSource, /row-span-4 flex h-\[clamp\(169px,45\.676vw,292px\)\] w-\[clamp\(95px,25\.676vw,164px\)\]/);
-    assert.match(cartActionBarSource, /cart-action-bar-add-product-title-row col-span-2 flex min-w-0 items-start justify-between gap-\[8px\]/);
-    assert.match(cartActionBarSource, /col-start-3 row-start-4 flex h-\[clamp\(34px,9\.189vw,59px\)\] w-\[clamp\(124px,33\.514vw,214px\)\]/);
-});
-
-test("expanded add-product title row has a constructor edit button", () => {
-    assert.match(cartActionBarSource, /cart-action-bar-add-product-title-row col-span-2 flex min-w-0 items-start justify-between gap-\[8px\]/);
-    assert.match(cartActionBarSource, /className="min-w-0 pr-\[10px\] font-manrope text-\[12px\] font-medium leading-\[1\.18\] text-\[#2D2D2D\]"/);
-    assert.match(cartActionBarSource, /aria-label="Изменить товар в конструкторе"[\s\S]*?onClick=\{onEdit\}/);
-    assert.match(cartActionBarSource, /aria-label="Изменить товар в конструкторе"[\s\S]*?padding:\s*'6px'/);
-    assert.match(cartActionBarSource, /aria-label="Изменить товар в конструкторе"[\s\S]*?borderRadius:\s*5/);
-    assert.match(cartActionBarSource, /aria-label="Изменить товар в конструкторе"[\s\S]*?border:\s*'1px solid #E5E5E5'/);
-    assert.match(cartActionBarSource, /aria-label="Изменить товар в конструкторе"[\s\S]*?background:\s*'rgba\(255, 255, 255, 0\.6\)'/);
-    assert.match(cartActionBarSource, /aria-label="Изменить товар в конструкторе"[\s\S]*?boxShadow:\s*'0 1px 1\.8px 0 rgba\(0, 0, 0, 0\.26\)'/);
-    assert.match(cartActionBarSource, /aria-label="Изменить товар в конструкторе"[\s\S]*?src="\/edit_icon\.svg"[\s\S]*?width=\{18\}[\s\S]*?height=\{18\}/);
-});
-
-test("expanded add-product card is product-page only and appears before cart items", () => {
-    assert.match(cartActionBarSource, /showAddProductCard\?: boolean/);
-    assert.match(cartActionBarSource, /showAddProductCard = false/);
-    assert.match(productPageSource, /showAddProductCard/);
-    assert.doesNotMatch(landingPageSource, /showAddProductCard/);
-    assert.match(cartActionBarSource, /\{showAddProductCard \? \([\s\S]*?<CartAddProductCard[\s\S]*?\) : null\}[\s\S]*?\{items\.length > 0 \? \(/);
-});
-
-test("expanded add-product card turns its plus into a quantity stepper for the current product", () => {
-    assert.match(cartActionBarSource, /cart-action-bar-add-product-stepper/);
-    assert.match(cartActionBarSource, /item=\{currentCartItem\}/);
-    assert.match(cartActionBarSource, /<CartQuantityControl item=\{item\} updateQuantity=\{updateQuantity\} variant="product-card"/);
-    assert.match(cartActionBarSource, /onClick=\{\(\) => updateQuantity\(item\.id, item\.quantity - 1\)\}/);
-    assert.match(cartActionBarSource, /\{item\.quantity\}/);
-    assert.match(cartActionBarSource, /onClick=\{\(\) => updateQuantity\(item\.id, item\.quantity \+ 1\)\}/);
-    assert.match(cartActionBarSource, /onClick=\{onAdd\}/);
-});
-
-test("expanded add-product plus aligns to the bottom without vertical span offset", () => {
-    assert.match(cartActionBarSource, /className="col-start-3 row-start-4 flex h-\[clamp\(34px,9\.189vw,59px\)\] w-\[clamp\(124px,33\.514vw,214px\)\][^"]*self-end/);
-    assert.match(cartActionBarSource, /aria-label="Добавить товар в корзину"[\s\S]*?<span>\+<\/span>/);
-    assert.doesNotMatch(cartActionBarSource, /<span className="mb-\[5px\]">\+<\/span>/);
 });
 
 test("cart item edit/status control uses edit icon and only checks constructed items", () => {
@@ -246,46 +183,6 @@ test("cart item edit/status control uses edit icon and only checks constructed i
     assert.match(cartActionBarSource, /aria-label="Изменить товар"[\s\S]*?src="\/edit_icon\.svg"/);
     assert.match(cartActionBarSource, /item\.customization\?\.kind === 'constructor' \? <ConstructedItemIcon \/> : null/);
     assert.doesNotMatch(cartActionBarSource, /GearSmallIcon/);
-});
-
-test("expanded cart coupon dropdown and total blocks use Figma dimensions", () => {
-    assert.match(cartActionBarSource, /cart-action-bar-coupon-section relative overflow-visible px-\[clamp\(22px,5\.946vw,38px\)\]/);
-    assert.match(cartActionBarSource, /grid h-\[clamp\(25px,6\.757vw,43px\)\] min-w-0 grid-cols-\[clamp\(32px,8\.649vw,55px\)_minmax\(0,1fr\)_clamp\(22px,5\.946vw,38px\)\]/);
-    assert.match(cartActionBarSource, /cart-action-bar-coupon-dropdown absolute left-\[clamp\(22px,5\.946vw,38px\)\] top-\[calc\(clamp\(64px,17\.297vw,111px\)\+5px\)\]/);
-    assert.match(cartActionBarSource, /cart-action-bar-coupon-dropdown[^"\n]*bg-white/);
-    assert.doesNotMatch(cartActionBarSource, /cart-action-bar-coupon-dropdown[^"\n]*bg-\[rgba\(255,255,255,0\.6\)\]/);
-    assert.doesNotMatch(cartActionBarSource, /cart-action-bar-coupon-dropdown[^"\n]*bg-transparent/);
-    assert.match(cartActionBarSource, /src="\/discount_header_icon\.svg"[\s\S]*?width=\{18\}[\s\S]*?height=\{13\}/);
-    assert.doesNotMatch(cartActionBarSource, /text-\[9px\][^"\n]*>\s*%\s*<\/span>/);
-    assert.match(cartActionBarSource, /const CART_ACTION_COUPON_BUTTON_SHADOW = '0 0\.665px 1\.196px 0 rgba\(0, 0, 0, 0\.26\)'/);
-    assert.equal((cartActionBarSource.match(/boxShadow:\s*CART_ACTION_COUPON_BUTTON_SHADOW/g) ?? []).length, 2);
-    assert.doesNotMatch(cartActionBarSource, /grid h-\[clamp\(25px,6\.757vw,43px\)\][^"\n]*border border-\[#8D8E8F\]/);
-    assert.match(cartActionBarSource, /className="relative grid h-\[clamp\(41px,11\.081vw,71px\)\] w-full grid-cols-\[clamp\(76px,20\.541vw,131px\)_minmax\(0,1fr\)\]/);
-    assert.match(cartActionBarSource, /cart-action-bar-totals-section px-\[clamp\(28px,7\.568vw,48px\)\]/);
-    assert.match(cartActionBarSource, /className="flex flex-col gap-\[0px\] font-manrope text-\[10px\]/);
-    assert.match(cartActionBarSource, /cart-action-bar-grand-total-section px-\[5px\]/);
-    assert.match(cartActionBarSource, /mt-\[clamp\(18px,4\.865vw,31px\)\] flex flex-col gap-\[clamp\(5px,1\.351vw,9px\)\]/);
-    assert.match(cartActionBarSource, /className="cart-action-bar-agreement-checkbox flex min-h-\[32px\] items-center gap-\[7px\] text-left"/);
-});
-
-test("expanded coupon dropdown keeps selection pending until apply", () => {
-    assert.match(cartActionBarSource, /const \[pendingCoupon,\s*setPendingCoupon\] = useState<CartActionCoupon \| null>\(null\)/);
-    assert.match(cartActionBarSource, /const \[appliedCoupon,\s*setAppliedCoupon\] = useState<CartActionCoupon \| null>\(null\)/);
-    assert.match(cartActionBarSource, /pendingCoupon\?\.value === coupon\.value/);
-    assert.match(cartActionBarSource, /pendingCoupon\s*\?\s*`Скидка на \$\{pendingCoupon\.label\.toLowerCase\(\)\} — \$\{pendingCoupon\.amount\}`\s*:\s*'Выберите купон'/);
-    assert.match(cartActionBarSource, /onClick=\{\(\) => \{\s*setAppliedCoupon\(pendingCoupon\);\s*setIsOpen\(false\);\s*\}\}/);
-    assert.match(cartActionBarSource, /backgroundImage:\s*`url\(\$\{isSelected \? '\/used_sell\.webp' : '\/unused_sell\.webp'\}\)`/);
-    assert.match(cartActionBarSource, /backgroundSize:\s*'100% 100%'/);
-    assert.match(cartActionBarSource, /name="arrow-up"/);
-    assert.doesNotMatch(cartActionBarSource, /aria-hidden="true">⌄<\/span>/);
-    assert.doesNotMatch(cartActionBarSource, /left-\[-5px\] top-1\/2 h-\[10px\] w-\[10px\]/);
-    assert.doesNotMatch(cartActionBarSource, /right-\[-5px\] top-1\/2 h-\[10px\] w-\[10px\]/);
-});
-
-test("expanded cart hides discount until a coupon is applied", () => {
-    assert.match(cartActionBarSource, /const discount = appliedCoupon && items\.length > 0 \? CART_ACTION_COUPON_DISCOUNT : 0/);
-    assert.match(cartActionBarSource, /\{appliedCoupon \? \([\s\S]*?<div className="flex justify-between text-\[#45F472\]">[\s\S]*?<span>Скидка<\/span>[\s\S]*?<\/div>[\s\S]*?\) : null\}/);
-    assert.doesNotMatch(cartActionBarSource, /React\.useState<\(typeof CART_ACTION_COUPONS\)\[number\]>\(CART_ACTION_COUPONS\[0\]\)/);
 });
 
 test("expanded cart agreements use larger stable checkbox hit targets", () => {
@@ -342,8 +239,6 @@ test("expanded guest cart renders a separate login card below the cart", () => {
     assert.match(cartActionBarSource, /paddingLeft: 'clamp\(75px, 20\.27vw, 130px\)'/);
     assert.match(cartActionBarSource, /pl-0 pr-\[27px\]/);
     assert.match(cartActionBarSource, /onLogin=\{\(\) => setIsAuthPopupOpen\(true\)\}/);
-    assert.match(cartActionBarSource, /<AuthPopup isOpen=\{isAuthPopupOpen\}/);
-    assert.match(cartActionBarSource, /const resetCheckout[\s\S]*?setAppliedCoupon\(null\);[\s\S]*?setIsAuthPopupOpen\(false\);/);
 });
 
 test("expanded cart leaves document scrolling enabled", () => {
@@ -387,7 +282,6 @@ test("cart resets open, overlay, drag, and animation state when pathname changes
     assert.match(cartActionBarSource, /setIsExpanded\(false\)/);
     assert.match(cartActionBarSource, /setDragStartedExpanded\(false\)/);
     assert.match(cartActionBarSource, /setDragOffset\(0\)/);
-    assert.match(cartActionBarSource, /setIsCouponOpen\(false\)/);
     assert.match(cartActionBarSource, /setSelectedDetailsItem\(null\)/);
     assert.match(cartActionBarSource, /setIsVisibleFrame\(false\)/);
     assert.match(cartActionBarSource, /dragStartY\.current = null/);
@@ -414,7 +308,6 @@ test("cart drag previews expanded content while the panel height changes", () =>
     assert.match(cartActionBarSource, /const expansionProgress = Math\.max\(0, Math\.min\(1,/);
     assert.match(cartActionBarSource, /cart-action-bar-collapsed-layer/);
     assert.match(cartActionBarSource, /cart-action-bar-expanded-layer/);
-    assert.match(cartActionBarSource, /\{renderExpandedContent\(\)\}/);
     assert.match(cartActionBarSource, /visibility:\s*isPanelExpandedPresentation \? 'visible' : 'hidden'/);
     assert.match(cartActionBarSource, /background:\s*'transparent'/);
 });
@@ -537,16 +430,9 @@ test("expanded cart footer starts the selected payment instead of opening legacy
     assert.match(cartActionBarSource, /onSelect=\{\(\) => setPaymentMethod\('card'\)\}/);
     assert.equal((cartActionBarSource.match(/variant="payment"/g) ?? []).length, 2);
     assert.match(cartActionBarSource, /onClick=\{isPanelExpandedPresentation \? handleExpandedPayment : onBuy\}/);
-    assert.match(cartActionBarSource, /payment_method:\s*paymentMethod/);
-    assert.match(cartActionBarSource, /createCartActionOrder\(\{/);
-    assert.match(cartActionBarSource, /requestJson<CartActionOrderResponse>\('\/orders'/);
     assert.doesNotMatch(cartActionBarSource, /guest@garment-buro\.ru/);
-    assert.match(cartActionBarSource, /email:\s*buyer\.email\.trim\(\)/);
-    assert.match(cartActionBarSource, /validContact\(buyer\)/);
     assert.doesNotMatch(cartActionBarSource, /Клочинский Константин|ул\. Беговая/);
     assert.doesNotMatch(cartActionBarSource, /if \(!isAuthenticated \|\| !user\?\.email\)/);
-    assert.match(cartActionBarSource, /window\.location\.assign\(data\.payment_url\)/);
-    assert.match(cartActionBarSource, /router\.push\(data\.order_id \? `\/order\/\$\{data\.order_id\}` : '\/order\/error'\)/);
     assert.match(cartActionBarSource, /isPanelExpandedPresentation[\s\S]*?'ОПЛАТИТЬ'[\s\S]*?: 'КУПИТЬ'/);
     assert.doesNotMatch(cartActionBarSource, /onClick=\{onBuy\}/);
     assert.match(cartActionBarSource, /const CART_ACTION_CONTENT_GLOW_EXPANDED_HEIGHT = '100px'/);

@@ -1,12 +1,16 @@
 # LEGACY Docker nginx variant; append these servers to the active config only
 # after certificate issuance. Do not replace unrelated public vhosts.
 server {
+    include /etc/nginx/garment-buro/server-logging.conf;
     listen 80;
     server_name production.garment-buro.ru;
     location /.well-known/acme-challenge/ { root /var/www/certbot; }
     location / { return 301 https://production.garment-buro.ru$request_uri; }
 }
 server {
+    include /etc/nginx/garment-buro/server-logging.conf;
+    set $garment_deployment_environment production;
+    include /etc/nginx/garment-buro/maintenance.conf;
     listen 443 ssl;
     server_name production.garment-buro.ru;
     ssl_certificate /etc/nginx/ssl/live/production.garment-buro.ru/fullchain.pem;

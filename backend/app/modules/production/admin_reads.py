@@ -2,7 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import String, and_, case, cast, func, or_, select, union
+from sqlalchemy import String, case, cast, func, or_, select, union
 from sqlalchemy.orm import selectinload
 
 from app.modules.bank_payouts.models import PartnerBankPayment
@@ -43,9 +43,9 @@ def order_row(row):
         "id": order.id,
         "is_demo": order.is_demo,
         "user_id": order.user_id,
-        "name": " ".join(x for x in (order.first_name, order.last_name) if x),
+        "name": order.buyer_name or " ".join(x for x in (order.first_name, order.last_name) if x),
         "email": order.email,
-        "phone": order.phone,
+        "phone": order.buyer_phone or order.phone,
         "created_at": order.created_at,
         "total": money(order.total_price),
         "status": order.status,
@@ -61,7 +61,18 @@ class ProductionAdminReads:
             OrderWorkflow, OrderWorkflow.order_id == Order.id
         )
         statement = statement.where(
-            search(q, [Order.id, Order.email, Order.phone, Order.first_name, Order.last_name])
+            search(
+                q,
+                [
+                    Order.id,
+                    Order.email,
+                    Order.phone,
+                    Order.first_name,
+                    Order.last_name,
+                    Order.buyer_name,
+                    Order.buyer_phone,
+                ],
+            )
         )
         if status:
             statement = statement.where(state == status)
@@ -70,6 +81,7 @@ class ProductionAdminReads:
             "total": Order.total_price,
             "client": func.lower(
                 func.coalesce(
+                    Order.buyer_name,
                     Order.last_name,
                     Order.first_name,
                     Order.email,
@@ -340,7 +352,10 @@ class ProductionAdminReads:
                 func.nullif(Order.email_normalized, "").is_not(None),
                 "email:" + Order.email_normalized,
             ),
-            (func.nullif(Order.phone, "").is_not(None), "phone:" + Order.phone),
+            (
+                func.nullif(func.coalesce(Order.buyer_phone, Order.phone), "").is_not(None),
+                "phone:" + func.coalesce(Order.buyer_phone, Order.phone),
+            ),
             else_="order:" + cast(Order.id, String),
         )
         return (
@@ -374,7 +389,15 @@ class ProductionAdminReads:
     ):
         clients = self.clients_query()
         statement = (
-            select(clients, Order.first_name, Order.last_name, Order.email, Order.phone)
+            select(
+                clients,
+                Order.first_name,
+                Order.last_name,
+                Order.email,
+                Order.phone,
+                Order.buyer_name,
+                Order.buyer_phone,
+            )
             .join(Order, Order.id == clients.c.last_order_id)
             .where(
                 search(
@@ -385,6 +408,8 @@ class ProductionAdminReads:
                         Order.last_name,
                         Order.email,
                         Order.phone,
+                        Order.buyer_name,
+                        Order.buyer_phone,
                     ],
                 )
             )
@@ -399,7 +424,14 @@ class ProductionAdminReads:
             "orders_total": clients.c.orders_total,
             "paid_orders_total": clients.c.paid_orders_total,
             "client": func.lower(
-                func.coalesce(Order.last_name, Order.first_name, Order.email, Order.phone, "")
+                func.coalesce(
+                    Order.buyer_name,
+                    Order.last_name,
+                    Order.first_name,
+                    Order.email,
+                    Order.phone,
+                    "",
+                )
             ),
         }
         ordered = client_fields[sort].asc() if direction == "asc" else client_fields[sort].desc()
@@ -423,140 +455,16 @@ class ProductionAdminReads:
                 "key": r["key"],
                 "user_id": r["user_id"],
                 "last_order_id": r["last_order_id"],
-                "name": " ".join(x for x in (r["first_name"], r["last_name"]) if x),
+                "name": r["buyer_name"]
+                or " ".join(x for x in (r["first_name"], r["last_name"]) if x),
                 "email": r["email"],
-                "phone": r["phone"],
+                "phone": r["buyer_phone"] or r["phone"],
                 "last_order_at": r["last_order_at"],
                 "orders_count": r["orders_count"],
                 "orders_total": money(r["orders_total"]),
                 "paid_orders_total": money(r["paid_orders_total"]),
             },
         )
-
-    @staticmethod
-    def client_identity(key: str):
-        kind, separator, value = key.partition(":")
-        if not separator or not value:
-            raise ValueError("Некорректный идентификатор клиента")
-        if kind in {"user", "order"}:
-            if not value.isdigit() or int(value) < 1:
-                raise ValueError("Некорректный идентификатор клиента")
-            value = int(value)
-        if kind == "user":
-            return kind, value, Order.user_id == value
-        if kind == "email":
-            return kind, value, and_(Order.user_id.is_(None), Order.email_normalized == value)
-        if kind == "phone":
-            return (
-                kind,
-                value,
-                and_(
-                    Order.user_id.is_(None),
-                    func.nullif(Order.email_normalized, "").is_(None),
-                    Order.phone == value,
-                ),
-            )
-        if kind == "order":
-            return kind, value, Order.id == value
-        raise ValueError("Некорректный идентификатор клиента")
-
-    async def client_detail(self, session, *, key: str):
-        kind, value, order_filter = self.client_identity(key)
-        rows = (
-            await session.execute(
-                select(Order, OrderWorkflow.state)
-                .outerjoin(OrderWorkflow, OrderWorkflow.order_id == Order.id)
-                .where(Order.is_demo.is_(False), order_filter)
-                .order_by(Order.created_at.desc(), Order.id.desc())
-                .limit(100)
-            )
-        ).all()
-        if not rows:
-            return None
-        orders = [row[0] for row in rows]
-        latest = orders[0]
-        account = await session.get(User, value) if kind == "user" else None
-        direct_ticket_filter = (
-            AdminInboxItem.reporter_user_id == value
-            if kind == "user"
-            else and_(
-                AdminInboxItem.reporter_user_id.is_(None),
-                func.lower(AdminInboxItem.reporter_email) == str(value).lower(),
-            )
-            if kind == "email"
-            else and_(
-                AdminInboxItem.reporter_user_id.is_(None),
-                AdminInboxItem.reporter_email.is_(None),
-                AdminInboxItem.reporter_phone == value,
-            )
-            if kind == "phone"
-            else AdminInboxItem.order_id == value
-        )
-        order_ids = [order.id for order in orders]
-        tickets = list(
-            await session.scalars(
-                select(AdminInboxItem)
-                .where(
-                    AdminInboxItem.kind == "support",
-                    or_(direct_ticket_filter, AdminInboxItem.order_id.in_(order_ids)),
-                )
-                .order_by(AdminInboxItem.updated_at.desc(), AdminInboxItem.id.desc())
-                .limit(100)
-            )
-        )
-        return {
-            "key": key,
-            "name": " ".join(value for value in (latest.first_name, latest.last_name) if value),
-            "email": latest.email,
-            "phone": latest.phone,
-            "account": None
-            if account is None
-            else {
-                "id": account.id,
-                "email": account.email,
-                "phone": account.phone,
-                "username": account.username,
-                "registered_at": account.created_at,
-                "email_verified": account.email_verified_at is not None,
-                "gender": account.gender,
-                "birth_date": account.birth_date,
-                "height_cm": money(account.height_cm) if account.height_cm is not None else None,
-                "weight_kg": money(account.weight_kg) if account.weight_kg is not None else None,
-            },
-            "recipient": {
-                "patronymic": latest.patronymic,
-                "city": latest.delivery_city,
-                "address": latest.delivery_address,
-                "delivery_method": latest.delivery_method,
-                "pickup_point": latest.cdek_point_code,
-            },
-            "orders": [
-                {
-                    "id": order.id,
-                    "created_at": order.created_at,
-                    "total": money(order.total_price),
-                    "status": order.status,
-                    "payment_status": order.payment_status,
-                    "workflow_state": workflow_state,
-                    "delivery_city": order.delivery_city,
-                    "delivery_method": order.delivery_method,
-                    "payment_method": order.payment_method,
-                }
-                for order, workflow_state in rows
-            ],
-            "tickets": [
-                {
-                    "id": ticket.id,
-                    "subject": ticket.subject,
-                    "status": ticket.status,
-                    "priority": ticket.priority,
-                    "order_id": ticket.order_id,
-                    "created_at": ticket.created_at,
-                    "updated_at": ticket.updated_at,
-                }
-                for ticket in tickets
-            ],
-        }
 
     async def payouts(self, session, *, q, status, limit, offset, sort, direction):
         statement = (

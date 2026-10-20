@@ -61,10 +61,3 @@ test("the constructor overlay repaints the safe area on two animation frames", (
     assert.match(environmentSource, /MutationObserver\(syncPageChrome\)/);
     assert.match(environmentSource, /data-app-top-page=\{pageChrome\.page\}/);
 });
-
-test("the size modal fits its controls without an internal scroll container", () => {
-    assert.doesNotMatch(constructorSource, /constructorSizeModal[^\n]*h-\[min\(780px,calc\(100dvh-10px\)\)\]/);
-    assert.match(constructorSource, /constructorSizeModal[^\n]*overflow-hidden/);
-    assert.doesNotMatch(constructorSource, /constructorSizeModal[^\n]*overflow-y-auto/);
-    assert.match(constructorSource, /h-\[clamp\(210px,32dvh,300px\)\]/);
-});

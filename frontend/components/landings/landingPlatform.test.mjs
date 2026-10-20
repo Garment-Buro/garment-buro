@@ -13,16 +13,13 @@ const landingSource = read('components', 'landings', 'CollectionLanding.tsx');
 const modelsSource = read('components', 'landings', 'CollectionModels.tsx');
 const detailsSource = read('components', 'landings', 'CollectionDetails.tsx');
 const revealSource = read('components', 'landings', 'LandingReveal.tsx');
-const publicCatalogSource = read('lib', 'catalog', 'public.ts');
 const adminSource = read('components', 'admin', 'AdminPartnersScreen.tsx');
 
 test('the public home is platform first and no longer renders the catalog', () => {
     assert.match(homeSource, /PlatformEntry/);
-    assert.match(platformEntrySource, /PartnerLandingDesktopGate/);
-    assert.match(platformEntrySource, /PresentationSurface/);
-    assert.match(platformEntrySource, /matchMedia/);
+    assert.match(platformEntrySource, /ServiceHome/);
+    assert.doesNotMatch(platformEntrySource, /PartnerLandingDesktopGate|PresentationSurface|matchMedia/);
     assert.doesNotMatch(homeSource, /CatalogScreen|LandingPage|CatalogPresentationOverlay|getCatalogData/);
-    assert.match(publicCatalogSource, /PUBLIC_CATALOG_ENABLED = false/);
 });
 
 test('partner landings use collection storytelling and send models to the constructor', () => {

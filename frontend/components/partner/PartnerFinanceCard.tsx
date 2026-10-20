@@ -13,6 +13,7 @@ type PartnerFinanceCardProps = {
     hasRequisites: boolean;
     payoutAmount: string;
     payoutPending: boolean;
+    payoutUnavailable: boolean;
     payoutOpen: boolean;
     onPayoutAmountChange: (value: string) => void;
     onPayoutOpen: () => void;
@@ -26,6 +27,7 @@ export const PartnerFinanceCard = ({
     hasRequisites,
     payoutAmount,
     payoutPending,
+    payoutUnavailable,
     payoutOpen,
     onPayoutAmountChange,
     onPayoutOpen,
@@ -71,7 +73,7 @@ export const PartnerFinanceCard = ({
                 <button
                     type="button"
                     className={styles.primaryButton}
-                    disabled={available <= 0}
+                    disabled={available <= 0 || payoutUnavailable}
                     onClick={hasRequisites ? onPayoutOpen : onRequisitesRequired}
                 >
                     {available > 0 ? (
@@ -95,6 +97,7 @@ export const PartnerFinanceCard = ({
                         <span>Сумма выплаты</span>
                         <input
                             type="number"
+                            disabled={payoutPending}
                             min="1"
                             max={available}
                             step="0.01"
@@ -112,7 +115,7 @@ export const PartnerFinanceCard = ({
                         <button
                             type="submit"
                             className={styles.primaryButton}
-                            disabled={payoutPending || !payoutAmount || Number(payoutAmount) <= 0}
+                            disabled={payoutPending || payoutUnavailable || !payoutAmount || Number(payoutAmount) <= 0}
                         >
                             {payoutPending ? 'Отправляем заявку…' : 'Подтвердить вывод'}
                         </button>

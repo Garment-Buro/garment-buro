@@ -1,10 +1,8 @@
 /* eslint-disable @next/next/no-img-element -- immutable order snapshot */
 import { useState } from 'react';
-import { PiArrowSquareOut, PiStack } from 'react-icons/pi';
-import { productionApi } from '@/lib/api/production';
+import { PiStack } from 'react-icons/pi';
 import type { Station, Unit } from '@/lib/production/types';
 import { safeImage } from '@/lib/production/workflow';
-import { useProductionAuthStore } from '@/store/productionAuthStore';
 import styles from './ProductionFlow.module.css';
 
 const sides = [
@@ -160,9 +158,6 @@ export function ProductionViews({
     station?: Station;
 }) {
     const [view, setView] = useState<string>('front');
-    const [openingFile, setOpeningFile] = useState<number | null>(null);
-    const [fileError, setFileError] = useState('');
-    const run = useProductionAuthStore((state) => state.runAuthenticated);
     const raw = unit.source.customization?.modelImages;
     const images =
         raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
@@ -181,30 +176,6 @@ export function ProductionViews({
         Math.max(1, numberValue(garment.heightCm, 70)),
     );
     const decorations = decorationsFrom(customization.decorations);
-    const patternIds = unit.specification?.pattern_file_ids ?? [];
-    const patternFiles = unit.files.filter((file) =>
-        patternIds.includes(file.id),
-    );
-    const openPattern = async (id: number) => {
-        setOpeningFile(id);
-        setFileError('');
-        try {
-            const file = await run((token) =>
-                productionApi.download(token, id, station, true),
-            );
-            const link = document.createElement('a');
-            link.href = file.url;
-            link.target = '_blank';
-            link.rel = 'noopener noreferrer';
-            link.click();
-        } catch (error) {
-            setFileError(
-                error instanceof Error ? error.message : 'Файл недоступен',
-            );
-        } finally {
-            setOpeningFile(null);
-        }
-    };
     return (
         <div
             className={styles.views}
@@ -272,44 +243,6 @@ export function ProductionViews({
                                                 наложения
                                             </small>
                                         </section>
-                                    </div>
-                                    <div className={styles.patternActions}>
-                                        {patternFiles.length ? (
-                                            patternFiles.map((file, index) => (
-                                                <button
-                                                    type="button"
-                                                    key={file.id}
-                                                    disabled={
-                                                        openingFile !== null
-                                                    }
-                                                    onClick={() =>
-                                                        void openPattern(
-                                                            file.id,
-                                                        )
-                                                    }
-                                                >
-                                                    <PiArrowSquareOut aria-hidden />
-                                                    {openingFile === file.id
-                                                        ? 'Открываем…'
-                                                        : patternFiles.length ===
-                                                            1
-                                                          ? 'Открыть оригинал лекала'
-                                                          : `Открыть оригинал лекала ${index + 1}`}
-                                                </button>
-                                            ))
-                                        ) : (
-                                            <button type="button" disabled>
-                                                Оригинал лекала не прикреплён
-                                            </button>
-                                        )}
-                                        {fileError && (
-                                            <p
-                                                className={styles.error}
-                                                role="alert"
-                                            >
-                                                {fileError}
-                                            </p>
-                                        )}
                                     </div>
                                 </>
                             ) : (

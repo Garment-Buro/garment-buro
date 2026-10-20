@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+CATALOG_EDITOR_VARIANT_LIMIT = 200
 
 
 class ProductCategoryWrite(BaseModel):
@@ -45,8 +48,8 @@ class ProductVariantWriteRequest(BaseModel):
 
     id: int | None = None
     size: str | None = Field(default=None, max_length=32)
-    garment_size_id: int | None = Field(default=None, gt=0)
-    fabric_id: int | None = Field(default=None, gt=0)
+    garment_size_id: int | None = Field(default=None, gt=0, le=2_147_483_647)
+    fabric_id: int | None = Field(default=None, gt=0, le=2_147_483_647)
     color: str | None = Field(default=None, max_length=64)
     color_hex: str | None = Field(default=None, max_length=7)
     stock_quantity: int = Field(default=0, ge=0)
@@ -59,6 +62,10 @@ class ProductVariantWriteRequest(BaseModel):
 class ProductWriteRequest(BaseModel):
     model_config = ConfigDict(extra="ignore", populate_by_name=True)
 
+    preset_source: Literal["garment_buro", "user"] = "garment_buro"
+    tags: list[Annotated[str, Field(min_length=1, max_length=64)]] = Field(
+        default_factory=list, max_length=50
+    )
     title: str = Field(min_length=1, max_length=255)
     slug: str | None = Field(
         default=None,
@@ -66,8 +73,8 @@ class ProductWriteRequest(BaseModel):
         max_length=255,
         pattern=r"^[a-z0-9][a-z0-9-]*$",
     )
-    category_id: int | None = Field(default=None, gt=0)
-    garment_model_id: int | None = Field(default=None, gt=0)
+    category_id: int | None = Field(default=None, gt=0, le=2_147_483_647)
+    garment_model_id: int | None = Field(default=None, gt=0, le=2_147_483_647)
     price: Decimal = Field(ge=0, max_digits=12, decimal_places=2)
     old_price: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
     video_src: str | None = Field(default=None, max_length=4096)
@@ -97,7 +104,20 @@ class ProductWriteRequest(BaseModel):
     mobile_slider_images: str | None = Field(default=None, max_length=32768)
     mobile_product_slider_images: str | None = Field(default=None, max_length=32768)
     mobile_size_chart_first: str | None = Field(default=None, max_length=4096)
-    variants: list[ProductVariantWriteRequest] = Field(default_factory=list, max_length=200)
+    variants: list[ProductVariantWriteRequest] = Field(
+        default_factory=list, max_length=CATALOG_EDITOR_VARIANT_LIMIT
+    )
+
+    @field_validator("tags", mode="before")
+    @classmethod
+    def normalize_tags(cls, value: object) -> object:
+        if not isinstance(value, list) or not all(isinstance(tag, str) for tag in value):
+            return value
+        return list(
+            dict.fromkeys(
+                " ".join(tag.split()).casefold() if isinstance(tag, str) else tag for tag in value
+            )
+        )
 
     @field_validator("title")
     @classmethod
@@ -119,6 +139,14 @@ class ProductWriteRequest(BaseModel):
         return self
 
 
+class ProductUpdateRequest(ProductWriteRequest):
+    expected_version: int = Field(strict=True, gt=0, le=2_147_483_647)
+
+
+class PresetWriteRequest(ProductWriteRequest):
+    garment_model_id: int = Field(gt=0, le=2_147_483_647)
+
+
 class ProductDeletedResponse(BaseModel):
     status: str = "deleted"
 
@@ -137,6 +165,11 @@ class ProductVariantResponse(BaseModel):
 
 
 class ProductResponse(BaseModel):
+    preset_source: Literal["garment_buro", "user"] = "garment_buro"
+    tags: list[str] = Field(default_factory=list)
+    slug: str | None = None
+    garment_model_id: int | None = None
+    category_id: int | None = None
     id: int
     title: str
     price: float
@@ -170,5 +203,15 @@ class ProductResponse(BaseModel):
     mobile_size_chart_first: str | None
 
 
+class ProductMediaAsset(BaseModel):
+    id: int
+    role: str
+    sort_order: int
+    url: str
+    content_type: str
+
+
 class ProductDetailResponse(ProductResponse):
+    version: int
     variants: list[ProductVariantResponse]
+    media_assets: list[ProductMediaAsset]

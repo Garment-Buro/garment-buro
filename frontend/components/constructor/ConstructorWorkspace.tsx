@@ -10,8 +10,9 @@ import { DecorationOptionCard, UploadDecorationCard } from "@/components/constru
 import { RotateModelIcon } from "@/components/constructor/RotateModelIcon";
 import { SizeFitModal } from "@/components/constructor/SizeFitModal";
 import { TextDecorationEditor } from "@/components/constructor/TextDecorationEditor";
+import { ConstructorProjectNotice, ConstructorProjectStatus } from "@/components/constructor/ConstructorProjectStatus";
 import { CONSTRUCTOR_CATEGORIES } from "@/lib/constructor/config/categories";
-import { IMAGE_FILE_ACCEPT } from "@/lib/media/utils/upload";
+import { CONSTRUCTOR_IMAGE_ACCEPT } from "@/lib/constructor/imageInput";
 import { formatCm } from "@/lib/constructor/utils/constructor";
 import type { ConstructorPageController } from "@/hooks/constructor/useConstructorPageController";
 
@@ -32,6 +33,7 @@ export const ConstructorWorkspace = ({ controller }: { controller: ConstructorPa
         selectedModel,
         displayActiveImageSrc,
         modelBounds,
+        canvasPixelSize,
         canvasBottomInset,
         placedItems,
         hardwareMap,
@@ -81,7 +83,6 @@ export const ConstructorWorkspace = ({ controller }: { controller: ConstructorPa
         handlePanelPrimaryAction,
         constructorCartItem,
         editingCartItem,
-        activeImageSrc,
         handleBuy,
         handleConstructorCartEdit,
         product,
@@ -89,7 +90,9 @@ export const ConstructorWorkspace = ({ controller }: { controller: ConstructorPa
     } = controller;
 
     return (
+        <>
         <div
+            inert={controller.projectSession.status !== 'idle' || controller.cartPreparation.isPreparing}
             className="constructorViewport relative w-full touch-none overflow-hidden bg-white"
             style={{
                 backgroundImage: "url('/constructor_bg.webp')",
@@ -118,6 +121,8 @@ export const ConstructorWorkspace = ({ controller }: { controller: ConstructorPa
                     }}
                 />
 
+                <ConstructorProjectNotice controller={controller} />
+
                 <main
                     className="relative flex w-full flex-1 flex-col overflow-hidden"
                     onPointerDownCapture={handleMainPointerDownCapture}
@@ -127,6 +132,7 @@ export const ConstructorWorkspace = ({ controller }: { controller: ConstructorPa
                         selectedModel={selectedModel}
                         activeImageSrc={displayActiveImageSrc || undefined}
                         modelBounds={modelBounds}
+                        canvasPixelSize={canvasPixelSize}
                         bottomInset={canvasBottomInset}
                         placedItems={placedItems}
                         hardwareMap={hardwareMap}
@@ -239,11 +245,12 @@ export const ConstructorWorkspace = ({ controller }: { controller: ConstructorPa
                         </div>
 
                         <div className="mt-[3px] h-[0.7px] bg-[#EEE]" />
+                        {!canUploadCustomDecoration && currentVariants.length === 0 && <p className="px-5 py-3 text-sm text-[#676767]">В этой категории пока нет доступных украшений.</p>}
 
                         <input
                             ref={uploadInputRef}
                             type="file"
-                            accept={IMAGE_FILE_ACCEPT}
+                            accept={CONSTRUCTOR_IMAGE_ACCEPT}
                             multiple
                             onChange={handleUploadDecoration}
                             className="hidden"
@@ -272,7 +279,7 @@ export const ConstructorWorkspace = ({ controller }: { controller: ConstructorPa
                                         <DecorationOptionCard
                                             key={variant.id}
                                             decoration={variant}
-                                            priceLabel={variant.price > 0 ? getDecorationPanelPrice(variant) : ""}
+                                        priceLabel={getDecorationPanelPrice(variant)}
                                             variant="rail"
                                             captionsVisible={areDecorationCaptionsVisible}
                                             onSelect={handleAddHardware}
@@ -300,7 +307,7 @@ export const ConstructorWorkspace = ({ controller }: { controller: ConstructorPa
                                                     <DecorationOptionCard
                                                         key={variant.id}
                                                         decoration={variant}
-                                                        priceLabel={variant.price > 0 ? getDecorationPanelPrice(variant) : ""}
+                                                        priceLabel={getDecorationPanelPrice(variant)}
                                                         variant="grid"
                                                         onSelect={handleAddHardware}
                                                     />
@@ -324,7 +331,7 @@ export const ConstructorWorkspace = ({ controller }: { controller: ConstructorPa
                                 <div className={`min-h-0 flex-1 overflow-y-auto scrollbar-hide ${isCustomizationDetailsOpen ? "pt-0" : "pt-[36px]"}`}>
                                     <div className="flex items-center justify-between">
                                         <span className="max-w-[60%] truncate" title={selectedModel?.name || "Товар"}>{selectedModel?.name || "Товар"}</span>
-                                        <span className="text-right">{(selectedModel?.price || 0).toLocaleString("ru-RU")} ₽</span>
+                                        <span className="text-right">{controller.pricing.quote ? `${controller.pricing.quote.basePrice.toLocaleString("ru-RU")} ₽` : '…'}</span>
                                     </div>
 
                                     <button
@@ -342,7 +349,7 @@ export const ConstructorWorkspace = ({ controller }: { controller: ConstructorPa
                                                 <path d="M1 3L4 6L7 3" fill="none" stroke="#454545" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
                                             </svg>
                                         </span>
-                                        <span>{customizationPrice.toLocaleString("ru-RU")} ₽</span>
+                                        <span>{controller.pricing.quote ? `${customizationPrice.toLocaleString("ru-RU")} ₽` : '…'}</span>
                                     </button>
 
                                     {isCustomizationDetailsOpen && (
@@ -352,7 +359,7 @@ export const ConstructorWorkspace = ({ controller }: { controller: ConstructorPa
                                                     <span className="max-w-[68%] truncate" title={`${detail.hardware?.name || "Украшение"} · ${formatCm(detail.widthCm)} × ${formatCm(detail.heightCm)}`}>
                                                         {detail.hardware?.name || "Украшение"} · {formatCm(detail.widthCm)} × {formatCm(detail.heightCm)}
                                                     </span>
-                                                    <span>{detail.price.toLocaleString("ru-RU")} ₽</span>
+                                                    <span>{controller.pricing.quote ? `${detail.price.toLocaleString("ru-RU")} ₽` : '…'}</span>
                                                 </div>
                                             )) : (
                                                 <div className="flex items-center justify-between">
@@ -388,17 +395,17 @@ export const ConstructorWorkspace = ({ controller }: { controller: ConstructorPa
                                 <div className="mt-[20px] h-px shrink-0 bg-[#EEEEEE]" />
                                 <div className="mt-[18px] flex shrink-0 items-center justify-between text-[14px] font-semibold text-[#2D2D2D]">
                                     <span>Итого</span>
-                                    <span>{totalPrice.toLocaleString("ru-RU")} ₽</span>
+                                    <span>{controller.pricing.quote ? `${totalPrice.toLocaleString("ru-RU")} ₽` : '…'}</span>
                                 </div>
                             </div>
                         </div>
 
                         <div className="absolute bottom-0 left-0 right-0 z-10 flex h-[35px] items-center justify-between bg-white px-[40px] font-manrope text-[14px] font-semibold leading-none text-[#676767]">
-                            <button type="button" onClick={handlePanelSecondaryAction} className="flex h-full w-[100px] items-center justify-center appearance-none bg-transparent text-center transition active:scale-95">
+                            <button type="button" onClick={handlePanelSecondaryAction} disabled={!product || controller.projectSession.status !== 'idle'} className="flex h-full w-[100px] items-center justify-center appearance-none bg-transparent text-center transition active:scale-95 disabled:opacity-50">
                                 СОХРАНИТЬ
                             </button>
                             <span className="h-[15px] w-[2px] shrink-0 rounded-[15px] bg-[#9D9D9D] shadow-[0_0.5px_0.5px_0_rgba(0,0,0,0.25)_inset]" />
-                            <button type="button" onClick={handlePanelPrimaryAction} className="flex h-full w-[100px] items-center justify-center appearance-none border-0 bg-transparent p-0 text-center transition active:scale-95">
+                            <button type="button" onClick={handlePanelPrimaryAction} disabled={isPanelExpanded && (!controller.pricing.quote || !controller.selectionAvailable)} className="flex h-full w-[100px] items-center justify-center appearance-none border-0 bg-transparent p-0 text-center transition active:scale-95 disabled:opacity-50">
                                 {isPanelExpanded ? "КУПИТЬ" : "ДАЛЕЕ"}
                             </button>
                         </div>
@@ -412,11 +419,9 @@ export const ConstructorWorkspace = ({ controller }: { controller: ConstructorPa
                     title={constructorCartItem?.title || selectedModel?.name || "Товар"}
                     color={constructorCartItem?.color || editingCartItem?.color || ""}
                     price={constructorCartItem?.price || totalPrice}
-                    image={constructorCartItem?.image || activeImageSrc || selectedModel?.src || "/landing-bg.webp"}
                     cartItemId={constructorCartItem?.id}
                     usePreferredCartItemOnly
-                    showAddProductCard={false}
-                    disabled={false}
+                    disabled={!controller.pricing.quote || !controller.selectionAvailable}
                     onAdd={handleBuy}
                     onEdit={handleConstructorCartEdit}
                     onBuy={() => router.push("/checkout")}
@@ -433,6 +438,7 @@ export const ConstructorWorkspace = ({ controller }: { controller: ConstructorPa
                         <SizeFitModal
                             product={product}
                             selectedSize={selectedSize}
+                            selectedColor={controller.selectedColor}
                             selectedFit={selectedFit}
                             productImageSrc={displayActiveImageSrc}
                             onSave={handleSaveFit}
@@ -449,7 +455,7 @@ export const ConstructorWorkspace = ({ controller }: { controller: ConstructorPa
                         setIsExitPopupOpen(false);
                         router.push("/");
                     }}
-                    onSave={handleSaveDraft}
+                    onSave={() => void handleSaveDraft()}
                 />
                 {controller.isTextEditorOpen && createPortal(
                     <TextDecorationEditor
@@ -461,5 +467,7 @@ export const ConstructorWorkspace = ({ controller }: { controller: ConstructorPa
                 )}
             </div>
         </div>
+        <ConstructorProjectStatus controller={controller} />
+        </>
     );
 };

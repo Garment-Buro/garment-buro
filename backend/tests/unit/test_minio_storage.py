@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from io import BytesIO
 
 import pytest
 
@@ -132,3 +133,59 @@ def test_minio_storage_reports_missing_bucket_as_not_ready() -> None:
     )
 
     assert not asyncio.run(storage.ping())
+
+
+def test_private_projects_bucket_must_exist_and_have_no_bucket_policy() -> None:
+    class MissingProjects(FakeMinioClient):
+        def bucket_exists(self, bucket_name):
+            return bucket_name != "garment-buro-test-projects"
+
+    assert not asyncio.run(MinioStorage(storage_settings(), client=MissingProjects()).ping())
+    private = FakeMinioClient()
+    assert asyncio.run(MinioStorage(storage_settings(), client=private).ping())
+    public = FakeMinioClient(
+        projects_bucket_policy='{"Statement":[{"Effect":"Allow","Principal":"*"}]}'
+    )
+    assert not asyncio.run(MinioStorage(storage_settings(), client=public).ping())
+
+
+@pytest.mark.parametrize("failure", [None, "oversized", "read", "close"])
+def test_private_binary_read_is_bounded_and_always_releases_response(failure):
+    """Removing either finally or its nested cleanup leaks SDK connections."""
+
+    class Body(BytesIO):
+        released = False
+        requested = None
+
+        def read(self, size=-1):
+            self.requested = size
+            if failure == "read":
+                raise OSError("Interrupted storage response")
+            return super().read(size)
+
+        def close(self):
+            super().close()
+            if failure == "close":
+                raise OSError("Failed storage close")
+
+        def release_conn(self):
+            self.released = True
+
+    body = Body(b"12345" if failure == "oversized" else b"1234")
+
+    class Client(FakeMinioClient):
+        def get_object(self, bucket_name, object_name, *, version_id=None):
+            assert bucket_name == "garment-buro-test-projects"
+            assert object_name == "profiles/1/avatar.webp" and version_id == "stored-version"
+            return body
+
+    storage = MinioStorage(storage_settings(), client=Client())
+    operation = storage.read_private_customer_object(
+        "profiles/1/avatar.webp", max_bytes=4, version_id="stored-version"
+    )
+    if failure is None:
+        assert asyncio.run(operation) == b"1234"
+    else:
+        with pytest.raises(OSError):
+            asyncio.run(operation)
+    assert body.requested == 5 and body.closed and body.released

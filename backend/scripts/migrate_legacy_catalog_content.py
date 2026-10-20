@@ -7,7 +7,7 @@ from pathlib import Path
 
 from app.core.config import get_settings
 from app.db.session import DatabaseManager
-from app.modules.catalog.content import (
+from app.modules.catalog.migration.content import (
     CatalogContentError,
     CatalogContentMigrationService,
     CatalogContentPlan,

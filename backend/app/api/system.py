@@ -34,7 +34,7 @@ async def readiness(request: Request) -> ReadinessResponse | JSONResponse:
     database = request.app.state.database
     storage = request.app.state.storage
     if not isinstance(database, DatabaseManager) or not database.enabled:
-        database_status = "legacy"
+        database_status = "disabled"
     elif await database.ping():
         database_status = database.backend_name
     else:
@@ -48,7 +48,7 @@ async def readiness(request: Request) -> ReadinessResponse | JSONResponse:
         )
 
     if not isinstance(storage, MinioStorage) or not storage.enabled:
-        storage_status = "legacy"
+        storage_status = "disabled"
     elif await storage.ping():
         storage_status = storage.backend_name
     else:
@@ -61,8 +61,14 @@ async def readiness(request: Request) -> ReadinessResponse | JSONResponse:
             ).model_dump(),
         )
 
-    return ReadinessResponse(
-        status="ready",
+    background_failed = any(
+        task.done() for task in getattr(request.app.state, "runtime_tasks", {}).values()
+    )
+    result = ReadinessResponse(
+        status="not_ready" if background_failed else "ready",
         database=database_status,
         storage=storage_status,
     )
+    if background_failed:
+        return JSONResponse(status_code=503, content=result.model_dump())
+    return result

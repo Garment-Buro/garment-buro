@@ -543,6 +543,12 @@ def test_api_denies_customers_and_hides_delivery(tmp_path):
                 assert (await client.get("/api/production/me")).status_code == 403
                 assert (await client.get("/api/production/orders/1/project")).status_code == 403
                 current = people[2]
+                current.first_name = " Анна "
+                current.last_name = " Иванова "
+                assert (await client.get("/api/production/me")).json()["name"] == "Анна Иванова"
+                current.first_name = None
+                current.last_name = None
+                assert (await client.get("/api/production/me")).json()["name"] == "Сотрудник"
                 lookup = await client.get("/api/production/orders/1/project")
                 assert lookup.status_code == 200
                 assert lookup.json() == {"project_id": 1}
@@ -615,5 +621,32 @@ def test_postgres_duplicate_commands_and_competing_versions(tmp_path):
                     == 1
                 )
                 assert await session.scalar(select(func.count()).select_from(ProductionEvent)) == 2
+
+    asyncio.run(scenario())
+
+
+def test_terminal_reads_pinned_model_card_even_after_archiving(tmp_path):
+    from app.modules.crm.reference_models import CrmTechCardRevision
+
+    async def scenario():
+        async with setup(tmp_path) as (db, service, spec):
+            await execute(db, service, "plan", unit_id=1, specification=spec)
+            async with db.session() as session:
+                revision = await session.get(CrmTechCardRevision, spec["tech_card_revision_id"])
+                revision.description_snapshot = "Model assembly instructions"
+                revision.status = "archived"
+                await session.commit()
+            async with db.session() as session:
+                detail = await ProductionReadService().detail(
+                    session, project_id=1, stations=["tech"]
+                )
+                unit = detail["units"][0]
+                card = unit["tech_card"]
+                assert card["id"] == spec["tech_card_revision_id"]
+                assert card["description"] == "Model assembly instructions"
+                assert card["checkpoints"][0]["name"]
+                assert card["checkpoints"][0]["position"] == 1
+                assert "labor_cost" not in card["checkpoints"][0]
+                assert card["id"] not in [item["id"] for item in unit["cards"]]
 
     asyncio.run(scenario())

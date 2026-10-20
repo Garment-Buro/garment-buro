@@ -74,7 +74,7 @@ class OrderPaymentEmailHandler:
         return PreparedOrderPaymentEmail(
             recipient=order.email_normalized,
             order_id=order.id,
-            first_name=order.first_name,
+            first_name=order.buyer_name or order.first_name,
             items=tuple(
                 {
                     "title": item.title_snapshot,

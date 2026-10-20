@@ -169,14 +169,19 @@ async def apply_payment_observation(
 
 
 def customer_stage(flow: OrderWorkflow | None) -> tuple[str | None, str | None]:
-    if flow is None:
-        return None, None
+    return customer_stage_for_state(flow.state if flow is not None else None)
+
+
+def customer_stage_for_state(state: str | None) -> tuple[str | None, str | None]:
     states = {
+        "awaiting_payment": ("awaiting_payment", "Ожидает оплаты"),
         "moderation": ("moderation", "Модерация"),
         "capture_pending": ("moderation", "Модерация"),
         "cancel_pending": ("moderation", "Модерация"),
         "production": ("production", "Производство"),
         "shipped": ("shipped", "Передано в СДЭК"),
         "completed": ("completed", "Выполнено"),
+        "cancelled": ("cancelled", "Отменён"),
+        "attention": ("attention", "Требуется проверка менеджера"),
     }
-    return states.get(flow.state, (None, None))
+    return states.get(state, (None, None))

@@ -1,52 +1,184 @@
 from __future__ import annotations
 
+import asyncio
 import base64
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
 
+import pytest
 from fastapi import FastAPI
+from fastapi.routing import iter_route_contexts
 from fastapi.testclient import TestClient
 
 from app.core.config import AppEnvironment, Settings
+from app.core.exceptions import ConfigurationError
 from app.db.session import DatabaseManager
 from app.factory import create_app
 from app.integrations.minio import MinioStorage
 
 
-def test_factory_mounts_legacy_api_and_owns_lifespan() -> None:
-    lifecycle = {"started": 0, "stopped": 0}
+def test_factory_rejects_legacy_application() -> None:
+    settings = Settings(_env_file=None, app_env="test")
+    with pytest.raises(TypeError, match="legacy_app"):
+        create_app(settings=settings, legacy_app=FastAPI())
 
-    @asynccontextmanager
-    async def legacy_lifespan(_: FastAPI) -> AsyncIterator[None]:
-        lifecycle["started"] += 1
-        yield
-        lifecycle["stopped"] += 1
 
-    legacy = FastAPI(lifespan=legacy_lifespan)
-
-    @legacy.get("/api/legacy-probe")
-    async def legacy_probe() -> dict[str, str]:
-        return {"source": "legacy"}
+def test_partial_database_startup_releases_engine() -> None:
+    class FailingDatabase(DatabaseManager):
+        async def startup(self) -> None:
+            await super().startup()
+            raise RuntimeError("database startup failed after allocation")
 
     settings = Settings(
         _env_file=None,
-        app_env=AppEnvironment.TEST,
-        database_enabled=False,
-        database_url=None,
+        app_env="test",
+        database_enabled=True,
+        database_url="sqlite+aiosqlite:///:memory:",
     )
-    application = create_app(settings=settings, legacy_app=legacy)
+    database = FailingDatabase(settings)
+    application = create_app(settings=settings, database=database)
+    with pytest.raises(RuntimeError, match="database startup failed"), TestClient(application):
+        pass
+    with pytest.raises(ConfigurationError, match="has not been started"):
+        _ = database.engine
 
+
+def test_partial_storage_startup_releases_storage_and_database() -> None:
+    from io import BytesIO
+
+    class FailingStorage(MinioStorage):
+        resource = BytesIO()
+
+        async def startup(self) -> None:
+            raise RuntimeError("storage startup failed after allocation")
+
+        async def shutdown(self) -> None:
+            self.resource.close()
+            await super().shutdown()
+
+    settings = Settings(
+        _env_file=None,
+        app_env="test",
+        database_enabled=True,
+        database_url="sqlite+aiosqlite:///:memory:",
+    )
+    database = DatabaseManager(settings)
+    storage = FailingStorage(settings)
+    application = create_app(settings=settings, database=database, storage=storage)
+    with pytest.raises(RuntimeError, match="storage startup failed"), TestClient(application):
+        pass
+    assert storage.resource.closed
+    with pytest.raises(ConfigurationError, match="has not been started"):
+        _ = database.engine
+
+
+def test_storage_shutdown_error_still_releases_database() -> None:
+    class FailingStorage(MinioStorage):
+        async def shutdown(self) -> None:
+            await super().shutdown()
+            raise RuntimeError("storage shutdown failed")
+
+    settings = Settings(
+        _env_file=None,
+        app_env="test",
+        database_enabled=True,
+        database_url="sqlite+aiosqlite:///:memory:",
+    )
+    database = DatabaseManager(settings)
+    application = create_app(settings=settings, database=database, storage=FailingStorage(settings))
+    with pytest.raises(RuntimeError, match="storage shutdown failed"), TestClient(application):
+        pass
+    with pytest.raises(ConfigurationError, match="has not been started"):
+        _ = database.engine
+
+
+def test_transport_shutdown_failure_does_not_leave_other_sessions_open() -> None:
+    from app.modules.payments.provider import AiohttpYooKassaTransport
+    from app.runtime import build_lifespan
+
+    class FailingTransport(AiohttpYooKassaTransport):
+        async def shutdown(self) -> None:
+            await super().shutdown()
+            raise RuntimeError("transport shutdown failed")
+
+    settings = Settings(
+        _env_file=None,
+        app_env="test",
+        database_enabled=True,
+        database_url="sqlite+aiosqlite:///:memory:",
+        yookassa_shop_id="local-test",
+        yookassa_api_key="local-secret",
+    )
+    database = DatabaseManager(settings)
+    first = AiohttpYooKassaTransport(settings)
+    last = FailingTransport(settings)
+
+    async def verified() -> None:
+        pass
+
+    application = FastAPI(
+        lifespan=build_lifespan(
+            settings=settings,
+            database=database,
+            storage=MinioStorage(settings),
+            transports=[first, last],
+            verify_startup=verified,
+            bank_payout_service=None,
+        )
+    )
+    with pytest.raises(RuntimeError, match="transport shutdown failed"), TestClient(application):
+        first_session, last_session = first._session, last._session
+    assert first_session.closed and last_session.closed
+    with pytest.raises(ConfigurationError, match="has not been started"):
+        _ = database.engine
+
+
+def test_unexpected_background_exit_makes_readiness_fail(monkeypatch, caplog) -> None:
+    from app import runtime
+
+    class FailedDirectory:
+        def __init__(self, database, settings):
+            pass
+
+        async def run(self):
+            raise RuntimeError("directory internal error")
+
+    monkeypatch.setattr(runtime, "PickupDirectory", FailedDirectory)
+    settings = Settings(
+        _env_file=None,
+        app_env="test",
+        database_enabled=True,
+        database_url="sqlite+aiosqlite:///:memory:",
+        cdek_client_id="test-client",
+        cdek_client_secret="test-secret",
+    )
+    application = create_app(settings=settings)
+
+    @application.get("/settle-background")
+    async def settle_background():
+        await asyncio.sleep(0)
+        return {"ok": True}
+
+    with (
+        pytest.raises(RuntimeError, match="directory internal error"),
+        TestClient(application) as client,
+    ):
+        client.get("/settle-background")
+        readiness_status = client.get("/health/ready").status_code
+    assert readiness_status == 503
+    assert any(getattr(record, "event", None) == "runtime.task.failed" for record in caplog.records)
+
+
+def test_factory_exposes_health_without_legacy_fallback() -> None:
+    settings = Settings(_env_file=None, app_env="test")
+    application = create_app(settings=settings)
     with TestClient(application) as client:
         assert client.get("/health/live").json() == {"status": "ok"}
         assert client.get("/health/ready").json() == {
             "status": "ready",
-            "database": "legacy",
-            "storage": "legacy",
+            "database": "disabled",
+            "storage": "disabled",
         }
-        assert client.get("/api/legacy-probe").json() == {"source": "legacy"}
-        assert lifecycle == {"started": 1, "stopped": 0}
-
-    assert lifecycle == {"started": 1, "stopped": 1}
+        for path in ("/api/products", "/api/settings", "/api/orders", "/admin"):
+            assert client.get(path).status_code == 404
 
 
 def test_factory_leaves_persistent_cart_routes_disabled_by_default() -> None:
@@ -57,7 +189,7 @@ def test_factory_leaves_persistent_cart_routes_disabled_by_default() -> None:
         database_url=None,
     )
     application = create_app(settings=settings)
-    registered_paths = {route.path for route in application.routes}
+    registered_paths = {route.path for route in iter_route_contexts(application.routes)}
 
     assert "/api/qr-code" in registered_paths
     assert "/api/cart/{cart_id}" not in registered_paths
@@ -72,7 +204,6 @@ def test_factory_keeps_crm_file_routes_off_when_other_crm_writes_are_enabled() -
         database_enabled=True,
         database_url="sqlite+aiosqlite:///:memory:",
         identity_api_enabled=True,
-        identity_migration_fingerprint="d" * 64,
         jwt_secret="j" * 32,
         identity_otp_pepper="p" * 32,
         notification_encryption_key=base64.urlsafe_b64encode(b"n" * 32).decode(),
@@ -80,7 +211,7 @@ def test_factory_keeps_crm_file_routes_off_when_other_crm_writes_are_enabled() -
         crm_writes_enabled=True,
     )
     application = create_app(settings=settings)
-    registered_paths = {route.path for route in application.routes}
+    registered_paths = {route.path for route in iter_route_contexts(application.routes)}
 
     assert "/api/support" in registered_paths
     assert "/api/crm/projects/{project_id}/status" in registered_paths
@@ -96,7 +227,6 @@ def test_factory_registers_guarded_payment_management_and_payout_routes() -> Non
         database_enabled=True,
         database_url="sqlite+aiosqlite:///:memory:",
         identity_api_enabled=True,
-        identity_migration_fingerprint="a" * 64,
         jwt_secret="j" * 32,
         identity_otp_pepper="p" * 32,
         notification_encryption_key="bm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm4=",
@@ -119,7 +249,7 @@ def test_factory_registers_guarded_payment_management_and_payout_routes() -> Non
     application = create_app(settings=settings)
     registered = {
         (method, route.path)
-        for route in application.routes
+        for route in iter_route_contexts(application.routes)
         for method in getattr(route, "methods", set())
     }
 
@@ -137,24 +267,19 @@ def test_factory_registers_catalog_mutations_only_for_guarded_cutover() -> None:
     settings = Settings(
         _env_file=None,
         app_env=AppEnvironment.TEST,
-        legacy_database_url="sqlite:///legacy.db",
         database_enabled=True,
         database_url="sqlite+aiosqlite:///:memory:",
         catalog_reads_enabled=True,
         catalog_writes_enabled=True,
-        catalog_migration_fingerprint="c" * 64,
-        catalog_content_migration_fingerprint="e" * 64,
         minio_enabled=True,
         minio_access_key="test-access",
         minio_secret_key="test-secret",
         minio_public_base_url="http://storage.test",
         identity_api_enabled=True,
-        identity_migration_fingerprint="d" * 64,
         jwt_secret="j" * 32,
         identity_otp_pepper="p" * 32,
         notification_encryption_key=base64.urlsafe_b64encode(b"n" * 32).decode(),
         carts_v2_enabled=True,
-        carts_migration_fingerprint="f" * 64,
         crm_api_enabled=True,
         crm_writes_enabled=True,
         crm_files_enabled=True,
@@ -162,7 +287,7 @@ def test_factory_registers_catalog_mutations_only_for_guarded_cutover() -> None:
     application = create_app(settings=settings)
     registered = {
         (method, route.path)
-        for route in application.routes
+        for route in iter_route_contexts(application.routes)
         for method in getattr(route, "methods", set())
     }
 
@@ -173,17 +298,9 @@ def test_factory_registers_catalog_mutations_only_for_guarded_cutover() -> None:
         ("PUT", "/api/product-categories/{category_id}"),
         ("PUT", "/api/products/{product_id}"),
         ("DELETE", "/api/products/{product_id}"),
-        ("PUT", "/api/variants/{variant_id}"),
         ("POST", "/api/upload"),
-        ("GET", "/api/settings"),
-        ("PUT", "/api/settings"),
-        ("GET", "/api/options"),
-        ("PUT", "/api/options"),
-        ("GET", "/admin"),
-        ("GET", "/admin/{path:path}"),
         ("GET", "/api/cart/{cart_id}"),
         ("PUT", "/api/cart/{cart_id}"),
-        ("DELETE", "/api/cart/{cart_id}"),
         ("GET", "/api/crm/projects"),
         ("GET", "/api/crm/projects/{project_id}"),
         ("GET", "/api/crm/reference/fabrics"),
@@ -221,21 +338,64 @@ def test_factory_registers_catalog_mutations_only_for_guarded_cutover() -> None:
         ("POST", "/api/crm/materials/reservations/{reservation_id}/release"),
         ("POST", "/api/crm/files"),
         ("GET", "/api/crm/files/{attachment_id}/download"),
-        ("GET", "/api/production/admin/assortment/models"),
-        ("GET", "/api/production/admin/assortment/model-categories"),
+        ("GET", "/api/production/admin/assortment/directory/pattern-models"),
+        ("GET", "/api/production/admin/assortment/directory/categories/{kind}"),
+        ("GET", "/api/production/admin/assortment/model-categories/{category_id}"),
+        ("GET", "/api/production/admin/assortment/product-categories/{category_id}"),
         ("POST", "/api/production/admin/assortment/model-categories"),
         ("PUT", "/api/production/admin/assortment/model-categories/{category_id}"),
         ("POST", "/api/production/admin/assortment/models"),
-        ("GET", "/api/production/admin/assortment/tech-cards"),
-        ("GET", "/api/production/admin/assortment/fabrics"),
-        ("GET", "/api/production/admin/assortment/patterns"),
-        ("GET", "/api/production/admin/assortment/accessories"),
-        ("GET", "/api/production/admin/assortment/boxes"),
+        ("GET", "/api/production/admin/assortment/directory/tech-cards"),
+        ("GET", "/api/production/admin/assortment/directory/tech-card-models"),
+        ("GET", "/api/production/admin/assortment/tech-cards/{card_id}/revision-source"),
+        ("GET", "/api/production/admin/assortment/directory/models"),
+        ("GET", "/api/production/admin/assortment/directory/fabrics"),
+        ("GET", "/api/production/admin/assortment/directory/fabric-requirements"),
+        ("GET", "/api/production/admin/assortment/directory/selected"),
+        ("GET", "/api/production/admin/assortment/models/{model_id}"),
+        ("POST", "/api/production/admin/assortment/fabrics"),
+        ("PUT", "/api/production/admin/assortment/fabrics/{fabric_id}"),
+        ("POST", "/api/production/admin/assortment/fabric-requirements"),
+        ("PUT", "/api/production/admin/assortment/fabric-requirements/{requirement_id}"),
+        ("GET", "/api/production/admin/assortment/directory/patterns"),
+        ("GET", "/api/production/admin/assortment/directory/pattern-sizes"),
+        ("GET", "/api/production/admin/assortment/models/{model_id}/pattern-coverage"),
+        ("GET", "/api/production/admin/assortment/models/{model_id}/pattern-size/{size_id}"),
+        ("GET", "/api/production/admin/assortment/patterns/{pattern_id}"),
+        ("GET", "/api/production/admin/assortment/directory/accessories"),
+        ("GET", "/api/production/admin/assortment/directory/boxes"),
+        ("GET", "/api/production/admin/assortment/directory/accessory-categories"),
+        ("GET", "/api/production/admin/assortment/directory/accessory-requirements"),
+        ("GET", "/api/production/admin/assortment/directory/packaging-rules"),
         ("GET", "/api/production/admin/assortment/products"),
         ("GET", "/api/production/admin/assortment/product-communities"),
         ("POST", "/api/production/admin/assortment/media/public"),
         ("POST", "/api/production/admin/assortment/media/pattern"),
     } <= registered
+    for name in [
+        "accessories",
+        "boxes",
+        "accessory-categories",
+        "accessory-requirements",
+        "packaging-rules",
+        "tech-cards",
+        "patterns",
+        "models",
+        "model-categories",
+        "product-categories",
+    ]:
+        assert ("GET", f"/api/production/admin/assortment/{name}") not in registered
+    assert ("GET", "/api/production/admin/assortment/fabrics") not in registered
+    assert ("GET", "/api/production/admin/assortment/fabric-requirements") not in registered
+    assert not any(path in {"/admin", "/admin/{path:path}"} for _method, path in registered)
+    # Removed surfaces are ordinary unmatched routes, independent of rollout flags.
+    client = TestClient(application)
+    try:
+        for method in ("GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "TRACE"):
+            for path in ("/admin", "/admin/editor", "/admin/models", "/admin/settings"):
+                assert client.request(method, path).status_code == 404
+    finally:
+        client.close()
 
 
 def test_readiness_checks_enabled_async_database() -> None:
@@ -254,18 +414,12 @@ def test_readiness_checks_enabled_async_database() -> None:
     assert response.json() == {
         "status": "ready",
         "database": "sqlite",
-        "storage": "legacy",
+        "storage": "disabled",
     }
 
 
-def test_readiness_returns_503_when_enabled_database_is_unavailable() -> None:
+def test_readiness_returns_503_when_database_loses_connectivity() -> None:
     class UnavailableDatabase(DatabaseManager):
-        async def startup(self) -> None:
-            return
-
-        async def shutdown(self) -> None:
-            return
-
         async def ping(self) -> bool:
             return False
 
@@ -273,7 +427,7 @@ def test_readiness_returns_503_when_enabled_database_is_unavailable() -> None:
         _env_file=None,
         app_env=AppEnvironment.TEST,
         database_enabled=True,
-        database_url="postgresql+asyncpg://unavailable:unavailable@db/unavailable",
+        database_url="sqlite+aiosqlite:///:memory:",
     )
     database = UnavailableDatabase(settings)
     application = create_app(settings=settings, database=database)
@@ -284,8 +438,8 @@ def test_readiness_returns_503_when_enabled_database_is_unavailable() -> None:
     assert response.status_code == 503
     assert response.json() == {
         "status": "not_ready",
-        "database": "postgresql",
-        "storage": "legacy",
+        "database": "sqlite",
+        "storage": "disabled",
     }
 
 
@@ -295,7 +449,11 @@ def test_readiness_checks_enabled_minio_buckets() -> None:
             return bucket_name in {
                 "garment-buro-test-media",
                 "garment-buro-test-crm-private",
+                "garment-buro-test-projects",
             }
+
+        def get_bucket_policy(self, bucket_name: str) -> str:
+            return ""
 
     settings = Settings(
         _env_file=None,
@@ -314,7 +472,7 @@ def test_readiness_checks_enabled_minio_buckets() -> None:
     assert response.status_code == 200
     assert response.json() == {
         "status": "ready",
-        "database": "legacy",
+        "database": "disabled",
         "storage": "minio",
     }
 
@@ -341,6 +499,6 @@ def test_readiness_returns_503_when_minio_bucket_is_unavailable() -> None:
     assert response.status_code == 503
     assert response.json() == {
         "status": "not_ready",
-        "database": "legacy",
+        "database": "disabled",
         "storage": "minio",
     }

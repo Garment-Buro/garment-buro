@@ -12,9 +12,16 @@ class WriteResult:
 
 
 class FakeMinioClient:
-    def __init__(self, *, bucket_available: bool = True, bucket_policy: str | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        bucket_available: bool = True,
+        bucket_policy: str | None = None,
+        projects_bucket_policy: str | None = None,
+    ) -> None:
         self.bucket_available = bucket_available
         self.bucket_policy = bucket_policy
+        self.projects_bucket_policy = projects_bucket_policy
         self.uploads: list[dict[str, object]] = []
         self.removed: list[tuple[str, str]] = []
         self.presigns: list[dict[str, object]] = []
@@ -23,6 +30,7 @@ class FakeMinioClient:
         return self.bucket_available and bucket_name in {
             "garment-buro-test-media",
             "garment-buro-test-crm-private",
+            "garment-buro-test-projects",
         }
 
     def put_object(
@@ -58,7 +66,8 @@ class FakeMinioClient:
         return None
 
     def get_bucket_policy(self, bucket_name: str) -> str:
-        del bucket_name
+        if bucket_name.endswith("-projects"):
+            return self.projects_bucket_policy or ""
         return self.bucket_policy or ""
 
     def presigned_get_object(

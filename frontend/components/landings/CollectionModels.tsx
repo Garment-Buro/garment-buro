@@ -2,26 +2,18 @@ import Link from 'next/link';
 
 import { RawMediaImage } from '@/components/shared/RawMediaImage';
 import type { PublicPartnerLanding } from '@/lib/partners/types';
-import type { ProductData } from '@/lib/products/types';
+import type {CollectionModelsState} from '@/lib/catalog/collection';
 
 import { getLandingCopy } from './content';
 import { LandingReveal } from './LandingReveal';
 import styles from './CollectionLanding.module.css';
 
-const productImage = (product: ProductData) => (
-    product.desktop_video_poster
-    || product.mobile_video_poster
-    || product.mobile_card_image
-    || product.image_left
-    || null
-);
-
 export const CollectionModels = ({
     landing,
-    products,
+    models,
 }: {
     landing: PublicPartnerLanding;
-    products: ProductData[];
+    models: CollectionModelsState;
 }) => {
     const copy = getLandingCopy(landing);
 
@@ -32,16 +24,23 @@ export const CollectionModels = ({
                 <h2 id="models-title">{copy.modelHeading}</h2>
             </LandingReveal>
 
-            {products.length ? (
+            {models.status==='error' ? (
+                <div className={styles.emptyModels} role="alert">
+                    <p>Не удалось загрузить модели коллекции.</p>
+                    <form action={`/p/${encodeURIComponent(landing.slug)}#models`} method="get">
+                        <button type="submit">Повторить загрузку</button>
+                    </form>
+                </div>
+            ) : models.items.length ? (
                 <div className={styles.modelList}>
-                    {products.map((product, index) => {
-                        const image = productImage(product);
+                    {models.items.map((product, index) => {
+                        const image = product.image_url;
                         return (
                             <LandingReveal key={product.id}>
                                 <article className={styles.modelFeature}>
                                     <div className={styles.modelMedia}>
                                         {image ? (
-                                            <RawMediaImage src={image} alt={product.title} className={styles.coverImage} />
+                                            <RawMediaImage src={image} alt={product.image_alt ?? product.title} className={styles.coverImage} />
                                         ) : (
                                             <span className={styles.modelNumber}>{String(index + 1).padStart(2, '0')}</span>
                                         )}
@@ -51,7 +50,7 @@ export const CollectionModels = ({
                                         <h3>{product.title}</h3>
                                         <p>{product.description || 'Выберите посадку, цвет и детали в конструкторе.'}</p>
                                         <div className={styles.modelAction}>
-                                            <span>от {product.price.toLocaleString('ru-RU')} ₽</span>
+                                            <span>от {Number(product.price).toLocaleString('ru-RU')} ₽</span>
                                             <Link href={`/constructor?productId=${product.id}&landing=${encodeURIComponent(landing.slug)}`}>
                                                 Настроить модель
                                             </Link>

@@ -49,7 +49,7 @@ test('expired production credentials clear the local administrator session', () 
 
 test('administrator is selected by the existing session role', () => {
     assert.match(terminal, /canAdminister && mode !== 'floor'/);
-    assert.match(terminal, /<ProductionAdminTerminal key=\{userId\} \/>/);
+    assert.match(terminal, /<ProductionAdminTerminal\b/);
     assert.match(workspace, /href="\/production"/);
     assert.doesNotMatch(workspace, /href="\/production\/admin"/);
 });

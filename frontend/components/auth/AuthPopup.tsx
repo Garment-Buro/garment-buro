@@ -30,7 +30,7 @@ export const AuthPopup = ({ isOpen, onClose }: AuthPopupProps) => {
                     onClose={onClose}
                 />
             ) : (
-                <AuthenticationPanel onClose={onClose} setAuth={auth.setAuth} />
+                <AuthenticationPanel onClose={onClose} />
             )}
         </Popup>
     );

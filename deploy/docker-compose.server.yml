@@ -6,10 +6,10 @@ x-backend-common: &backend-common
     - .env
   environment:
     APP_ENV: ${APP_ENV:?APP_ENV is required}
+    LOG_LEVEL: ${LOG_LEVEL:-INFO}
     PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?PUBLIC_BASE_URL is required}
     PARTNER_PUBLIC_BASE_URL: ${PARTNER_PUBLIC_BASE_URL:-https://partner.garment-buro.ru}
     WIDGET_PUBLIC_BASE_URL: ${WIDGET_PUBLIC_BASE_URL:-https://widget.garment-buro.ru}
-    LEGACY_DATABASE_URL: sqlite:////app/legacy/ecommerce.db
     DATABASE_ENABLED: "true"
     DATABASE_URL: postgresql+asyncpg://${DATABASE_APP_USER:?DATABASE_APP_USER is required}:${DATABASE_APP_PASSWORD:?DATABASE_APP_PASSWORD is required}@postgres:5432/${POSTGRES_DB:?POSTGRES_DB is required}
     # The owner credential is used only by the one-shot role/bootstrap and
@@ -20,9 +20,6 @@ x-backend-common: &backend-common
     MINIO_ENABLED: "true"
     MINIO_ENDPOINT: minio:9000
     MINIO_SECURE: "false"
-  volumes:
-    - legacy_data:/app/legacy
-    - legacy_uploads:/app/uploads
   networks:
     - app
   security_opt:
@@ -30,31 +27,6 @@ x-backend-common: &backend-common
   restart: unless-stopped
 
 services:
-  legacy-init:
-    image: ${BACKEND_IMAGE:?BACKEND_IMAGE is required}
-    user: "0:0"
-    entrypoint: ["/bin/sh", "-ec"]
-    command:
-      - |
-        test -s /seed/ecommerce.db
-        if [ ! -e /legacy/ecommerce.db ]; then
-          cp /seed/ecommerce.db /legacy/ecommerce.db
-        fi
-        if [ -d /seed/uploads ] && [ ! -e /uploads/.legacy-seeded ]; then
-          cp -a /seed/uploads/. /uploads/
-          touch /uploads/.legacy-seeded
-        fi
-        chown -R 10001:10001 /legacy /uploads
-    volumes:
-      - ./legacy:/seed:ro
-      - legacy_data:/legacy
-      - legacy_uploads:/uploads
-    networks:
-      - app
-    security_opt:
-      - no-new-privileges:true
-    restart: "no"
-
   postgres:
     image: postgres:17-alpine
     environment:
@@ -129,13 +101,14 @@ services:
     restart: unless-stopped
 
   minio:
-    image: minio/minio:RELEASE.2025-07-23T15-54-02Z
+    image: ${MINIO_IMAGE:?MINIO_IMAGE is required; prepare the verified storage image before release}
+    pull_policy: never
     command: ["server", "/data", "--console-address", ":9001"]
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY is required}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?MINIO_SECRET_KEY is required}
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/minio/health/live >/dev/null"]
+      test: ["CMD", "/usr/local/bin/minio-healthcheck"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -148,25 +121,23 @@ services:
     restart: unless-stopped
 
   minio-init:
-    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
-    entrypoint: ["/bin/sh", "-ec"]
-    command:
-      - |
-        mc alias set local http://minio:9000 "$${MINIO_ACCESS_KEY}" "$${MINIO_SECRET_KEY}"
-        mc mb --ignore-existing "local/$${MINIO_MEDIA_BUCKET}"
-        mc anonymous set download "local/$${MINIO_MEDIA_BUCKET}"
-        mc mb --ignore-existing "local/$${MINIO_CRM_BUCKET}"
-        mc anonymous set none "local/$${MINIO_CRM_BUCKET}"
+    image: ${BACKEND_IMAGE:?BACKEND_IMAGE is required}
+    command: ["python", "-m", "scripts.bootstrap_storage"]
     environment:
+      MINIO_ENDPOINT: minio:9000
+      MINIO_SECURE: "false"
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY is required}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?MINIO_SECRET_KEY is required}
       MINIO_MEDIA_BUCKET: ${MINIO_BUCKET_PREFIX:?MINIO_BUCKET_PREFIX is required}-${APP_ENV:?APP_ENV is required}-media
       MINIO_CRM_BUCKET: ${MINIO_BUCKET_PREFIX:?MINIO_BUCKET_PREFIX is required}-${APP_ENV:?APP_ENV is required}-crm-private
+      MINIO_PROJECTS_BUCKET: ${MINIO_BUCKET_PREFIX:?MINIO_BUCKET_PREFIX is required}-${APP_ENV:?APP_ENV is required}-projects
     depends_on:
       minio:
         condition: service_healthy
     networks:
       - app
+    security_opt:
+      - no-new-privileges:true
     restart: "no"
 
   migrate:
@@ -192,8 +163,6 @@ services:
     ports:
       - "${HOST_BIND_ADDRESS:-127.0.0.1}:${BACKEND_HOST_PORT:?BACKEND_HOST_PORT is required}:8000"
     depends_on:
-      legacy-init:
-        condition: service_completed_successfully
       migrate:
         condition: service_completed_successfully
       postgres:
@@ -219,7 +188,6 @@ services:
     image: ${FRONTEND_IMAGE:?FRONTEND_IMAGE is required}
     environment:
       INTERNAL_API_URL: http://backend:8000
-      NEXT_PUBLIC_USE_MOCK_DATA: "false"
     ports:
       - "${HOST_BIND_ADDRESS:-127.0.0.1}:${FRONTEND_HOST_PORT:?FRONTEND_HOST_PORT is required}:3000"
     depends_on:
@@ -230,6 +198,20 @@ services:
     security_opt:
       - no-new-privileges:true
     restart: unless-stopped
+
+  project-media-worker:
+    <<: *backend-common
+    profiles: ["project-media"]
+    command: ["python", "-m", "scripts.reconcile_project_media"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    healthcheck:
+      disable: true
 
   notification-worker:
     <<: *backend-common
@@ -308,8 +290,6 @@ networks:
     driver: bridge
 
 volumes:
-  legacy_data:
-  legacy_uploads:
   postgres_data:
   redis_data:
   minio_data:

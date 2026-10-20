@@ -7,11 +7,18 @@ import { CART_ACTION_PRODUCT_SECTION_BACKGROUND } from '@/lib/cart/constants';
 import { formatCourierAddress, validCourierAddress } from '@/lib/checkout/contact';
 import { getOfficeAddress } from '@/lib/cdek/utils/cdek';
 import { useCheckoutDetailsStore } from '@/store/checkoutDetailsStore';
+import { useAuthStore } from '@/store/authStore';
 import { DeliverySheet } from './DeliverySheet';
 import { RecipientSheet } from './RecipientSheet';
 import styles from './CheckoutSheet.module.css';
 
 export function CartDeliveryDetails({ method, onChange }: { method: CartDeliveryMethod; onChange: (method: CartDeliveryMethod) => void }) {
+    const userId = useAuthStore(state => state.user?.id);
+    const epoch = useAuthStore(state => state.accountEpoch);
+    return <DeliveryDetails key={`${userId ?? 'guest'}:${epoch ?? ''}`} method={method} onChange={onChange} />;
+}
+
+function DeliveryDetails({ method, onChange }: { method: CartDeliveryMethod; onChange: (method: CartDeliveryMethod) => void }) {
     const details = useCheckoutDetailsStore();
     const [sheet, setSheet] = useState<'delivery' | 'recipient' | null>(null);
     const address = method === 'pickup'

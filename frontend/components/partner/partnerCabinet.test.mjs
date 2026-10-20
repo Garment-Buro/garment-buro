@@ -16,6 +16,7 @@ const hookSource = fs.readFileSync(
     path.join(root, 'hooks', 'partner', 'usePartnerCabinet.ts'),
     'utf8',
 );
+const requisitesHookSource = fs.readFileSync(path.join(root,'hooks','partner','usePartnerRequisites.ts'),'utf8');
 const apiSource = fs.readFileSync(path.join(root, 'lib', 'api', 'partners.ts'), 'utf8');
 
 test('partner cabinet uses a top context substrate with an overlapping control sheet', () => {
@@ -38,10 +39,11 @@ test('partner cabinet exposes only current financial and service actions', () =>
 });
 
 test('partner requisites and payout requests use authenticated backend APIs', () => {
-    assert.match(hookSource, /getPartnerRequisites/);
-    assert.match(hookSource, /updatePartnerRequisites/);
+    assert.match(requisitesHookSource, /getPartnerRequisites/);
+    assert.doesNotMatch(hookSource, /getPartnerRequisites/);
+    assert.match(requisitesHookSource, /updatePartnerRequisites/);
     assert.match(hookSource, /createPartnerPayout/);
-    assert.match(apiSource, /requestJson<PartnerRequisites \| null>\('\/partner\/requisites'/);
+    assert.match(apiSource, /requestReadJson<unknown>\('\/partner\/requisites'/);
     assert.match(apiSource, /method:\s*'PUT'/);
 });
 

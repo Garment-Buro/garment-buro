@@ -7,6 +7,7 @@ export type SizeFitRange = { length: MeasurementRange; width: MeasurementRange }
 export type GarmentFit = {
     selectedSize: string;
     sleeveMode: SleeveMode;
+    /** Human height in cm. Historical snapshot key retained for saved projects and orders. */
     lengthCm: number;
     widthCm: number;
     lengthRange: { min: number; max: number };
@@ -14,6 +15,10 @@ export type GarmentFit = {
 };
 
 export type CanvasBounds = { x: number; y: number; width: number; height: number };
+export type ConstructorGeometrySnapshot = {
+    canvasPixelSize: { width: number; height: number };
+    modelBounds: CanvasBounds;
+};
 export type TextDecoration = {
     content: string;
     fontId: 'manrope' | 'inter' | 'mono' | 'serif';
@@ -35,7 +40,6 @@ export interface PlacedHardware {
     y: number;
     scale: number;
     rotation?: number;
-    baseLongSideCm?: number;
 }
 
 export type PlacedItemsByView = Record<ModelView, PlacedHardware[]>;
@@ -62,6 +66,7 @@ export type ConstructorDecoration = {
 export type ConstructorCustomization = {
     kind: "constructor";
     selectedSize: string;
+    selectedColor?: string | null;
     modelImages: Record<ModelView, string>;
     canvas: {
         widthCm: number;
@@ -72,6 +77,8 @@ export type ConstructorCustomization = {
         heightCm: number;
     };
     fit?: GarmentFit;
+    /** Pixel mapping needed to reopen a cart/order design without consulting catalog measurements. */
+    geometry?: ConstructorGeometrySnapshot;
     decorations: ConstructorDecoration[];
     totalPrice: number;
     comment?: string;
@@ -91,6 +98,7 @@ export type ConstructorPageProps = {
     productId?: string | null;
     editCartItemId?: string | null;
     draftId?: string | null;
+    projectId?: string | null;
 };
 
 export type ClothingModel = {
@@ -114,13 +122,13 @@ export type HardwareVariant = {
     minSizeMm?: number;
     maxSizeMm?: number;
     isCustom?: boolean;
-    basePrice?: number;
 };
 
 export interface KonvaCanvasProps {
     selectedModel: ClothingModel | null;
     activeImageSrc?: string;
     modelBounds?: CanvasBounds;
+    canvasPixelSize?: { width: number; height: number };
     bottomInset?: number;
     placedItems: PlacedHardware[];
     hardwareMap: Record<string, HardwareVariant>;

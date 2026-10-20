@@ -1,6 +1,9 @@
-"""Refactored ASGI entrypoint with the legacy API mounted as a compatibility facade."""
+"""ASGI entrypoint. Resources are opened by lifespan; schema changes use Alembic."""
 
+from app.core.config import get_settings
 from app.factory import create_app
-from main import app as legacy_app
+from app.observability.logging import configure_logging
 
-app = create_app(legacy_app=legacy_app)
+configure_logging(get_settings())
+
+app = create_app()

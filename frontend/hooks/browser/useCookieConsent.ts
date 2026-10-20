@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 
 import { isCookieConsentHiddenRoute } from '@/lib/browser/utils/cookieConsent';
+import { browserLocalStorage, browserSessionStorage } from '@/lib/browser/utils/storage';
 
 const COOKIE_CONSENT_FADE_OUT_MS = 360;
 
@@ -51,12 +52,12 @@ export const useCookieConsent = () => {
         const clearActionTimer = () => {
             if (actionTimer !== null) window.clearTimeout(actionTimer);
         };
-        if (isHiddenRoute || localStorage.getItem('cookieConsent')) {
+        if (isHiddenRoute || browserLocalStorage.getItem('cookieConsent')) {
             actionTimer = window.setTimeout(hideBanner, 0);
             return clearActionTimer;
         }
 
-        const splashState = sessionStorage.getItem('p2o_splash_session');
+        const splashState = browserSessionStorage.getItem('p2o_splash_session');
         const onDone = () => showBanner();
         if (!splashState || splashState === 'done') {
             actionTimer = window.setTimeout(showBanner, 0);
@@ -76,7 +77,7 @@ export const useCookieConsent = () => {
     }, [cancelOpenFrame]);
 
     const accept = useCallback(() => {
-        localStorage.setItem('cookieConsent', 'true');
+        browserLocalStorage.setItem('cookieConsent', 'true');
         hideBanner();
     }, [hideBanner]);
 

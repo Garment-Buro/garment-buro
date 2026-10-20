@@ -12,11 +12,18 @@ widget_root=/home/garment-widget
 development_env=/srv/garment-buro/development/.env
 nginx_source="$repo_root/nginx.conf"
 nginx_target="$legacy_root/nginx.conf"
+logging_source="$repo_root/deploy/nginx/logging"
+logging_target="$legacy_root/garment-nginx-logging"
+maintenance_source="$repo_root/deploy/nginx/maintenance/server.conf"
+maintenance_target="$legacy_root/garment-nginx-maintenance"
+maintenance_state=/srv/garment-buro/maintenance
 override_source="$repo_root/deploy/docker-compose.legacy-nginx.override.yml"
 widget_override_source="$repo_root/deploy/docker-compose.widget-root.override.yml"
 override_target="$legacy_root/docker-compose.override.yml"
 backup_dir="/root/garment-buro-nginx-backup-$(date -u +%Y%m%dT%H%M%SZ)"
 had_override=false
+had_logging=false
+had_maintenance=false
 widget_changed=false
 firewall_rule_added=false
 firewall_source=""
@@ -24,6 +31,13 @@ firewall_destination=""
 firewall_port=""
 
 test -f "$nginx_source"
+test -f "$logging_source/http.conf"
+test -f "$logging_source/server.conf"
+test -f "$maintenance_source"
+# Provision this persistent, deployment-user-owned directory before activation.
+# Never create a root-owned Docker bind source or replace a retained gate marker.
+test -d "$maintenance_state"
+test ! -L "$maintenance_state"
 test -f "$override_source"
 test -f "$widget_override_source"
 test -f "$legacy_root/docker-compose.yml"
@@ -37,6 +51,14 @@ fi
 if [[ -f "$override_target" ]]; then
   cp -a "$override_target" "$backup_dir/docker-compose.override.yml"
   had_override=true
+fi
+if [[ -d "$logging_target" ]]; then
+  cp -a "$logging_target" "$backup_dir/garment-nginx-logging"
+  had_logging=true
+fi
+if [[ -d "$maintenance_target" ]]; then
+  cp -a "$maintenance_target" "$backup_dir/garment-nginx-maintenance"
+  had_maintenance=true
 fi
 
 restore_previous_nginx() {
@@ -57,6 +79,19 @@ restore_previous_nginx() {
     cp -a "$backup_dir/docker-compose.override.yml" "$override_target"
   else
     rm -f "$override_target"
+  fi
+  if [[ "$had_logging" == true ]]; then
+    rm -f "$logging_target/http.conf" "$logging_target/server.conf"
+    cp -a "$backup_dir/garment-nginx-logging/." "$logging_target/"
+  else
+    rm -f "$logging_target/http.conf" "$logging_target/server.conf"
+    rmdir "$logging_target" 2>/dev/null || true
+  fi
+  rm -f "$maintenance_target/server.conf"
+  if [[ "$had_maintenance" == true ]]; then
+    cp -a "$backup_dir/garment-nginx-maintenance/." "$maintenance_target/"
+  else
+    rmdir "$maintenance_target" 2>/dev/null || true
   fi
   cd "$legacy_root"
   docker compose up -d --force-recreate nginx
@@ -120,12 +155,21 @@ docker run --rm \
   --network plus2opacity_default \
   --add-host host.docker.internal:host-gateway \
   -v "$nginx_source:/etc/nginx/conf.d/default.conf:ro" \
+  -v "$logging_source/http.conf:/etc/nginx/conf.d/00-garment-logging.conf:ro" \
+  -v "$logging_source/server.conf:/etc/nginx/garment-buro/server-logging.conf:ro" \
+  -v "$maintenance_source:/etc/nginx/garment-buro/maintenance.conf:ro" \
+  -v "$maintenance_state:/srv/garment-buro/maintenance:ro" \
   -v "$legacy_root/certbot/conf:/etc/nginx/ssl:ro" \
   nginx:alpine nginx -t
 
+rollback_required=true
+install -d -m 0755 "$logging_target"
+install -m 0644 "$logging_source/http.conf" "$logging_target/http.conf"
+install -m 0644 "$logging_source/server.conf" "$logging_target/server.conf"
+install -d -m 0755 "$maintenance_target"
+install -m 0644 "$maintenance_source" "$maintenance_target/server.conf"
 install -m 0644 "$nginx_source" "$nginx_target"
 install -m 0644 "$override_source" "$override_target"
-rollback_required=true
 configure_development_firewall
 
 cd "$widget_root"

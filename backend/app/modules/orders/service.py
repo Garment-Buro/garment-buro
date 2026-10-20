@@ -6,19 +6,20 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Protocol
 
-from anyio import to_thread
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.modules.catalog.models import Product, ProductVariant
+from app.modules.catalog.pricing import price_customization
 from app.modules.catalog.repository import CatalogRepository
 from app.modules.delivery.constants import CDEK_DELIVERY_METHODS
+from app.modules.design_assets.references import design_image_tokens
+from app.modules.design_assets.repository import DesignAssetRepository
 from app.modules.fulfillment.service import FulfillmentOutboxService
 from app.modules.identity.models import User, UserStatus
 from app.modules.identity.security import OtpSecurity, ensure_utc, normalize_email
 from app.modules.inventory.repository import InventoryRepository
 from app.modules.inventory.service import InventoryReservationService
-from app.modules.orders.legacy import LegacyOrderReader
 from app.modules.orders.models import (
     Order,
     OrderGuestAccess,
@@ -34,8 +35,12 @@ from app.modules.orders.repository import (
 )
 from app.modules.orders.schemas import (
     LegacyOrderResponse,
+    OrderContactResponse,
     OrderCreationCommand,
     OrderCreationResult,
+    OrderHistoryItem,
+    OrderHistoryPage,
+    OrderItemPrice,
     OrderLineCreate,
 )
 from app.modules.orders.security import (
@@ -56,7 +61,9 @@ class OrderCatalogItemError(ValueError):
 
 
 class OrderTotalMismatchError(ValueError):
-    pass
+    def __init__(self, prices: list[OrderItemPrice]) -> None:
+        super().__init__("Claimed order total does not match server prices")
+        self.prices = prices
 
 
 class OrderNotFoundError(LookupError):
@@ -77,7 +84,15 @@ class OwnedOrderService(Protocol):
         session: AsyncSession,
         *,
         user: User,
-    ) -> list[LegacyOrderResponse]: ...
+        limit: int,
+        cursor: int | None,
+    ) -> OrderHistoryPage: ...
+
+
+class OrderDeliveryVerifier(Protocol):
+    async def verify(
+        self, session: AsyncSession, command: OrderCreationCommand, *, now: datetime | None = None
+    ) -> OrderCreationCommand: ...
 
 
 class OrderGuestAccessService:
@@ -165,6 +180,7 @@ class OrderCreationService:
         self.catalog_repository = catalog_repository or CatalogRepository()
         self.inventory_service = inventory_service or InventoryReservationService(self.settings)
         self.guest_access_service = guest_access_service or OrderGuestAccessService(self.settings)
+        self.design_assets = DesignAssetRepository()
 
     async def create(
         self,
@@ -174,6 +190,7 @@ class OrderCreationService:
         command: OrderCreationCommand,
         user_id: int | None = None,
         guest_access_token: str | None = None,
+        delivery_verifier: OrderDeliveryVerifier | None = None,
         now: datetime | None = None,
     ) -> OrderCreationResult:
         key_digest = digest_order_idempotency_key(idempotency_key)
@@ -209,6 +226,8 @@ class OrderCreationService:
             {item.product_id for item in command.items},
         )
         products_by_id = {product.id: product for product in products}
+        if delivery_verifier is not None:
+            command = await delivery_verifier.verify(session, command, now=now)
         requires_delivery_measurements = command.delivery_method in CDEK_DELIVERY_METHODS
         if (
             requires_delivery_measurements
@@ -231,8 +250,23 @@ class OrderCreationService:
         delivery_price = command.delivery_price.quantize(MONEY_QUANTUM)
         total_price = (items_subtotal + delivery_price).quantize(MONEY_QUANTUM)
         if total_price != command.claimed_total_price.quantize(MONEY_QUANTUM):
-            raise OrderTotalMismatchError("Claimed order total does not match server prices")
+            raise OrderTotalMismatchError(
+                [
+                    OrderItemPrice(
+                        id=item.client_item_id,
+                        product_id=item.product_id_snapshot,
+                        price=item.unit_price,
+                    )
+                    for item in order_items
+                ]
+            )
 
+        assets = await self.design_assets.lock_available(
+            session,
+            tokens=design_image_tokens(command.items),
+            bucket_name=self.settings.minio_customer_projects_bucket,
+            now=ensure_utc(now or datetime.now(timezone.utc)),
+        )
         email, email_normalized = normalize_email(command.email)
         order = Order(
             user_id=user_id,
@@ -242,6 +276,9 @@ class OrderCreationService:
             first_name=command.first_name,
             last_name=command.last_name,
             patronymic=command.patronymic,
+            buyer_name=command.buyer_name,
+            buyer_phone=command.buyer_phone,
+            recipient_email=command.recipient_email,
             delivery_city=command.delivery_city,
             delivery_method=command.delivery_method,
             delivery_address=command.delivery_address,
@@ -268,6 +305,8 @@ class OrderCreationService:
             )
         )
         await self.repository.add_order(session, order)
+        if assets:
+            await self.design_assets.retain_order(session, order_id=order.id, assets=assets)
         await self.inventory_service.reserve_order(
             session,
             order=order,
@@ -297,7 +336,7 @@ class OrderCreationService:
         if product is None or not product.is_active:
             raise OrderCatalogItemError("Order contains an unavailable product")
         variant = OrderCreationService._resolve_variant(product, item)
-        unit_price = product.price.quantize(MONEY_QUANTUM)
+        unit_price, customization = price_customization(product.price, item.customization)
         delivery_measurements = OrderCreationService._delivery_measurements(
             product,
             required=requires_delivery_measurements,
@@ -314,7 +353,7 @@ class OrderCreationService:
             image_url_snapshot=item.image,
             size_snapshot=item.size,
             color_snapshot=item.color,
-            customization_snapshot=item.customization,
+            customization_snapshot=customization,
             delivery_weight_kg_snapshot=delivery_measurements[0],
             delivery_height_cm_snapshot=delivery_measurements[1],
             delivery_width_cm_snapshot=delivery_measurements[2],
@@ -668,53 +707,6 @@ class OrderLifecycleService:
         )
 
 
-class OrderOwnershipBridgeService:
-    def __init__(
-        self,
-        reader: LegacyOrderReader,
-        security: OtpSecurity,
-        *,
-        repository: LegacyOrderClaimRepository | None = None,
-    ) -> None:
-        self.reader = reader
-        self.security = security
-        self.repository = repository or LegacyOrderClaimRepository()
-
-    async def list_owned_orders(
-        self,
-        session: AsyncSession,
-        *,
-        user: User,
-    ) -> list[LegacyOrderResponse]:
-        if (
-            user.status == UserStatus.ACTIVE.value
-            and user.email
-            and user.email_normalized
-            and user.email_verified_at is not None
-        ):
-            matching_ids = await to_thread.run_sync(
-                self.reader.find_order_ids_by_verified_email,
-                user.email_normalized,
-            )
-            identifier_digest = self.security.digest_client_value(user.email_normalized)
-            if identifier_digest is None:
-                raise RuntimeError("Verified email digest is unavailable")
-            await self.repository.claim_verified_email_orders(
-                session,
-                user_id=user.id,
-                legacy_order_ids=matching_ids,
-                identifier_digest=identifier_digest,
-            )
-            await session.flush()
-
-        claimed_ids = await self.repository.list_claimed_order_ids(
-            session,
-            user_id=user.id,
-        )
-        raw_orders = await to_thread.run_sync(self.reader.get_orders, claimed_ids)
-        return [LegacyOrderResponse.model_validate(order) for order in raw_orders]
-
-
 class TargetOrderReadService:
     def __init__(
         self,
@@ -732,10 +724,40 @@ class TargetOrderReadService:
         session: AsyncSession,
         *,
         user: User,
-    ) -> list[LegacyOrderResponse]:
+        limit: int = 24,
+        cursor: int | None = None,
+    ) -> OrderHistoryPage:
+        from app.modules.orders.workflow import customer_stage_for_state
+
+        if not 1 <= limit <= 100 or (cursor is not None and not 1 <= cursor <= 2147483647):
+            raise ValueError("Invalid order history pagination")
         await self._claim_verified_imports(session, user=user)
-        orders = await self.repository.list_owned(session, user_id=user.id)
-        return [self.map_order(order) for order in orders]
+        records = await self.repository.list_owned_summaries(
+            session,
+            user_id=user.id,
+            limit=limit + 1,
+            before_id=cursor,
+        )
+        items = []
+        for record in records[:limit]:
+            stage, label = customer_stage_for_state(record.workflow_state)
+            items.append(
+                OrderHistoryItem(
+                    id=record.id,
+                    total_price=record.total_price,
+                    created_at=record.created_at,
+                    status=record.status,
+                    payment_status=record.payment_status,
+                    customer_stage=stage,
+                    customer_stage_label=label,
+                    cdek_number=record.cdek_number,
+                    cdek_status=record.cdek_status,
+                )
+            )
+        return OrderHistoryPage(
+            items=items,
+            next_cursor=items[-1].id if len(records) > limit else None,
+        )
 
     async def get_owned_order(
         self,
@@ -789,17 +811,13 @@ class TargetOrderReadService:
             or user.email_verified_at is None
         ):
             return
-        matching_ids = await self.repository.find_imported_ids_by_verified_email(
-            session,
-            email_normalized=user.email_normalized,
-        )
         identifier_digest = self.security.digest_client_value(user.email_normalized)
         if identifier_digest is None:
             raise RuntimeError("Verified email digest is unavailable")
         await self.claim_repository.claim_verified_email_orders(
             session,
             user_id=user.id,
-            legacy_order_ids=matching_ids,
+            email_normalized=user.email_normalized,
             identifier_digest=identifier_digest,
         )
         await session.flush()
@@ -828,6 +846,26 @@ class TargetOrderReadService:
             first_name=order.first_name,
             last_name=order.last_name,
             patronymic=order.patronymic,
+            buyer=(
+                OrderContactResponse(
+                    name=order.buyer_name, phone=order.buyer_phone, email=order.email_normalized
+                )
+                if order.buyer_name is not None
+                else None
+            ),
+            recipient=(
+                OrderContactResponse(
+                    name=" ".join(
+                        value
+                        for value in (order.first_name, order.last_name, order.patronymic)
+                        if value
+                    ),
+                    phone=order.phone,
+                    email=order.recipient_email,
+                )
+                if order.recipient_email is not None
+                else None
+            ),
             delivery_city=order.delivery_city,
             delivery_method=order.delivery_method,
             delivery_address=order.delivery_address,

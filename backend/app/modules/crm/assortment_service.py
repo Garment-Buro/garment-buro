@@ -4,8 +4,6 @@ from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.catalog.mapper import CatalogResponseMapper
-from app.modules.catalog.models import Product
 from app.modules.crm.assortment_models import (
     CrmAccessory,
     CrmAccessoryCategory,
@@ -21,8 +19,6 @@ from app.modules.crm.assortment_schemas import (
     CrmAccessoryCategoryWrite,
     CrmAccessoryRead,
     CrmAccessoryWrite,
-    CrmCatalogProductReferenceRead,
-    CrmCatalogProductVariantReferenceRead,
     CrmGarmentAccessoryRequirementRead,
     CrmGarmentAccessoryRequirementWrite,
     CrmGarmentFabricRequirementRead,
@@ -34,9 +30,8 @@ from app.modules.crm.assortment_schemas import (
     CrmPackagingBoxRead,
     CrmPackagingBoxWrite,
 )
+from app.modules.crm.pattern_grid import GRID_STEP_CM
 from app.modules.crm.reference_models import CrmGarmentSize
-
-GRID_STEP_CM = Decimal("2.00")
 
 
 class CrmAssortmentNotFoundError(LookupError):
@@ -54,77 +49,6 @@ class CrmAssortmentVersionConflictError(RuntimeError):
 class CrmAssortmentService:
     def __init__(self, repository: CrmAssortmentRepository | None = None) -> None:
         self.repository = repository or CrmAssortmentRepository()
-
-    async def list_products(
-        self,
-        session: AsyncSession,
-        *,
-        model_id: int | None,
-        category_id: int | None,
-        active: bool | None,
-        mapper: CatalogResponseMapper | None = None,
-    ) -> list[CrmCatalogProductReferenceRead]:
-        rows = await self.repository.list_products(
-            session,
-            model_id=model_id,
-            category_id=category_id,
-            active=active,
-        )
-
-        def image_url(row: Product) -> str | None:
-            if mapper is None:
-                return None
-            product = mapper.product(row)
-            for candidate in (
-                product.mobile_card_image,
-                product.image_left,
-                product.desktop_card_images,
-                product.gallery_images,
-            ):
-                if candidate:
-                    return candidate.split(",", maxsplit=1)[0].strip()
-            return None
-
-        return [
-            CrmCatalogProductReferenceRead(
-                id=row.id,
-                title=row.title,
-                slug=row.slug,
-                category_id=row.category_id,
-                garment_model_id=row.garment_model_id,
-                price=row.price,
-                old_price=row.old_price,
-                image_url=image_url(row),
-                is_active=row.is_active,
-                stock_quantity=row.stock_quantity - row.reserved_quantity,
-                variants=[
-                    CrmCatalogProductVariantReferenceRead(
-                        id=variant.id,
-                        sku=variant.sku,
-                        size=variant.size,
-                        garment_size_id=variant.garment_size_id,
-                        fabric_id=variant.fabric_id,
-                        color=variant.color,
-                        stock_quantity=variant.stock_quantity - variant.reserved_quantity,
-                    )
-                    for variant in row.variants
-                ],
-            )
-            for row in rows
-        ]
-
-    async def list_patterns(
-        self,
-        session: AsyncSession,
-        *,
-        model_id: int | None,
-        active: bool | None,
-        query: str | None = None,
-    ) -> list[CrmGarmentPatternRead]:
-        rows = await self.repository.list_patterns(
-            session, model_id=model_id, active=active, query=query
-        )
-        return [CrmGarmentPatternRead.model_validate(row) for row in rows]
 
     async def create_pattern(
         self, session: AsyncSession, payload: CrmGarmentPatternWrite
@@ -153,12 +77,6 @@ class CrmAssortmentService:
         await session.flush()
         return CrmGarmentPatternRead.model_validate(row)
 
-    async def list_fabric_requirements(
-        self, session: AsyncSession, *, model_id: int | None
-    ) -> list[CrmGarmentFabricRequirementRead]:
-        rows = await self.repository.list_fabric_requirements(session, model_id=model_id)
-        return [CrmGarmentFabricRequirementRead.model_validate(row) for row in rows]
-
     async def create_fabric_requirement(
         self, session: AsyncSession, payload: CrmGarmentFabricRequirementWrite
     ) -> CrmGarmentFabricRequirementRead:
@@ -186,12 +104,6 @@ class CrmAssortmentService:
         await session.flush()
         return CrmGarmentFabricRequirementRead.model_validate(row)
 
-    async def list_categories(
-        self, session: AsyncSession, *, active: bool | None
-    ) -> list[CrmAccessoryCategoryRead]:
-        rows = await self.repository.list_categories(session, active=active)
-        return [CrmAccessoryCategoryRead.model_validate(row) for row in rows]
-
     async def create_category(
         self, session: AsyncSession, payload: CrmAccessoryCategoryWrite
     ) -> CrmAccessoryCategoryRead:
@@ -217,22 +129,6 @@ class CrmAssortmentService:
         await session.flush()
         return CrmAccessoryCategoryRead.model_validate(row)
 
-    async def list_accessories(
-        self,
-        session: AsyncSession,
-        *,
-        category_id: int | None,
-        model_id: int | None,
-        active: bool | None,
-    ) -> list[CrmAccessoryRead]:
-        rows = await self.repository.list_accessories(
-            session,
-            category_id=category_id,
-            model_id=model_id,
-            active=active,
-        )
-        return [self._accessory_read(row) for row in rows]
-
     async def create_accessory(
         self, session: AsyncSession, payload: CrmAccessoryWrite
     ) -> CrmAccessoryRead:
@@ -240,7 +136,7 @@ class CrmAssortmentService:
         row = CrmAccessory(version=1)
         self._apply_accessory(row, payload)
         await self.repository.add(session, row)
-        return self._accessory_read(row, model_ids=[])
+        return CrmAccessoryRead.model_validate(row)
 
     async def update_accessory(
         self,
@@ -258,13 +154,7 @@ class CrmAssortmentService:
         self._apply_accessory(row, payload)
         row.version += 1
         await session.flush()
-        return self._accessory_read(row)
-
-    async def list_accessory_requirements(
-        self, session: AsyncSession, *, model_id: int | None
-    ) -> list[CrmGarmentAccessoryRequirementRead]:
-        rows = await self.repository.list_accessory_requirements(session, model_id=model_id)
-        return [CrmGarmentAccessoryRequirementRead.model_validate(row) for row in rows]
+        return CrmAccessoryRead.model_validate(row)
 
     async def create_accessory_requirement(
         self, session: AsyncSession, payload: CrmGarmentAccessoryRequirementWrite
@@ -292,18 +182,6 @@ class CrmAssortmentService:
         row.version += 1
         await session.flush()
         return CrmGarmentAccessoryRequirementRead.model_validate(row)
-
-    async def list_boxes(
-        self, session: AsyncSession, *, active: bool | None
-    ) -> list[CrmPackagingBoxRead]:
-        rows = await self.repository.list_boxes(session, active=active)
-        return [CrmPackagingBoxRead.model_validate(row) for row in rows]
-
-    async def list_packaging_rules(
-        self, session: AsyncSession, *, model_id: int | None
-    ) -> list[CrmGarmentPackagingRuleRead]:
-        rows = await self.repository.list_packaging_rules(session, model_id=model_id)
-        return [CrmGarmentPackagingRuleRead.model_validate(row) for row in rows]
 
     async def create_box(
         self, session: AsyncSession, payload: CrmPackagingBoxWrite
@@ -535,31 +413,6 @@ class CrmAssortmentService:
         row.minimum_stock_quantity = payload.minimum_stock_quantity
         row.photo_media_object_id = payload.photo_media_object_id
         row.is_active = payload.is_active
-
-    @staticmethod
-    def _accessory_read(
-        row: CrmAccessory,
-        *,
-        model_ids: list[int] | None = None,
-    ) -> CrmAccessoryRead:
-        return CrmAccessoryRead(
-            id=row.id,
-            category_id=row.category_id,
-            code=row.code,
-            name=row.name,
-            unit_cost=row.unit_cost,
-            currency=row.currency,
-            stock_quantity=row.stock_quantity,
-            minimum_stock_quantity=row.minimum_stock_quantity,
-            photo_media_object_id=row.photo_media_object_id,
-            is_active=row.is_active,
-            version=row.version,
-            model_ids=(
-                sorted(item.garment_model_id for item in row.model_requirements)
-                if model_ids is None
-                else model_ids
-            ),
-        )
 
     @staticmethod
     def _apply_accessory_requirement(

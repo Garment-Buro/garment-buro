@@ -45,6 +45,7 @@ def _payload(
     garment_model_id: int | None = None,
     garment_size_id: int | None = None,
     fabric_id: int | None = None,
+    variant_id: int | None = 999,
 ) -> ProductWriteRequest:
     return ProductWriteRequest.model_validate(
         {
@@ -62,7 +63,7 @@ def _payload(
             "mobile_card_image": media_url,
             "variants": [
                 {
-                    "id": 999,
+                    "id": variant_id,
                     "size": "M",
                     "garment_size_id": garment_size_id,
                     "fabric_id": fabric_id,
@@ -85,7 +86,7 @@ def test_product_category_slug_is_normalized_before_pattern_validation() -> None
     assert category.slug == "garment-buro-blanks"
 
 
-def test_catalog_write_service_replaces_normalized_children_and_keeps_audit(
+def test_catalog_write_service_preserves_variant_identity_replaces_media_and_keeps_audit(
     tmp_path: Path,
 ) -> None:
     async def scenario() -> None:
@@ -182,6 +183,7 @@ def test_catalog_write_service_replaces_normalized_children_and_keeps_audit(
                 updated = await service.update_product(
                     session,
                     product_id=product_id,
+                    expected_version=created.version,
                     payload=_payload(
                         title="Updated",
                         media_url=second_url,
@@ -189,6 +191,7 @@ def test_catalog_write_service_replaces_normalized_children_and_keeps_audit(
                         garment_model_id=1,
                         garment_size_id=1,
                         fabric_id=1,
+                        variant_id=created.variants[0].id,
                     ),
                     actor_user_id=10,
                 )
@@ -196,7 +199,8 @@ def test_catalog_write_service_replaces_normalized_children_and_keeps_audit(
                 assert updated.title == "Updated"
                 assert updated.mobile_card_image == "/uploads/second.webp"
                 assert len(updated.variants) == 1
-                product = await session.get(Product, product_id)
+                assert updated.variants[0].id == created.variants[0].id
+                product = await service.repository.get_product(session, product_id)
                 assert product is not None
                 assert product.slug == "base-product"
                 assert product.category_id == 1

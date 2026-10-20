@@ -24,3 +24,11 @@ export function safeImage(value: unknown): string | null {
         return null;
     }
 }
+
+/** Legacy demo copy is stored in signed specifications; omit it only in the UI. */
+export function visibleInstructions(instructions: string): string {
+    return instructions.replace(
+        'ТЕСТ. Не производить и не отправлять. Файлы — фото для проверки интерфейса, не лекала и не печатные оригиналы.',
+        '',
+    ).trim();
+}

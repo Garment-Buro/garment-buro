@@ -27,7 +27,7 @@ import { AdminPayoutReview } from './AdminPayoutReview';
 import { AdminRecordsTable, type RecordRow } from './AdminRecordsTable';
 import styles from './ProductionAdmin.module.css';
 
-type Section = Exclude<AdminSection, 'stats' | 'assortment'>;
+type Section = Exclude<AdminSection, 'stats' | 'assortment' | 'presets'>;
 
 const filters: Record<Section, string[]> = {
     orders: [

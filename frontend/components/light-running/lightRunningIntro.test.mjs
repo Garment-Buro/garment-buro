@@ -93,7 +93,7 @@ test("Light Running uses an always-visible V2 cart action", () => {
     assert.match(componentSource, /<LightRunningCartAction \/>/);
     assert.match(componentSource, /id="light-running-run-in-light"/);
     assert.match(cartSource, /import \{ CartActionBarV2 \} from "@\/components\/cart\/CartActionBarV2"/);
-    assert.match(cartSource, /getActiveCatalogCartItem\(items,\s*activeItemId\)/);
+    assert.match(cartSource, /getActiveCartItem\(items,\s*activeItemId\)/);
     assert.match(cartSource, /<CartActionBarV2/);
     assert.match(cartSource, /shiftAfterElementId="light-running-run-in-light"/);
     assert.match(cartSource, /router\.push\("\/profile"\)/);

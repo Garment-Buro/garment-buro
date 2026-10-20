@@ -2,12 +2,17 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Iterator
 from urllib.parse import unquote, urlsplit
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
-from app.modules.catalog.mapper import CatalogResponseMapper
+from app.modules.catalog.availability import load_availability
+from app.modules.catalog.deletion_audit import catalog_deletion_audit
+from app.modules.catalog.editor_commands import CatalogEditorCommands
+from app.modules.catalog.editor_repository import CatalogEditorRepository
+from app.modules.catalog.mapper import PRODUCT_MULTI_MEDIA_ROLES, CatalogResponseMapper
 from app.modules.catalog.models import Product, ProductCategory, ProductVariant
 from app.modules.catalog.repository import CatalogRepository
 from app.modules.catalog.schemas import (
@@ -15,7 +20,6 @@ from app.modules.catalog.schemas import (
     ProductCategoryWrite,
     ProductDetailResponse,
     ProductResponse,
-    ProductVariantResponse,
     ProductVariantWriteRequest,
     ProductWriteRequest,
 )
@@ -28,20 +32,8 @@ from app.modules.media.models import (
 )
 from app.modules.media.repository import MediaRepository
 
-PRODUCT_MULTI_MEDIA_ROLES = {
-    ProductMediaRole.GALLERY_IMAGES.value,
-    ProductMediaRole.DESKTOP_CARD_IMAGES.value,
-    ProductMediaRole.DESKTOP_SLIDER_IMAGES.value,
-    ProductMediaRole.MOBILE_SLIDER_IMAGES.value,
-    ProductMediaRole.MOBILE_PRODUCT_SLIDER_IMAGES.value,
-}
-
 
 class CatalogProductNotFoundError(LookupError):
-    pass
-
-
-class CatalogVariantNotFoundError(LookupError):
     pass
 
 
@@ -63,6 +55,18 @@ class CatalogVersionConflictError(RuntimeError):
     pass
 
 
+class CatalogProductVersionConflictError(CatalogVersionConflictError):
+    pass
+
+
+def product_version_conflict_detail() -> dict[str, str]:
+    return {
+        "code": "catalog_product_version_conflict",
+        "message": "Товар изменился после открытия формы. Ваши правки не сохранены. "
+        "Откройте актуальную версию перед повторным сохранением.",
+    }
+
+
 class CatalogService:
     def __init__(
         self,
@@ -74,27 +78,20 @@ class CatalogService:
 
     async def list_products(self, session: AsyncSession) -> list[ProductResponse]:
         products = await self.repository.list_products(session)
+        await load_availability(session, products)
         return [self.mapper.product(product) for product in products]
-
-    async def list_categories(self, session: AsyncSession) -> list[ProductCategoryResponse]:
-        categories = await self.repository.list_categories(session)
-        return [ProductCategoryResponse.model_validate(category) for category in categories]
 
     async def get_product(
         self,
         session: AsyncSession,
         product_id: int,
+        *,
+        public_only: bool = False,
     ) -> ProductDetailResponse | None:
-        product = await self.repository.get_product(session, product_id)
+        product = await self.repository.get_product(session, product_id, public_only=public_only)
+        if product is not None:
+            await load_availability(session, [product])
         return self.mapper.product_detail(product) if product is not None else None
-
-    async def list_variants(
-        self,
-        session: AsyncSession,
-        product_id: int,
-    ) -> list[ProductVariantResponse]:
-        variants = await self.repository.list_variants(session, product_id)
-        return [self.mapper.variant(variant) for variant in variants]
 
 
 class CatalogWriteService:
@@ -119,7 +116,7 @@ class CatalogWriteService:
     ) -> ProductDetailResponse:
         await self._validate_product_references(session, payload)
         media_by_url = await self._resolve_media(session, payload)
-        product = Product()
+        product = Product(version=1, variants=[], media_links=[])
         self._apply_scalars(product, payload)
         self._attach_children(product, payload, media_by_url)
         await self.repository.add_product(session, product)
@@ -130,6 +127,7 @@ class CatalogWriteService:
             payload=payload,
             actor_user_id=actor_user_id,
         )
+        await load_availability(session, [product])
         return self.mapper.product_detail(product)
 
     async def update_product(
@@ -137,19 +135,75 @@ class CatalogWriteService:
         session: AsyncSession,
         *,
         product_id: int,
+        expected_version: int,
         payload: ProductWriteRequest,
         actor_user_id: int,
     ) -> ProductDetailResponse:
         product = await self.repository.get_product_for_update(session, product_id)
         if product is None:
             raise CatalogProductNotFoundError(product_id)
-        self._ensure_product_unreserved(product)
+        if product.version != expected_version:
+            raise CatalogProductVersionConflictError("Product version has changed")
+        variants = await CatalogEditorRepository.variants(session, product.id)
+        existing = {variant.id: variant for variant in variants}
+        requested_ids = [variant.id for variant in payload.variants if variant.id is not None]
+        if len(requested_ids) != len(set(requested_ids)) or any(
+            vid not in existing for vid in requested_ids
+        ):
+            raise CatalogReferenceNotFoundError("Variant identity does not belong to this product")
+        await self._ensure_product_unreserved(session, product)
+        if await self.repository.has_fabric_holds(session, product.id):
+            raise CatalogInventoryReservedError("Preset has active fabric reservations")
         await self._validate_product_references(session, payload)
         media_by_url = await self._resolve_media(session, payload)
-        await self.repository.clear_product_children(session, product)
-        self._apply_scalars(product, payload)
-        self._attach_children(product, payload, media_by_url)
+        await CatalogEditorCommands.clear_media(
+            session, product_id=product.id, variant_ids=set(existing)
+        )
+        retained_ids = set(requested_ids)
+        for variant_id, variant in existing.items():
+            if variant_id not in retained_ids:
+                await session.delete(variant)
+        # Remove omitted selections before inserting their replacements (unique FK tuple).
         await session.flush()
+        self._apply_scalars(product, payload)
+        selected = []
+        for variant_payload in payload.variants:
+            variant = existing.get(variant_payload.id)
+            created = variant is None
+            if created:
+                variant = ProductVariant(product_id=product.id)
+                session.add(variant)
+            self._apply_variant(variant, variant_payload, payload, created=created)
+            selected.append((variant, variant_payload))
+        product.version += 1
+        await session.flush()
+        await CatalogEditorCommands.add_media(
+            session,
+            ProductMedia,
+            (
+                {
+                    "product_id": product.id,
+                    "media_object_id": media.id,
+                    "role": role,
+                    "sort_order": order,
+                }
+                for role, order, media in self._product_media(payload, media_by_url)
+            ),
+        )
+        await CatalogEditorCommands.add_media(
+            session,
+            ProductVariantMedia,
+            (
+                {
+                    "product_variant_id": variant.id,
+                    "media_object_id": media.id,
+                    "role": role,
+                    "sort_order": order,
+                }
+                for variant, variant_payload in selected
+                for role, order, media in self._variant_media(variant_payload, media_by_url)
+            ),
+        )
         await self._audit(
             session,
             action="product.updated",
@@ -157,7 +211,18 @@ class CatalogWriteService:
             payload=payload,
             actor_user_id=actor_user_id,
         )
-        return self.mapper.product_detail(product)
+        source = await CatalogEditorRepository.media_snapshot(
+            session,
+            product,
+            sorted((variant for variant, _ in selected), key=lambda row: row.id),
+            settings=self.settings,
+        )
+        await load_availability(
+            session, [source.product], variants_by_product={product.id: source.variants}
+        )
+        return self.mapper.product_detail_from_parts(
+            source.product, source.variants, source.media_links, source.variant_media
+        )
 
     async def delete_product(
         self,
@@ -169,68 +234,19 @@ class CatalogWriteService:
         product = await self.repository.get_product_for_update(session, product_id)
         if product is None:
             raise CatalogProductNotFoundError(product_id)
-        self._ensure_product_unreserved(product)
-        snapshot = self.mapper.product_detail(product).model_dump(mode="json")
-        checksum = self._checksum(snapshot)
+        await self._ensure_product_unreserved(session, product)
+        if await self.repository.has_fabric_holds(session, product.id):
+            raise CatalogInventoryReservedError("Preset has active fabric reservations")
+        evidence = await catalog_deletion_audit(session, product)
         await self.repository.delete_product(session, product)
         await self.repository.add_audit_event(
             session,
             action="product.deleted",
             product_id=product_id,
             actor_user_id=actor_user_id,
-            snapshot_checksum_sha256=checksum,
-            details={
-                "variants_count": len(snapshot["variants"]),
-                "media_references_count": self._response_media_count(snapshot),
-            },
+            snapshot_checksum_sha256=evidence.checksum,
+            details=evidence.details(),
         )
-
-    async def update_variant(
-        self,
-        session: AsyncSession,
-        *,
-        variant_id: int,
-        payload: ProductVariantWriteRequest,
-        actor_user_id: int,
-    ) -> ProductVariantResponse:
-        variant = await self.repository.get_variant_for_update(session, variant_id)
-        if variant is None:
-            raise CatalogVariantNotFoundError(variant_id)
-        if variant.reserved_quantity:
-            raise CatalogInventoryReservedError("Catalog variant has active reservations")
-        await self._validate_variant_reference(
-            session,
-            payload,
-            garment_model_id=variant.product.garment_model_id,
-        )
-        references = self._variant_media_references(payload)
-        media_by_url = await self._resolve_references(session, references)
-        await self.repository.clear_variant_media(session, variant)
-        variant.size = payload.size
-        variant.garment_size_id = payload.garment_size_id
-        variant.fabric_id = payload.fabric_id
-        variant.color = payload.color
-        variant.color_hex = payload.color_hex
-        variant.stock_quantity = payload.stock_quantity
-        variant.width_cm = payload.width_cm
-        variant.height_cm = payload.height_cm
-        self._attach_variant_media(variant, payload, media_by_url)
-        await session.flush()
-        snapshot = payload.model_dump(mode="json")
-        snapshot.pop("id", None)
-        await self.repository.add_audit_event(
-            session,
-            action="product.updated",
-            product_id=variant.product_id,
-            actor_user_id=actor_user_id,
-            snapshot_checksum_sha256=self._checksum(snapshot),
-            details={
-                "scope": "variant",
-                "variant_id": variant.id,
-                "media_references_count": len(references),
-            },
-        )
-        return self.mapper.variant(variant)
 
     async def create_category(
         self,
@@ -266,60 +282,46 @@ class CatalogWriteService:
         session: AsyncSession,
         payload: ProductWriteRequest,
     ) -> None:
-        if payload.category_id is not None:
-            category = await self.repository.get_category(session, payload.category_id)
-            if category is None or not category.is_active:
-                raise CatalogReferenceNotFoundError("Active product category was not found")
+        if payload.category_id is not None and not await self.repository.active_category_exists(
+            session, payload.category_id
+        ):
+            raise CatalogReferenceNotFoundError("Active product category was not found")
         if payload.garment_model_id is not None and not await self.repository.garment_model_exists(
             session, payload.garment_model_id
         ):
             raise CatalogReferenceNotFoundError("Active garment model was not found")
-        for variant in payload.variants:
-            await self._validate_variant_reference(
-                session,
-                variant,
-                garment_model_id=payload.garment_model_id,
-            )
-
-    async def _validate_variant_reference(
-        self,
-        session: AsyncSession,
-        payload: ProductVariantWriteRequest,
-        *,
-        garment_model_id: int | None,
-    ) -> None:
-        if payload.garment_size_id is None and payload.fabric_id is None:
+        size_ids = {
+            row.garment_size_id for row in payload.variants if row.garment_size_id is not None
+        }
+        fabric_ids = {row.fabric_id for row in payload.variants if row.fabric_id is not None}
+        if not size_ids and not fabric_ids:
             return
-        if garment_model_id is None:
+        if payload.garment_model_id is None:
             raise CatalogReferenceNotFoundError(
                 "Variant size and fabric references require a garment model"
             )
-        if payload.garment_size_id is not None:
-            size = await self.repository.get_garment_size(session, payload.garment_size_id)
-            if (
-                size is None
-                or not size.is_active
-                or size.garment_model_id != garment_model_id
-                or (payload.size is not None and payload.size != size.code)
+        sizes = await self.repository.active_size_codes(
+            session, garment_model_id=payload.garment_model_id, size_ids=size_ids
+        )
+        fabrics = await self.repository.allowed_active_fabric_ids(
+            session, garment_model_id=payload.garment_model_id, fabric_ids=fabric_ids
+        )
+        for variant in payload.variants:
+            if variant.garment_size_id is not None and (
+                variant.garment_size_id not in sizes
+                or (variant.size is not None and variant.size != sizes[variant.garment_size_id])
             ):
                 raise CatalogReferenceNotFoundError(
                     "Variant garment size must match its active garment model and size code"
                 )
-        if payload.fabric_id is not None:
-            fabric = await self.repository.get_active_fabric(session, payload.fabric_id)
-            if fabric is None or not await self.repository.model_allows_fabric(
-                session,
-                garment_model_id=garment_model_id,
-                fabric_id=payload.fabric_id,
-            ):
+            if variant.fabric_id is not None and variant.fabric_id not in fabrics:
                 raise CatalogReferenceNotFoundError(
                     "Variant fabric must be active and allowed for its garment model"
                 )
 
-    @staticmethod
-    def _ensure_product_unreserved(product: Product) -> None:
-        if product.reserved_quantity or any(
-            variant.reserved_quantity for variant in product.variants
+    async def _ensure_product_unreserved(self, session: AsyncSession, product: Product) -> None:
+        if product.reserved_quantity or await self.repository.has_reserved_variants(
+            session, product.id
         ):
             raise CatalogInventoryReservedError("Catalog product has active reservations")
 
@@ -374,6 +376,10 @@ class CatalogWriteService:
 
     @staticmethod
     def _apply_scalars(product: Product, payload: ProductWriteRequest) -> None:
+        if "preset_source" in payload.model_fields_set or product.id is None:
+            product.preset_source = payload.preset_source
+        if "tags" in payload.model_fields_set or product.id is None:
+            product.tags = payload.tags
         product.title = payload.title
         product.slug = payload.slug
         product.category_id = payload.category_id
@@ -391,7 +397,10 @@ class CatalogWriteService:
         product.height_cm = payload.height
         product.width_cm = payload.width
         product.length_cm = payload.length
-        product.stock_quantity = payload.stock_quantity
+        if payload.garment_model_id is None:
+            product.stock_quantity = payload.stock_quantity
+        elif product.id is None:
+            product.stock_quantity = 0
 
     @staticmethod
     def _apply_category(category: ProductCategory, payload: ProductCategoryWrite) -> None:
@@ -406,38 +415,53 @@ class CatalogWriteService:
         payload: ProductWriteRequest,
         media_by_url: dict[str, MediaObject],
     ) -> None:
-        for role in ProductMediaRole:
-            references = self._split_media(getattr(payload, role.value))
-            if role.value not in PRODUCT_MULTI_MEDIA_ROLES:
-                references = references[:1]
-            for sort_order, reference in enumerate(references):
-                product.media_links.append(
-                    ProductMedia(
-                        media=media_by_url[reference],
-                        role=role.value,
-                        sort_order=sort_order,
-                    )
-                )
+        for role, order, media in self._product_media(payload, media_by_url):
+            product.media_links.append(ProductMedia(media=media, role=role, sort_order=order))
         for variant_payload in payload.variants:
-            variant = ProductVariant(
-                size=variant_payload.size,
-                garment_size_id=variant_payload.garment_size_id,
-                fabric_id=variant_payload.fabric_id,
-                color=variant_payload.color,
-                color_hex=variant_payload.color_hex,
-                stock_quantity=variant_payload.stock_quantity,
-                width_cm=variant_payload.width_cm,
-                height_cm=variant_payload.height_cm,
-            )
-            self._attach_variant_media(variant, variant_payload, media_by_url)
+            variant = ProductVariant(media_links=[])
+            self._apply_variant(variant, variant_payload, payload, created=True)
+            for role, order, media in self._variant_media(variant_payload, media_by_url):
+                variant.media_links.append(
+                    ProductVariantMedia(media=media, role=role, sort_order=order)
+                )
             product.variants.append(variant)
 
     @staticmethod
-    def _attach_variant_media(
+    def _apply_variant(
         variant: ProductVariant,
+        variant_payload: ProductVariantWriteRequest,
+        payload: ProductWriteRequest,
+        *,
+        created: bool,
+    ) -> None:
+        variant.size = variant_payload.size
+        variant.garment_size_id = variant_payload.garment_size_id
+        variant.fabric_id = variant_payload.fabric_id
+        variant.color = variant_payload.color
+        variant.color_hex = variant_payload.color_hex
+        if payload.garment_model_id is None:
+            variant.stock_quantity = variant_payload.stock_quantity
+        elif created:
+            variant.stock_quantity = 0
+        variant.width_cm = variant_payload.width_cm
+        variant.height_cm = variant_payload.height_cm
+
+    @staticmethod
+    def _product_media(
+        payload: ProductWriteRequest, media_by_url: dict[str, MediaObject]
+    ) -> Iterator[tuple[str, int, MediaObject]]:
+        for role in ProductMediaRole:
+            references = CatalogWriteService._split_media(getattr(payload, role.value))
+            if role.value not in PRODUCT_MULTI_MEDIA_ROLES:
+                references = references[:1]
+            for sort_order, reference in enumerate(references):
+                yield role.value, sort_order, media_by_url[reference]
+
+    @staticmethod
+    def _variant_media(
         payload: ProductVariantWriteRequest,
         media_by_url: dict[str, MediaObject],
-    ) -> None:
+    ) -> Iterator[tuple[str, int, MediaObject]]:
         role_values = {
             ProductVariantMediaRole.PREVIEW_IMAGE: CatalogWriteService._split_media(
                 payload.preview_image
@@ -446,13 +470,7 @@ class CatalogWriteService:
         }
         for role, references in role_values.items():
             for sort_order, reference in enumerate(references):
-                variant.media_links.append(
-                    ProductVariantMedia(
-                        media=media_by_url[reference],
-                        role=role.value,
-                        sort_order=sort_order,
-                    )
-                )
+                yield role.value, sort_order, media_by_url[reference]
 
     async def _audit(
         self,
@@ -507,19 +525,3 @@ class CatalogWriteService:
             references.update(CatalogWriteService._split_media(variant.preview_image))
             references.update(CatalogWriteService._split_media(variant.images))
         return references
-
-    @staticmethod
-    def _variant_media_references(payload: ProductVariantWriteRequest) -> set[str]:
-        references = set(CatalogWriteService._split_media(payload.preview_image))
-        references.update(CatalogWriteService._split_media(payload.images))
-        return references
-
-    @staticmethod
-    def _response_media_count(snapshot: dict[str, object]) -> int:
-        count = 0
-        for role in ProductMediaRole:
-            count += len(CatalogWriteService._split_media(snapshot.get(role.value)))
-        for variant in snapshot["variants"]:
-            count += len(CatalogWriteService._split_media(variant.get("preview_image")))
-            count += len(CatalogWriteService._split_media(variant.get("images")))
-        return count

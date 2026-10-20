@@ -24,6 +24,7 @@ import {
 } from '@/lib/production/adminTypes';
 import { AdminRecords } from './AdminRecords';
 import { AdminStatistics } from './AdminStatistics';
+import { AdminProducts } from './assortment/AdminProducts';
 import { AdminAssortment } from './AdminAssortment';
 import styles from './ProductionAdmin.module.css';
 
@@ -34,16 +35,22 @@ const icons = {
     employees: PiUsers,
     clients: PiUserCircle,
     assortment: PiStorefront,
+    presets: PiPackage,
     problems: PiWarningCircle,
     support: PiLifebuoy,
 };
-export function ProductionAdminTerminal() {
+export function ProductionAdminTerminal({ initialSection, initialProduct }: {
+    initialSection?: 'presets';
+    initialProduct?: number | 'new';
+}) {
     const user = useProductionAuthStore((state) => state.user);
     const sections =
         user?.admin_scope === 'production'
             ? productionAdminSections
             : systemAdminSections;
-    const [section, setSection] = useState<AdminSection>(sections[0]);
+    const [section, setSection] = useState<AdminSection>(
+        initialSection && sections.includes(initialSection) ? initialSection : sections[0],
+    );
     const [clientSearch, setClientSearch] = useState({
         value: '',
         revision: 0,
@@ -78,6 +85,13 @@ export function ProductionAdminTerminal() {
         }));
         selectSection('clients');
     };
+    if (initialSection && !sections.includes(initialSection))
+        return (
+            <main className={styles.screen}>
+                <p>Управление пресетами доступно системному администратору.</p>
+                <Link href="/production">В кабинет производства</Link>
+            </main>
+        );
     return (
         <main className={styles.screen}>
             <a className={styles.skip} href="#production-admin-content">
@@ -173,6 +187,8 @@ export function ProductionAdminTerminal() {
                 )}
                 {section === 'stats' ? (
                     <AdminStatistics onNavigate={selectSection} />
+                ) : section === 'presets' ? (
+                    <AdminProducts initialProduct={initialProduct} />
                 ) : section === 'assortment' ? (
                     <AdminAssortment />
                 ) : (

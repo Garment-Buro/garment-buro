@@ -4,8 +4,7 @@ export type AssortmentSection =
     | 'techCards'
     | 'fabrics'
     | 'accessories'
-    | 'boxes'
-    | 'products';
+    | 'boxes';
 
 export interface GarmentSize {
     id?: number;
@@ -60,12 +59,6 @@ export interface GarmentModelCategory {
     version: number;
 }
 
-export interface ReferencePage<T> {
-    items: T[];
-    next_cursor: number | null;
-    limit: number;
-}
-
 export interface Fabric {
     id: number;
     code: string;
@@ -80,7 +73,14 @@ export interface Fabric {
     currency: string;
     is_active: boolean;
     version: number;
-    balance: { available_quantity: string; on_hand_quantity: string } | null;
+    cost_per_meter: string | null;
+    balance: {
+        available_meters: string;
+        on_hand_meters: string;
+        reserved_meters: string;
+        version: number;
+        updated_at: string;
+    } | null;
 }
 
 export interface Pattern {
@@ -120,25 +120,6 @@ export interface TechCheckpoint {
     currency: string;
 }
 
-export interface TechRevision {
-    id: number;
-    revision_number: number;
-    status: 'draft' | 'published' | 'archived' | 'discarded';
-    name_snapshot: string;
-    description_snapshot: string | null;
-    checkpoints: TechCheckpoint[];
-    published_at: string | null;
-}
-
-export interface TechCard {
-    id: number;
-    garment_model_id: number;
-    code: string;
-    latest_revision_number: number;
-    is_active: boolean;
-    revisions: TechRevision[];
-}
-
 export interface AccessoryCategory {
     id: number;
     code: string;
@@ -160,7 +141,6 @@ export interface Accessory {
     photo_media_object_id: number | null;
     is_active: boolean;
     version: number;
-    model_ids: number[];
 }
 
 export interface AccessoryRequirement {
@@ -199,29 +179,7 @@ export interface PackagingRule {
     version: number;
 }
 
-export interface ProductVariantReference {
-    id: number;
-    sku: string | null;
-    size: string | null;
-    garment_size_id: number | null;
-    fabric_id: number | null;
-    color: string | null;
-    stock_quantity: number;
-}
-
-export interface ProductReference {
-    id: number;
-    title: string;
-    slug: string | null;
-    category_id: number | null;
-    garment_model_id: number | null;
-    price: string;
-    old_price: string | null;
-    image_url: string | null;
-    is_active: boolean;
-    stock_quantity: number;
-    variants: ProductVariantReference[];
-}
+export type { CatalogAdminProduct as ProductReference } from '@/lib/products/adminCatalog';
 
 export interface ProductCategory {
     id: number;
@@ -232,17 +190,15 @@ export interface ProductCategory {
     version: number;
 }
 
-export interface ProductCommunity {
-    id: number;
-    title: string;
-    slug: string;
-    image_url: string | null;
-    status: string;
-    partner_name: string;
-    product_ids: number[];
-}
-
 export interface ProductDetail {
+    version: number;
+    slug: string | null;
+    category_id: number | null;
+    garment_model_id: number | null;
+    reserved_quantity: number;
+    available_stock_quantity: number;
+    preset_source: 'garment_buro' | 'user';
+    tags: string[];
     id: number;
     title: string;
     price: number;
@@ -276,6 +232,11 @@ export interface ProductDetail {
     mobile_size_chart_first: string | null;
     variants: Array<{
         id: number;
+        sku: string | null;
+        garment_size_id: number | null;
+        fabric_id: number | null;
+        reserved_quantity: number;
+        available_stock_quantity: number;
         size: string | null;
         color: string | null;
         color_hex: string | null;
@@ -294,5 +255,4 @@ export const assortmentLabels: Record<AssortmentSection, string> = {
     fabrics: 'Ткани',
     accessories: 'Фурнитура',
     boxes: 'Коробки',
-    products: 'Товары',
 };

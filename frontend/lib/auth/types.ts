@@ -9,7 +9,6 @@ export interface AuthUser {
     phone?: string;
 }
 
-export type AuthMethod = 'email' | 'telegram';
 export type AuthStep = 'input' | 'verify';
 export type DashboardTab = 'profile' | 'orders' | 'settings';
 export type EmailLinkStep = 'start' | 'input' | 'verify';
@@ -42,13 +41,25 @@ export interface AuthOrderItem {
     };
 }
 
-export interface AuthOrder {
+export interface AuthOrderSummary {
     id: number;
     total_price: number | string;
     created_at: string;
-    cart_items: string;
-    cdek_number?: string;
-    cdek_status?: string;
+    status: string;
+    payment_status: string;
+    customer_stage?: string | null;
+    customer_stage_label?: string | null;
+    cdek_number?: string | null;
+    cdek_status?: string | null;
+}
+
+export interface AuthOrder extends AuthOrderSummary {
+    cart_items: string | null;
+}
+
+export interface AuthOrderPage {
+    items: AuthOrderSummary[];
+    next_cursor: number | null;
 }
 
 export interface AuthProfileData {

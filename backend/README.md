@@ -1,22 +1,30 @@
 # Garment Buro backend
 
-The backend is being migrated incrementally from the legacy FastAPI/SQLite
-application to the modular architecture described in `REFACTORING_PLAN.md`.
-Production keeps the legacy `main:app` entrypoint until its modules have been
-moved behind services and repositories. The refactored `app.main:app` entrypoint
-owns the application lifecycle, async database connection, and health endpoints,
-then mounts the legacy API as a compatibility facade. Existing frontend
-`/api/...` contracts are covered by characterization tests during the migration.
+The current source has one ASGI entrypoint: `app.main:app`. Factory assembles
+module routers and services; runtime owns async PostgreSQL, storage, provider
+transports and background tasks. HTTP startup checks the Alembic head and never
+creates tables or mounts a legacy application. The old root `main.py`, SQLite
+runtime, SQLAdmin and landing settings API have been removed.
+
+This release is still being prepared locally; production has not switched to
+this worktree. See [runtime and diagnostics](docs/runtime.md) and the repository
+release journal at `docs/release-refactoring.md` for verified scope and open gates.
 
 ## Local environment
 
 From the repository root:
 
 ```bash
-uv venv --python 3.12 .venv
-uv pip install --python .venv/bin/python -r backend/requirements-dev.txt
+uv venv --python 3.12 backend/.venv
+uv pip sync --python backend/.venv/bin/python --require-hashes backend/requirements-dev.txt
 cp .env.example .env
 ```
+
+Python dependencies are fully pinned and hashed, including transitive packages.
+Edit `requirements.in` / `requirements-dev.in`, then regenerate both `.txt`
+locks; do not edit generated locks by hand. `make dependency-check` verifies
+that development tests use the same versions and hashes as production.
+See [dependency audit and update procedure](docs/dependency-audit.md).
 
 Fill `JWT_SECRET` and only the provider credentials required for the scenario
 being tested. Staging and production deliberately refuse to start when any
@@ -24,17 +32,16 @@ critical secret is missing. Local and test environments allow integrations to
 remain disabled; attempting to use a disabled integration fails before a
 network request is made.
 
-Start the transitional local stack from the repository root:
+Start the local stack from the repository root:
 
 ```bash
 docker compose -f docker-compose.local.yml up --build
 ```
 
-This starts PostgreSQL 17, applies Alembic migrations, creates the isolated
-local MinIO media bucket, starts the refactored application facade, Redis, and
-the frontend. PostgreSQL now contains the target catalog/media schema, but the
-storefront API still reads legacy SQLite data until the migration comparison
-and controlled catalog cutover are complete.
+This starts PostgreSQL 17, applies Alembic migrations, provisions local MinIO
+buckets, and starts the modular API, Redis and frontend. PostgreSQL is the
+source of truth for catalog, carts, accounts, favorites, projects and orders.
+Disabled feature flags remove their routes; they do not activate SQLite.
 
 Health endpoints:
 
@@ -45,19 +52,170 @@ Health endpoints:
 Local MinIO is available on `http://localhost:9000`; its console is on
 `http://localhost:9001`. The bucket name includes `APP_ENV`, so local, staging,
 and production cannot accidentally share media through the default settings.
-The local bucket is public because it contains storefront media only. Future
-private CRM files require a separate private bucket and presigned URLs.
+The media bucket contains public storefront assets. CRM and customer files
+use separate private buckets. Projects and profile photos share the customer
+bucket, under separate `projects/` and `profiles/` namespaces. Project access
+uses short-lived signed URLs; profile photos use gated API bytes with no-store.
+The customer bucket must have no public policy; readiness and media access
+enforce this.
 
-The pinned community MinIO containers in local Compose are development-only.
-The upstream community server moved to source-only distribution and archived
-its repository in 2026. Before staging, choose a supported MinIO/AIStor or other
-S3-compatible deployment and review its current licensing and security-update
-model. The application boundary remains S3-compatible, so this infrastructure
-choice does not change catalog services.
+MinIO remains the selected file store. The upstream Community repository was
+archived in 2026 and its README documents source-only distribution; this does
+not stop an existing installation. `deploy/minio/Dockerfile` now builds the
+official October2025 security release from pinned source commit/SHA-256, with
+a pinned Go image digest. The real linux/amd64 build passed; local Compose and
+CI use this same Dockerfile. Server Compose requires a prepared `MINIO_IMAGE`
+with `pull_policy: never`. See [storage build and transfer](../deploy/minio/README.md)
+and [runtime evidence](../docs/superpowers/plans/2026-10-20-minio-source-release.md).
+Changing storage provider or moving to AIStor has not been agreed or performed.
+The application uses the S3 boundary.
 
-The parent OpenAPI document only lists refactored routes. Mounted legacy routes
-remain available at their current URLs and retain their own schema until each
-module is moved.
+Runtime S3 socket waits are explicit: `MINIO_CONNECT_TIMEOUT_SECONDS=3`
+(maximum30) and `MINIO_READ_TIMEOUT_SECONDS=15` (maximum60). Both must be finite
+and positive. GET/HEAD permit one retry; PUT/DELETE do not retry after a response
+or read failure because a versioned bucket could gain extra versions or delete
+markers. One connection retry is allowed before the request is sent. Redirects
+are rejected and Retry-After cannot impose a long sleep. TLS verification and
+`SSL_CERT_FILE` remain enabled; owned connection pools are cleared on shutdown.
+These are per-attempt socket timeouts, not a total upload/DNS deadline. The
+one-shot storage bootstrap has a separate transport policy.
+See [fault tests and verification limits](../docs/superpowers/plans/2026-10-20-minio-transport.md).
+
+The20 October rehearsal passed the complete backend gate:1369 tests, no skips,
+on fresh native PostgreSQL17 and the new Linux MinIO (Python3.14.3). A synthetic
+old volume survived upgrade/restart with its objects, versions and access rules;
+the pre-upgrade archive restored to a separate old-server volume. This does not
+replace the current Python3.12 CI, coordinated DB/S3 restore or Linux Next gate.
+
+The subsequent Linux/Next gate also passed with current Dockerfile/lock-built
+backend/frontend images and the source-built MinIO: role/bucket initialization,
+migrations, readiness, API rewrites, private image boundary, standalone pages
+and 15 JS/CSS assets. A real server-priced cart survived API restart with Redis
+stopped and was read directly and through Next. See [runtime scope and cleanup](../docs/superpowers/plans/2026-10-20-linux-next-runtime.md).
+This is a disposable HTTP runtime check, not a published release or DB/S3 restore.
+After the transport adjustment, the full Linux/Python 3.12.15 backend gate
+passed:1406 tests, no skips, with fresh PostgreSQL17 and the source-built
+MinIO. This includes34 transport tests. Dependency locks, Ruff/format and
+real migration upgrade/downgrade/upgrade also passed. The full suite used
+native Linux/arm64; the subsequent actual server-Compose/Next HTTP gate
+passed with a newly built linux/amd64 backend and the unchanged frontend
+image reused only after all frontend source hashes matched. The HTTP gate
+used binfmt amd64 emulation and confirmed the same image/cart boundaries
+described above. All owned containers, volumes, VM disks and private CLI
+configuration were removed. GitHub Actions, coordinated DB/S3 restore,
+cutover and published browser E2E remain open. See the transport verification
+plan for the corrected test fixture and the failed preceding run.
+
+After the backup/deployment recovery fixes, a new current-source Linux gate
+passed 1409 tests without skips, exact dependency locks, Ruff/format and real
+migration upgrade/downgrade/upgrade. Fresh backend arm64/amd64 builds and the
+actual amd64 server-Compose/Next HTTP gate passed; the unchanged frontend image
+was reused only after its entire source hash set matched. All 1695 source hashes
+matched before/after. The synthetic rootless restore/release rehearsals above
+are separate proofs. A later real historical-image rehearsal upgraded the old
+database and recovered its checkpoint into separate PostgreSQL/MinIO volumes,
+comparing all 103 historical application tables and the old API/Next assets.
+The old image rejects the new schema; checkpoint recovery discards later writes.
+Real CI and production-volume recovery remain open. See
+[historical checkpoint scope](../docs/superpowers/plans/2026-10-20-historical-checkpoint-recovery.md). See [current full gate](../docs/superpowers/plans/2026-10-20-current-full-release.md).
+
+The latest local source gate passed **1445 backend tests, no skips** after the
+public-maintenance changes and removal of the unused legacy SQLite URL setting.
+It used Linux/Python 3.12, fresh PostgreSQL 17 and the source-built MinIO, exact
+locks, Ruff/format, actual migrations and real Nginx privacy/maintenance gates
+under uid10001. Fresh backend arm64/amd64 images and the actual amd64 Compose/
+Next HTTP gate passed. The unchanged frontend image was reused after complete
+source-hash matching; a separate clean Node 24 npm-ci/build/test/browser run also
+passed 626 tests without skips. All 1705 source hashes matched through the gate.
+See [current foundation gates](../docs/superpowers/plans/2026-10-20-current-foundation-gates.md).
+
+OpenAPI describes the enabled module routes. Historical import tools are
+explicit commands, separate from HTTP startup and request handling.
+
+## Public user profiles
+
+With `IDENTITY_API_ENABLED`, `GET /api/people` lists published profiles of active
+users; `GET /api/people/{slug}` applies the same visibility rule. The directory
+accepts literal `query`, `sort=newest|name`, `limit=1..100` (default 24) and a
+filter-bound cursor. A page uses one bounded SQL query and returns only the
+profile ID, slug, display name, biography and nullable `avatar_id`. Responses use `Cache-Control:
+no-store`.
+
+Products, people and community search share literal Unicode substring rules in
+`app/db/text.py`. PostgreSQL 17 uses the built-in `pg_c_utf8` collation for casing,
+so Cyrillic and accented Latin do not depend on the cluster's default locale.
+`%`, `_` and backslash remain literal search characters. SQLite is a lightweight
+test dialect; Unicode behavior is verified against real PostgreSQL.
+
+People/community `sort=name` uses the same lowercase expression and ID tie
+breaker in ordering, row-value cursor comparison and functional indexes.
+Revision `20261017_0067` rebuilds the people name index and replaces the community
+status-only index with `(status, UnicodeLower(title), id)`. Existing rows are not
+rewritten. Earlier directory cursors return 422 because their ordering differs;
+reload the list to obtain a current cursor. These B-tree indexes bound name
+pagination; they are not substring-search indexes or a linguistic alphabet.
+
+All three public list endpoints return an invalid cursor as HTTP 422 with
+`detail.code=invalid_cursor` and `Cache-Control: no-store`. Parameter validation
+keeps its field-error format. The frontend API boundary distinguishes these cases:
+on an expired cursor, the catalog keeps visible cards and offers a first-page
+refresh instead of repeatedly sending the rejected cursor. Release these protocol
+changes together with the frontend.
+
+Authenticated `GET /api/profile/public` returns the caller's separate public
+profile or `null`. `PUT /api/profile/public` accepts `slug`, `display_name`,
+`bio`, an explicit `is_published` boolean and `version`: 0 creates, while later
+writes must match the saved version. Stale edits and an occupied slug return 409.
+Private email, phone, orders and projects are never copied into the public
+profile; existing accounts are not published or given a profile automatically.
+Unpublishing, blocking or deleting an account hides both public reads. The
+bounded lifecycle worker also purges profiles of deleted accounts.
+
+Revision `20261015_0063` adds the opt-in profile schema; `20261015_0064` adds a
+nullable media FK with `ON DELETE SET NULL`. Avatar IDs are read-only: text
+writes cannot attach arbitrary media or remote image URLs.
+
+Create the profile before uploading its photo. Authenticated multipart
+`POST /api/profile/public/avatar?expected_version=N` returns the updated owner
+DTO with status 201; `DELETE` at the same address removes the attachment and
+returns status 200. Both compare the current version and increment it; stale
+operations return 409. Removing the attachment does not require available MinIO.
+Input is bounded to 8 MiB: single-frame JPEG/PNG/WebP, maximum 16M pixels and
+8192 px per side. The backend applies EXIF orientation, drops metadata, produces
+a WebP thumbnail at most 512 px per side and stores at most 2 MiB of normalized bytes.
+
+`GET /api/people/{slug}/avatar/{media_id}` returns image bytes only for the
+current attachment of a published profile and active account. The authenticated
+owner can preview the current draft attachment through
+`GET /api/profile/public/avatar/{media_id}`. Both use no-store and nosniff; they
+never redirect to a storage URL. Unpublishing, replacing or removing a photo,
+blocking or deleting the account revokes subsequent public requests. Browser
+UI must request this API directly, bypassing any lasting image optimizer cache.
+
+Cards on the home page and people catalog use
+`GET /api/people/{slug}/avatar/{media_id}/preview`: a fixed WebP rendition with
+maximum side 320 px and quality 85. It applies the same attachment/publication,
+active-account, private-bucket and SHA-256 checks before rendering outside the
+event loop. Smaller originals are not enlarged; transparency is preserved.
+There are no caller-selected dimensions, persistent derivatives or image caches.
+Existing photos work without a new upload. Full profile and owner endpoints
+continue returning the canonical lossless file up to 512 px. The card response
+also uses no-store/nosniff, so later requests respect publication revocation.
+This reduces bytes transferred to the browser; each request still reads the
+canonical MinIO object and performs bounded image encoding work.
+
+Upload metadata is committed as pending before storage PUT; version is checked
+again after that commit. Cancellation holds the row lock until the storage
+write finishes, leaving durable pending metadata for the existing bounded
+worker. Attached photos remain protected, including unpublished drafts.
+Replacement/removal starts a fresh seven-day retention period for the old
+unreferenced image. Deleted-account cleanup uses the same private media worker.
+The frontend now renders real People cards and `/people/[slug]`, with an
+authenticated editor at `/profile/public`. The editor starts with blank public
+fields, creates a private draft, and publishes only through an explicit action.
+Photo preview uses authenticated bytes and a temporary blob URL; public images
+request the gated API directly. PWA navigation HTML is never persisted offline.
+Owner collection/landing editing and production release validation remain pending.
 
 ## Page QR codes
 
@@ -85,8 +243,8 @@ payment statuses without automatically signing or retrying uncertain transfers.
 Run migrations from `backend/` with an explicit `DATABASE_URL`:
 
 ```bash
-../.venv/bin/python -m alembic -c alembic.ini upgrade head
-../.venv/bin/python -m alembic -c alembic.ini downgrade -1
+.venv/bin/python -m alembic -c alembic.ini upgrade head
+.venv/bin/python -m alembic -c alembic.ini downgrade -1
 ```
 
 Application startup never creates or changes refactored tables. The deployment
@@ -148,7 +306,7 @@ rollback sequence is documented in
 Build a read-only migration plan from `backend/`:
 
 ```bash
-../.venv/bin/python -m scripts.migrate_legacy_catalog \
+.venv/bin/python -m scripts.migrate_legacy_catalog \
   --sqlite-db /absolute/path/to/ecommerce.db \
   --uploads-dir /absolute/path/to/uploads \
   --report /absolute/path/to/catalog-dry-run.json
@@ -163,7 +321,7 @@ Compare the exact legacy values with the refactored repository/service/mapper
 using an isolated temporary database and no network storage:
 
 ```bash
-../.venv/bin/python -m scripts.compare_catalog_contract \
+.venv/bin/python -m scripts.compare_catalog_contract \
   --sqlite-db /absolute/path/to/ecommerce.db \
   --uploads-dir /absolute/path/to/uploads
 ```
@@ -172,7 +330,7 @@ Only after reviewing the dry-run report, apply the same source snapshot to an
 empty migrated PostgreSQL database and provisioned MinIO bucket:
 
 ```bash
-../.venv/bin/python -m scripts.migrate_legacy_catalog \
+.venv/bin/python -m scripts.migrate_legacy_catalog \
   --sqlite-db /absolute/path/to/ecommerce.db \
   --uploads-dir /absolute/path/to/uploads \
   --apply \
@@ -183,49 +341,125 @@ empty migrated PostgreSQL database and provisioned MinIO bucket:
 It rechecks every object checksum immediately before upload and records the
 completed fingerprint/counts in `catalog_migration_runs`.
 
-To enable the new GET path, run `app.main:app` and set both:
+Enable catalog reads with `app.main:app` and:
 
 ```dotenv
 CATALOG_READS_ENABLED=true
-CATALOG_MIGRATION_FINGERPRINT=<applied-fingerprint>
 ```
 
-Startup refuses the cutover unless that exact migration run and all recorded
-product/variant/media/reference counts are present. `GET /api/products` and
-`GET /api/products/{id}` then use PostgreSQL, while catalog writes continue to
-fall through to legacy until RBAC and the write service are ready. Existing
-`/uploads/<filename>` paths return an immutable redirect to MinIO, preserving
-frontend URLs and video range behavior at the object-store endpoint.
-
-Rollback is configuration-only: set `CATALOG_READS_ENABLED=false` and restart
-the refactored entrypoint. Keep SQLite and local uploads intact until the
-staging observation period and production cutover are complete.
+`GET /api/products` and `GET /api/products/{id}` read PostgreSQL. The compact
+storefront API is `/api/catalog/products`. Historical import fingerprints are
+verified by migration commands, not by HTTP startup. Existing `/uploads` media
+references resolve through PostgreSQL metadata to MinIO; there is no filesystem
+fallback. Turning reads off removes their routes and is not a legacy rollback.
+Preserve historical source backups until migration and restore are verified.
 
 ## Guarded catalog writes, content, and privileged roles
 
-Catalog mutations remain on the legacy facade while
-`CATALOG_WRITES_ENABLED=false`. The guarded boundary owns these current paths
-when enabled:
+`CATALOG_WRITES_ENABLED=true` registers these paths; when disabled, write routes
+are absent:
 
 - `POST`, `PUT`, and `DELETE /api/products...`;
-- `GET /api/products/{product_id}/variants` and
-  `PUT /api/variants/{variant_id}`;
-- `POST /api/upload`;
-- `GET` and `PUT /api/settings` and `/api/options`.
+- administrative `GET /api/products`, `/counts`, `/{id}` and categories;
+- paged model/fabric editor references under `/api/catalog-editor`;
+- `POST /api/upload`.
 
-All mutation routes require the refactored Bearer session and the
-`catalog.write` permission. Customer tokens receive `403`. Product and variant
+`/api/options`, `/api/variants/{id}` and the old per-product variant list have
+been retired. Both login surfaces use the same product editor. Actual sizes,
+colors and allowed fabrics come from the production reference tables; there is
+no separate editable JSON-style list of labels.
+
+Product detail and write responses include `version`. Both staff and production
+product PUT require a strict positive integer `expected_version`; missing/invalid
+versions return422. Under the product row lock, the writer refreshes ORM state
+and compares the version before changing any fields/variants/media. A stale
+version returns409 with code `catalog_product_version_conflict` without a write
+or audit event. Successful edits, confirmed physical stock consumption, and
+initial CRM model linking advance the version. Idempotent payment/link replays
+do not. Migration0070 and the new frontend/backend must be released together.
+
+Identity mutation routes require the refactored Bearer session and the
+`catalog.write` permission. Production assortment routes require an authenticated
+system administrator through the production session. Customer tokens receive `403`. Product and variant
 writes accept only ready media metadata from the environment-specific MinIO
 bucket, run in one PostgreSQL transaction, and append an actor-linked checksum
 audit. Uploads are content-sniffed, size-bounded, stored through MinIO, and
-record their uploading user. Direct legacy SQLAdmin paths return `404` after
-the write boundary is enabled; the production Compose file also does not
-publish the backend port.
+record their uploading user. Direct SQLAdmin paths and GET/PUT `/api/settings`
+return `404`. Server Compose does not publish the backend port.
 
-First create the deterministic settings/options plan from `backend/`:
+Product PUT locks the parent and checks its version before loading children.
+The complete editable SKU source is limited to200 (LIMIT201 detects overflow);
+bad identity/reference/reservation commands stop before mutations.
+An oversized source returns409 `catalog_editor_variant_limit` without changing it.
+DELETE can remove a larger unreserved, unlinked preset: scalar cursor batches
+of256 rows build `catalog.product-deleted.v2` evidence, then database FK cascades
+remove its children in the same transaction. Shared media objects remain.
+The audit stores `snapshot_schema`, counts and SHA-256, not the full source;
+existing audit records and create/update checksums are unchanged. Migration0078
+adds the partial `(product_id,id) WHERE reserved_quantity > 0` index for the
+ordered reservation probe. Successful PUT replaces old links using SQL DELETE
+without reading them, inserts submitted links in batches of256 and reads only the
+resulting media. The response reuses the just-flushed parent/SKU scalars without
+assigning partial ORM collections. Editor GET reads media in keyset portions
+of256 plus one lookahead row, through scalar DTOs, within the existing URL-field
+budgets. An oversized full source returns409 `catalog_editor_media_limit` rather
+than a truncated editor. PostgreSQL bounds candidates before indexed LATERAL
+metadata lookups. Migration0079 removes duplicate owner-only link indexes;
+the unique owner/role/order indexes still cover those prefixes. A parent FOR SHARE
+protects owned links during the read; the HTTP helper ends the read transaction
+before returning the materialized DTO. Link deletion and streamed audit bound Python buffering,
+not total database work.
+See [command source and audit format](../docs/superpowers/plans/2026-10-19-preset-command-source.md).
+See [media replacement and remaining limits](../docs/superpowers/plans/2026-10-19-preset-media-replacement.md).
+See [editor media source and query plans](../docs/superpowers/plans/2026-10-19-editor-media-source.md).
+
+Public card images use one batched query over the already selected product IDs.
+An ordered point search finds the first eligible image per role; COALESCE stops
+after the first successful role. PostgreSQL materializes the chosen link IDs
+before LATERAL PK lookups of their fields. This replaces ranking every image of
+the page while retaining catalog/collection priorities and current visibility.
+Private/pending/non-image prefixes still require searching until a match or the
+end: this is not a fixed total-work bound for arbitrary history. There is no
+new cache, denormalized image record, photo quota or migration.
+See [public card image selection and actual plans](../docs/superpowers/plans/2026-10-19-storefront-card-images.md).
+
+Public catalog continuations seek `(created_at,id)` or `(price,id)` in the
+existing ordered indexes. Cheap ordering combines two separately bounded ranges
+in one SQL statement because price ASC and ID DESC have opposite directions.
+Both ranges keep every filter and publication rule. No cursor, API or migration
+change is required; substring and rare-color filters can still scan many rows
+after the cursor. See [deep-page plans and limits](../docs/superpowers/plans/2026-10-19-storefront-page-seeks.md).
+
+Public `/api/catalog/options` derives categories and colors from published
+products. A category uses EXISTS; palettes are deduplicated in SQL before JSON
+expansion, avoiding a repeated expansion for every product sharing those colors.
+The response is `no-store`, with no additional cache or derived business store.
+This global query still reads public products and returns every distinct choice;
+it does not have a fixed work/output bound when all palettes differ.
+See [filter plans and publication checks](../docs/superpowers/plans/2026-10-19-storefront-filter-options.md).
+
+Public `GET /api/catalog/products/{id}` uses a dedicated constructor contract,
+`schema_version: 1`, rather than the editable preset DTO. It returns all actual
+SKU dimensions/availability, ordered image references and one unique asset
+registry. URLs are not CSV fields; only public ready JPEG/PNG/WebP are selected
+in SQL. Product descriptions and ORM media graphs are not loaded. SKU-only files
+may be referenced by a customer project for that same product. The frontend
+validates this version and references; deploy the API and client together.
+The complete source still scales with that product's variants/media links.
+See [constructor contract, plans and browser checks](../docs/superpowers/plans/2026-10-19-constructor-public-contract.md).
+
+Constructor options use schemas → service → repository and versioned PostgreSQL documents.
+A fresh database returns empty colors/sizes without inserting invented defaults.
+The first authorized PUT creates revision1; subsequent writes retain immutable
+versions and actor IDs. Concurrent first writes serialize without losing history.
+New installations need no JSON seed file. Historical landing settings documents
+remain archived migration evidence and have no runtime read/write endpoint.
+
+For an existing installation only, create the historical settings/options import
+plan from `backend/`. Its planner lives in `catalog/migration/content.py`:
 
 ```bash
-../.venv/bin/python -m scripts.migrate_legacy_catalog_content \
+.venv/bin/python -m scripts.migrate_legacy_catalog_content \
   --uploads-dir /absolute/path/to/uploads \
   --report /absolute/path/to/catalog-content-dry-run.json
 ```
@@ -235,16 +469,16 @@ included in the review report. Apply only the unchanged reviewed plan:
 
 ```bash
 DATABASE_ENABLED=true DATABASE_URL='<target-postgresql-url>' \
-  ../.venv/bin/python -m scripts.migrate_legacy_catalog_content \
+  .venv/bin/python -m scripts.migrate_legacy_catalog_content \
   --uploads-dir /absolute/path/to/uploads \
   --apply \
   --expect-fingerprint <fingerprint-from-dry-run>
 ```
 
-The initial payloads are stored as revision 1. Later edits increment the
-document version and keep immutable actor-linked revisions; startup recomputes
-the reviewed fingerprint from revision 1 rather than from mutable current
-content.
+The initial payloads are stored as revision1. Explicit migration verification
+uses that immutable baseline; API startup does not recompute import fingerprints.
+Later options edits retain actor-linked revisions. The settings archive is not
+used by the storefront.
 
 Privileged roles are never inferred from an email or created by application
 startup. Inspect the exact active target first, then repeat with the returned
@@ -252,11 +486,11 @@ numeric ID as an explicit apply guard:
 
 ```bash
 DATABASE_ENABLED=true DATABASE_URL='<target-postgresql-url>' \
-  ../.venv/bin/python -m scripts.bootstrap_role \
+  .venv/bin/python -m scripts.bootstrap_role \
   --email manager@example.test --role manager
 
 DATABASE_ENABLED=true DATABASE_URL='<target-postgresql-url>' \
-  ../.venv/bin/python -m scripts.bootstrap_role \
+  .venv/bin/python -m scripts.bootstrap_role \
   --email manager@example.test --role manager \
   --apply --expect-user-id <reviewed-user-id>
 ```
@@ -265,30 +499,25 @@ The grant is idempotent and produces a security audit without printing the
 email in its result. Use `admin` only when that broader role is intentionally
 required.
 
-Enable writes only after the catalog, content, and identity imports are all
-reviewed and present. The backend contract is:
+For an existing deployment, review and verify its data imports before switching
+traffic. A new installation does not require import fingerprints. Enable:
 
 ```dotenv
 DATABASE_ENABLED=true
 MINIO_ENABLED=true
 CATALOG_READS_ENABLED=true
 CATALOG_WRITES_ENABLED=true
-CATALOG_MIGRATION_FINGERPRINT=<reviewed-catalog-fingerprint>
-CATALOG_CONTENT_MIGRATION_FINGERPRINT=<reviewed-content-fingerprint>
 IDENTITY_API_ENABLED=true
-IDENTITY_MIGRATION_FINGERPRINT=<reviewed-identity-fingerprint>
 ```
 
 Build the matching frontend image with both
 `NEXT_PUBLIC_IDENTITY_SESSION_V2_ENABLED=true` and
 `NEXT_PUBLIC_CATALOG_WRITES_ENABLED=true`. The two frontend flags and the two
 backend feature flags form one release boundary; unsupported mixed modes must
-not receive traffic. The frontend build refuses the specific unsafe combination
-of catalog writes without identity session v2. The read-cutover guard remains
-count-exact before writes.
-In writable mode it verifies the reviewed migration run and preservation of
-the imported ready-media baseline while allowing audited product changes and
-new uploads across restarts.
+not receive traffic. The frontend build refuses catalog writes without identity
+session v2. Startup validates the schema revision, independently of imported
+record counts. The old landing editor is removed; privileged catalog operations
+remain available to current production administration.
 
 Before the first target mutation, rollback is configuration-only. After the
 first PostgreSQL/MinIO mutation, do not re-enable legacy SQLite catalog writes:
@@ -297,28 +526,33 @@ admin/editor traffic, keep public reads on the target, and fix forward or
 restore the previous target release. A full legacy rollback requires an
 explicit reverse reconciliation and is not provided by this slice.
 
-## Persistent carts and guarded Redis cutover
+## Persistent carts and offline Redis import
 
-The persistent cart boundary owns the existing cart GET, PUT, and DELETE paths
-at `/api/cart/{cart_id}` only when `CARTS_V2_ENABLED=true`. It preserves the
-frontend response contract and stores normalized item snapshots, including
-constructor `customization`, in PostgreSQL. Redis is the migration source only;
-it is no longer the cart source of truth after cutover.
+With `DATABASE_ENABLED=true` and `CARTS_V2_ENABLED=true`, GET and PUT at
+`/api/cart/{cart_id}` store normalized item snapshots, including constructor
+`customization`, in PostgreSQL. DELETE returns405; emptying the cart is a
+revision-checked PUT with an empty item list. PUT requires `expected_revision`
+and a stable `operation_id`: replay returns the same snapshot, while a stale
+revision returns409. Responses use `Cache-Control: no-store`.
+
+Redis is an offline migration source only. The current API does not fall back
+to a legacy Redis writer when the flag is disabled; the routes are unmounted.
 
 Cart IDs remain bearer-capability values in the public URL contract. PostgreSQL
 stores only their SHA-256 digests, and migration reports contain counts plus a
-fingerprint rather than raw IDs. Access logs can still contain the path value,
-so production log retention and access must be treated accordingly. Prices in
-the cart are display snapshots supplied by the client. The future order service
-must reprice every item from the server-side catalog and must never trust these
-values for payment.
+fingerprint rather than raw IDs. Application request logs use route templates,
+and Uvicorn access output is disabled. Any separately configured ingress log
+must also avoid recording raw capability paths. Constructor items are repriced
+from the server catalog and the configurable decoration policy (currently80 ₽
+with scale adjustment). Ordinary cart prices remain display snapshots; the
+checkout service reprices all items before creating an order/payment amount.
 
-Apply Alembic through `20260811_0008`, then stop or reject legacy cart `PUT` and
-`DELETE` traffic for the short migration window. With writes frozen, build and
+For an existing legacy installation, apply Alembic to the current head and stop
+legacy writes before import. With writes frozen, build and
 review the current Redis plan from `backend/`:
 
 ```bash
-../.venv/bin/python -m scripts.migrate_legacy_carts \
+.venv/bin/python -m scripts.migrate_legacy_carts \
   --redis-url '<legacy-redis-url>' \
   --report /absolute/path/to/cart-dry-run.json
 ```
@@ -328,7 +562,7 @@ empty target cart store:
 
 ```bash
 DATABASE_ENABLED=true DATABASE_URL='<target-postgresql-url>' \
-  ../.venv/bin/python -m scripts.migrate_legacy_carts \
+  .venv/bin/python -m scripts.migrate_legacy_carts \
   --redis-url '<legacy-redis-url>' \
   --apply \
   --expect-fingerprint <reviewed-cart-fingerprint>
@@ -344,13 +578,15 @@ commits should the backend be restarted with:
 ```dotenv
 DATABASE_ENABLED=true
 CARTS_V2_ENABLED=true
-CARTS_MIGRATION_FINGERPRINT=<reviewed-cart-fingerprint>
 ```
 
-Startup refuses to own the routes unless that exact migration run exists. No
-frontend build flag is required because the public paths and response shapes do
-not change. Release the write freeze only after a real HTTP read/write/delete
-probe and a restart verify the PostgreSQL path.
+The fingerprint is checked by the offline import command; it is not a current
+startup setting. A fresh installation needs no import or fingerprint. Startup
+validates the current schema. No separate frontend cart feature flag is required;
+the current client sends revision and operation IDs. Release the write freeze
+only after a real HTTP read/write/empty probe and API restart verify persistence.
+The disposable container gate also checks a saved constructor cart with Redis
+stopped; this does not migrate real customer data.
 
 Run expiry cleanup from `backend/` on a schedule. The command uses bounded
 batches and PostgreSQL `SKIP LOCKED` so multiple workers do not claim the same
@@ -358,15 +594,14 @@ rows:
 
 ```bash
 DATABASE_ENABLED=true DATABASE_URL='<target-postgresql-url>' \
-  ../.venv/bin/python -m scripts.purge_expired_carts
+  .venv/bin/python -m scripts.purge_expired_carts
 ```
 
-Before the first PostgreSQL cart mutation, rollback is configuration-only:
-freeze writes again, set `CARTS_V2_ENABLED=false`, restart, and release legacy
-traffic. After any target `PUT` or `DELETE`, Redis is stale. Do not switch the
-legacy writer back on; keep the PostgreSQL route active and fix forward, or run
-a separately reviewed reverse reconciliation. Downgrading the schema is not a
-data rollback.
+Disabling `CARTS_V2_ENABLED` disables the current routes; it does not restore a
+legacy implementation. Once PostgreSQL writes begin, Redis is stale. Keep the
+PostgreSQL route active and fix forward, or restore a verified compatible target
+release/data set. A legacy writer would require explicit reverse reconciliation.
+Downgrading the schema is not a data rollback.
 
 ## Order creation persistence foundation
 
@@ -433,7 +668,7 @@ Run the bounded expiry worker from `backend/` on a schedule:
 
 ```bash
 DATABASE_ENABLED=true DATABASE_URL='<target-postgresql-url>' \
-  ../.venv/bin/python -m scripts.expire_inventory_reservations
+  .venv/bin/python -m scripts.expire_inventory_reservations
 ```
 
 Use `--batch-size` to tune a run and `--once` to process one batch. PostgreSQL
@@ -458,7 +693,7 @@ without printing that content in the report.
 Create and review the plan from `backend/`:
 
 ```bash
-../.venv/bin/python -m scripts.migrate_legacy_orders \
+.venv/bin/python -m scripts.migrate_legacy_orders \
   --sqlite-db /absolute/path/to/ecommerce.db \
   --report /absolute/path/to/order-dry-run.json
 ```
@@ -475,7 +710,7 @@ Apply only the unchanged reviewed snapshot to an empty target order store:
 
 ```bash
 DATABASE_ENABLED=true DATABASE_URL='<target-postgresql-url>' \
-  ../.venv/bin/python -m scripts.migrate_legacy_orders \
+  .venv/bin/python -m scripts.migrate_legacy_orders \
   --sqlite-db /absolute/path/to/ecommerce.db \
   --apply \
   --expect-fingerprint <fingerprint-from-dry-run>
@@ -681,7 +916,7 @@ The worker can be started from `backend/` after migrations and credentials are
 configured:
 
 ```bash
-../.venv/bin/python -m scripts.process_payment_events --once
+.venv/bin/python -m scripts.process_payment_events --once
 ```
 
 Compose exposes it only through the explicit `payments` profile. Do not run it
@@ -721,7 +956,7 @@ explicit Compose profile. From `backend/`, after migrations and credentials:
 
 ```bash
 PAYMENT_RECONCILIATION_ENABLED=true \
-../.venv/bin/python -m scripts.reconcile_payments --once
+.venv/bin/python -m scripts.reconcile_payments --once
 ```
 
 Do not enable the long-running profile in production before real PostgreSQL
@@ -950,7 +1185,7 @@ after reviewing target paid-order evidence:
 
 ```bash
 FULFILLMENT_OUTBOX_ENABLED=true \
-../.venv/bin/python -m scripts.seed_fulfillment_jobs --limit 100
+.venv/bin/python -m scripts.seed_fulfillment_jobs --limit 100
 ```
 
 The seeder excludes imported legacy orders. This stage does not add a network
@@ -1025,7 +1260,7 @@ create/get/timeout-after-acceptance scenarios pass. See
 Build a PII-minimized, read-only user migration report from `backend/`:
 
 ```bash
-../.venv/bin/python -m scripts.migrate_legacy_identity \
+.venv/bin/python -m scripts.migrate_legacy_identity \
   --sqlite-db /absolute/path/to/ecommerce.db \
   --report /absolute/path/to/identity-dry-run.json
 ```
@@ -1039,7 +1274,7 @@ must request a new code after cutover.
 After reviewing the source snapshot, apply it to an empty migrated target:
 
 ```bash
-../.venv/bin/python -m scripts.migrate_legacy_identity \
+.venv/bin/python -m scripts.migrate_legacy_identity \
   --sqlite-db /absolute/path/to/ecommerce.db \
   --apply \
   --expect-fingerprint <fingerprint-from-dry-run>
@@ -1054,9 +1289,9 @@ permissions created by Alembic are allowed and verified.
 must not equal `JWT_SECRET`. The new service uses a 15-minute access token,
 opaque hashed refresh tokens with rotation/reuse detection, peppered OTP
 digests, persisted attempt/rate limits, and security audit events. These
-components are intentionally not routed yet: current `/api/auth/*` traffic
-continues through legacy until the profile/email endpoints and
-`/api/auth/orders` ownership bridge can move together.
+components are used by the modular `/api/auth/*` routes when
+`IDENTITY_API_ENABLED=true`. A disabled identity boundary removes those routes;
+it never falls back to the removed legacy application.
 
 ## Encrypted notification outbox
 
@@ -1077,7 +1312,7 @@ dead-lettering.
 Apply migration `20260811_0005`, then run one bounded drain from `backend/`:
 
 ```bash
-../.venv/bin/python -m scripts.process_notification_outbox --once
+.venv/bin/python -m scripts.process_notification_outbox --once
 ```
 
 For continuous local processing, enable the opt-in Compose profile from the
@@ -1098,12 +1333,12 @@ the SMTP request, retries transient failures with capped exponential backoff,
 and recovers stale processing attempts. Delivery is intentionally at-least-once:
 a process failure after SMTP accepted a message but before the database commit
 can produce a duplicate. Email content must therefore remain safe to repeat.
-The current auth routes do not enqueue through this outbox yet; that wiring is
-activated only by the guarded auth/profile cutover described below. Replaced,
+Current auth routes enqueue through this outbox in the same transaction as the
+challenge. Email, Telegram and disabled phone transports use one registry. Replaced,
 consumed, or expired OTP notifications are dead-lettered and their encrypted
 payload is erased before a later retry can deliver a stale code.
 
-## Guarded identity API and legacy order ownership bridge
+## Identity API and authentication methods
 
 Revision `20260811_0006` contains the complete refactored HTTP boundary for the
 current frontend paths:
@@ -1114,24 +1349,35 @@ current frontend paths:
 - `GET /api/auth/orders`;
 - refresh-token rotation, bounded legacy-session migration, and logout.
 
-The boundary is disabled by default. While `IDENTITY_API_ENABLED=false`, all
-current `/api/auth/*` requests continue through the mounted legacy application.
-Before enabling it, apply the reviewed identity import and configure its exact
-fingerprint:
+The example environment enables the modular boundary. Set independent secrets
+outside source control and apply migrations before starting it:
 
 ```dotenv
 DATABASE_ENABLED=true
 IDENTITY_API_ENABLED=true
-IDENTITY_MIGRATION_FINGERPRINT=<reviewed-identity-dry-run-fingerprint>
 IDENTITY_OTP_PEPPER=<independent-secret-at-least-32-characters>
 NOTIFICATION_ENCRYPTION_KEY=<url-safe-base64-of-32-random-bytes>
 ```
 
-Startup refuses the cutover if the migration run is absent, imported user count
-is lower than reviewed, customer permissions are incomplete, the legacy orders
-SQLite file is unavailable, or its schema does not match the bridge contract.
-The OTP challenge and encrypted outbox row use the same database transaction.
-No OTP is returned in an API response.
+`GET /api/auth/methods` describes each API method and its availability.
+`POST /api/auth/password/login` accepts a verified identifier and password;
+authenticated `PUT /api/auth/password` sets or changes the Argon2id credential.
+`IDENTITY_PASSWORD_AUTH_ENABLED=true` is the default, with five attempts and a
+15-minute lockout controlled by `IDENTITY_PASSWORD_MAX_ATTEMPTS` and
+`IDENTITY_PASSWORD_LOCKOUT_MINUTES`. Password hashing has bounded concurrency.
+
+`POST /api/auth/telegram` validates the signed Telegram payload and reuses its
+existing external identity. It requires `IDENTITY_TELEGRAM_AUTH_ENABLED=true`
+and `TELEGRAM_BOT_TOKEN`; both auth and Telegram delivery are off by default.
+`TELEGRAM_AUTH_MAX_AGE_SECONDS` bounds the signature age. Telegram notification
+delivery separately requires `NOTIFICATION_TELEGRAM_ENABLED=true` and the bot.
+
+Phone endpoints and transport are present as explicit disabled methods;
+`IDENTITY_PHONE_AUTH_ENABLED` and `NOTIFICATION_PHONE_ENABLED` must remain false
+until a real delivery provider exists. Settings reject enabling them now.
+Updating a contact phone does not establish a verified login phone. No OTP is
+returned in an API response. The current frontend form exposes email OTP only;
+the fake Telegram tab has been removed. API support does not imply a completed UI.
 
 Existing pre-cutover Bearer tokens can be accepted temporarily by setting a
 timezone-aware `IDENTITY_LEGACY_TOKEN_GRACE_UNTIL`. The cutoff cannot be more
@@ -1143,20 +1389,16 @@ a host-only, HttpOnly, SameSite=Lax cookie; staging and production also set
 Secure. Refresh, migration, and logout reject cross-origin requests, and reuse
 of a rotated token revokes its entire session family.
 
-Until the full orders migration, SQLite is opened read-only for order content.
-Each legacy order ID can be claimed by only one PostgreSQL user, and only when
-the order email matches that user's verified email. A profile phone number is
-not proof of ownership. Claims survive a verified email change, contain only an
-HMAC identifier digest, and prevent later email reuse from stealing historical
-orders. CDEK is not called from cabinet reads; the endpoint returns the status
-already stored with the order until the delivery reconciliation worker is ready.
+Order reads use the PostgreSQL order service, pagination and ownership checks.
+The old runtime SQLite ownership bridge is removed. Historical imports are
+explicit tools; CDEK is not called from cabinet reads.
 
 The refactored frontend lifecycle is guarded separately by the build-time
-`NEXT_PUBLIC_IDENTITY_SESSION_V2_ENABLED` flag. Its default is `false`, so the
-existing persisted Bearer behavior remains unchanged. In v2 mode the access
+`NEXT_PUBLIC_IDENTITY_SESSION_V2_ENABLED` flag. The example environment enables
+it together with the API. The access
 token is memory-only, the HttpOnly cookie restores the session, authenticated
-requests retry once after a coordinated refresh, tabs exchange only ephemeral
-session data, and backend logout is retried after offline or transient failure.
+requests retry once after a coordinated refresh, tabs exchange only opaque
+coordination markers, and backend logout is retried after offline or transient failure.
 An old persisted Bearer token is removed from browser storage while the bounded
 migration endpoint establishes its refresh session.
 
@@ -1169,8 +1411,8 @@ is the next gate.
 
 ## Partner cabinet finances and requisites
 
-The partner cabinet reads its real dashboard, attributed commissions, landing links,
-and payout request history from `/api/partner/*`. Payout requests remain an internal
+The partner cabinet reads its real SQL dashboard, owner landing editor and
+paged payout history from `/api/partner/*`. Payout requests remain an internal
 review workflow and cannot exceed the matured, unreserved balance.
 
 Before the first payout request, a partner must save bank requisites through
@@ -1184,12 +1426,21 @@ own details.
 ## Verification gate
 
 ```bash
-make -C backend check PYTHON=../.venv/bin/python
+make -C backend check PYTHON=.venv/bin/python
 ```
 
 This runs Ruff checks/format verification, all unit, contract, catalog,
 identity, notification, and migration tests, plus offline PostgreSQL
-upgrade/downgrade generation. Verify both frontend flag modes separately:
+upgrade/downgrade generation.
+
+Without native test dependencies, `make check` permits PostgreSQL/MinIO skips.
+The release CI instead provisions four isolated PostgreSQL test databases and
+MinIO, then runs `python -m scripts.check_tests`: the complete suite must pass
+with no skips. See [runtime checks](docs/runtime.md#проверки-миграций) for the
+required environment and private configuration. This command uses the active
+Python interpreter and does not require a machine-specific shell wrapper.
+
+Verify both frontend flag modes separately:
 
 ```bash
 cd frontend
@@ -1206,7 +1457,7 @@ Manual SMTP connectivity is kept outside pytest:
 
 ```bash
 cd backend
-../.venv/bin/python -m scripts.check_smtp
+.venv/bin/python -m scripts.check_smtp
 ```
 
 Never place credentials in source files, examples, logs, or command history.
@@ -1231,7 +1482,7 @@ FULFILLMENT_CRM_ENABLED=true
 Drain a bounded batch from `backend/`:
 
 ```bash
-../.venv/bin/python -m scripts.process_fulfillment_jobs --once --max-items 100
+.venv/bin/python -m scripts.process_fulfillment_jobs --once --max-items 100
 ```
 
 Project changes use explicit versioned transitions and append-only audit events.
@@ -1275,6 +1526,14 @@ HTTP route or feature cutover. See
 `docs/refactoring/30-crm-production-workflow.md` for invariants, migration
 backfill, verification, score, and rollback.
 
+Production order detail now uses request-local `ProductionDetailRepository` batches
+(up to256 IDs), shared specification validation and the same role projection.
+Migration `20261019_0080` replaces model/plan-only indexes with ordered first-row
+indexes for fabric requirements and reservations. The full response remains
+proportional to this order; no page Provider or persistent cache was added.
+See `docs/superpowers/plans/2026-10-19-production-detail-batches.md` for exact
+PostgreSQL comparisons, physical plans and release limitations.
+
 ## Append-only CRM material ledger
 
 Revision `20260812_0024` adds material receipts, reservations, consumption,
@@ -1288,3 +1547,53 @@ replanning until released, and adjustment-out cannot consume reserved material.
 This remains a private service with no staff route. See
 `docs/refactoring/31-crm-material-ledger.md` for accounting equations,
 reconciliation, verification, score, and rollback.
+
+Administrative landing directories (`/api/admin/partners/landings` and production
+`/api/production/admin/assortment/product-communities`) now return `{items,next_cursor}`
+with search/status, default24/max100 and filter-bound ID cursors. They select scalar
+summaries with product_count/version, without content or product_ids. Identity
+partners.manage and production system-admin authorization remain separate; responses
+are no-store. The unbounded list_all_landings reader is removed.
+
+Catalog administration returns variant_count/sku. Production additionally receives
+a maximum of three community summaries plus community_count per product. Membership reads are restricted to IDs
+on the current product page. SQL computes capacity without loading ORM variants;
+full variant references are available on the detail route. These DTO changes require
+a coordinated frontend/backend release; no additional schema migration is required.
+
+Membership previews and the landing total are enabled only by the internal
+production adapter. Ordinary identity/CRM catalog reads do not query partner
+metadata: community_count/communities count are null and previews are empty.
+The identity landing directory separately requires partners.manage. This switch
+is not a public query parameter; null means not read, not an asserted zero.
+
+Основной интерфейс товаров — `/production?section=presets`; старые `/admin/models` и `/admin/products/*` перенаправляют туда. Производственная сессия и системные права обязательны. Поиск товаров для коллекции постраничный, выбранные ID/порядок сохраняются независимо от страницы; лимит 50. См. `docs/superpowers/plans/2026-10-18-primary-presets.md`.
+
+Private partner reads: `/api/admin/partners` and `/api/partner/payouts` now return
+`{items,next_cursor}`, default limit 24, max 100. Profile cursors bind search/status/
+selectable; payout cursors bind the authenticated owner and `(created_at,id)`.
+No ORM collections or bank requisites are selected for these lists. Dashboard
+aggregates use one SQL statement and retain Decimal and payout locking rules.
+Revision `20261018_0071` adds matching read indexes. Removed unused exact list GETs:
+`/api/partner/landings` and `/api/partner/commissions`; public slug reads remain.
+Deploy the matching frontend/backend together; see
+`docs/superpowers/plans/2026-10-18-partner-private-reads.md` in the repository root.
+
+Кабинет владельца: owner list возвращает краткие карточки с product_count;
+полный контент читается через detail endpoint. Dashboard содержит has_requisites
+без банковских полей; отдельный редактор реквизитов читает их по открытию блока.
+Ошибка этого GET не закрывает кабинет и не разрешает пустое сохранение.
+DTO требуют согласованного выпуска frontend/backend. Подробности:
+`docs/superpowers/plans/2026-10-18-owner-cabinet-boundaries.md`.
+
+Настройка S3-бакетов выполняется явно командой `python -m scripts.bootstrap_storage`
+из backend-каталога. Local/server Compose запускают её сервисом `minio-init`
+в backend-образе; отдельный `minio/mc` больше не нужен. Команда сохраняет объекты,
+закрывает CRM/projects и разрешает media только анонимное чтение объектов.
+Имена передаются в `MINIO_MEDIA_BUCKET`, `MINIO_CRM_BUCKET`, `MINIO_PROJECTS_BUCKET`;
+подключение — `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `MINIO_SECURE`.
+`--help` не меняет хранилище. API startup не выполняет provisioning.
+Подробности: `docs/superpowers/plans/2026-10-19-storage-bootstrap.md`
+в корне репозитория. Поставка серверного MinIO теперь описана в
+[source build](../deploy/minio/README.md): образ заранее собирается из закреплённых
+исходников и загружается на сервер. Сам deploy его не скачивает и не собирает.

@@ -2,19 +2,21 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import column, select, values
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import raiseload, selectinload
 
 from app.modules.catalog.models import Product
 from app.modules.crm.reference_models import (
     CrmFabric,
     CrmGarmentModel,
     CrmGarmentModelCategory,
+    CrmGarmentSize,
     CrmReferenceEvent,
     CrmTechCard,
     CrmTechCardRevision,
 )
+from app.modules.crm.reference_schemas import GARMENT_MODEL_SIZE_LIMIT
 from app.modules.media.models import MediaObject, MediaStatus
 
 
@@ -43,17 +45,63 @@ class CrmReferenceRepository:
         return await session.scalar(
             select(CrmGarmentModel)
             .where(CrmGarmentModel.id == garment_model_id)
-            .options(selectinload(CrmGarmentModel.sizes))
+            .options(raiseload(CrmGarmentModel.sizes))
             .with_for_update()
+            .execution_options(populate_existing=True)
         )
 
     @staticmethod
-    async def list_garment_model_categories(
-        session: AsyncSession,
-    ) -> list[CrmGarmentModelCategory]:
+    async def active_garment_sizes(
+        session: AsyncSession, *, garment_model_id: int
+    ) -> list[CrmGarmentSize]:
         return list(
             await session.scalars(
-                select(CrmGarmentModelCategory).order_by(CrmGarmentModelCategory.id.asc())
+                select(CrmGarmentSize)
+                .where(
+                    CrmGarmentSize.garment_model_id == garment_model_id,
+                    CrmGarmentSize.is_active.is_(True),
+                )
+                .order_by(CrmGarmentSize.sort_order, CrmGarmentSize.id)
+                .limit(GARMENT_MODEL_SIZE_LIMIT + 1)
+                .execution_options(populate_existing=True)
+            )
+        )
+
+    @staticmethod
+    async def garment_sizes_by_codes(
+        session: AsyncSession, *, garment_model_id: int, codes: set[str]
+    ) -> list[CrmGarmentSize]:
+        if not codes:
+            return []
+        requested = (
+            values(column("code", CrmGarmentSize.code.type))
+            .data([(code,) for code in sorted(codes)])
+            .cte("requested_size_codes")
+        )
+        # A direct IN over common codes can scan the entire history. Keep one
+        # unique-key probe per requested code, then hydrate only those primary IDs.
+        matched_id = (
+            select(CrmGarmentSize.id)
+            .where(
+                CrmGarmentSize.garment_model_id == garment_model_id,
+                CrmGarmentSize.code == requested.c.code,
+            )
+            .limit(1)
+            .correlate(requested)
+            .scalar_subquery()
+        )
+        # PostgreSQL otherwise may repeat a scalar probe during ID deduplication.
+        matched = (
+            select(matched_id.label("id"))
+            .select_from(requested)
+            .cte("matched_size_ids")
+            .prefix_with("MATERIALIZED", dialect="postgresql")
+        )
+        return list(
+            await session.scalars(
+                select(CrmGarmentSize)
+                .where(CrmGarmentSize.id.in_(select(matched.c.id)))
+                .execution_options(populate_existing=True)
             )
         )
 
@@ -67,6 +115,7 @@ class CrmReferenceRepository:
             select(CrmGarmentModelCategory)
             .where(CrmGarmentModelCategory.id == category_id)
             .with_for_update()
+            .execution_options(populate_existing=True)
         )
 
     @staticmethod
@@ -123,7 +172,10 @@ class CrmReferenceRepository:
         catalog_product_id: int,
     ) -> Product | None:
         return await session.scalar(
-            select(Product).where(Product.id == catalog_product_id).with_for_update()
+            select(Product)
+            .where(Product.id == catalog_product_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
         )
 
     async def get_tech_card_for_update(
@@ -135,10 +187,8 @@ class CrmReferenceRepository:
         return await session.scalar(
             select(CrmTechCard)
             .where(CrmTechCard.id == tech_card_id)
-            .options(
-                selectinload(CrmTechCard.revisions).selectinload(CrmTechCardRevision.checkpoints)
-            )
             .with_for_update()
+            .execution_options(populate_existing=True)
         )
 
     async def get_tech_card_by_model_for_update(
@@ -150,22 +200,29 @@ class CrmReferenceRepository:
         return await session.scalar(
             select(CrmTechCard)
             .where(CrmTechCard.garment_model_id == garment_model_id)
-            .options(selectinload(CrmTechCard.revisions))
             .with_for_update()
+            .execution_options(populate_existing=True)
         )
 
-    async def list_tech_cards(
+    async def find_tech_card_revision(
         self,
         session: AsyncSession,
         *,
-        garment_model_id: int | None = None,
-    ) -> list[CrmTechCard]:
-        statement = select(CrmTechCard).options(
-            selectinload(CrmTechCard.revisions).selectinload(CrmTechCardRevision.checkpoints)
+        tech_card_id: int,
+        revision_number: int | None = None,
+        status: str | None = None,
+        checkpoints: bool = False,
+    ) -> CrmTechCardRevision | None:
+        statement = select(CrmTechCardRevision).where(
+            CrmTechCardRevision.tech_card_id == tech_card_id
         )
-        if garment_model_id is not None:
-            statement = statement.where(CrmTechCard.garment_model_id == garment_model_id)
-        return list(await session.scalars(statement.order_by(CrmTechCard.id.desc())))
+        if revision_number is not None:
+            statement = statement.where(CrmTechCardRevision.revision_number == revision_number)
+        if status is not None:
+            statement = statement.where(CrmTechCardRevision.status == status)
+        if checkpoints:
+            statement = statement.options(selectinload(CrmTechCardRevision.checkpoints))
+        return await session.scalar(statement.limit(1).execution_options(populate_existing=True))
 
     @staticmethod
     async def add_event(

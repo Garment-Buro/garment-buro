@@ -8,9 +8,11 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     ForeignKey,
+    Index,
     Integer,
     String,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -53,6 +55,15 @@ class ProductVariantMediaRole(str, Enum):
 class MediaObject(Base, IntegerIdMixin, TimestampMixin):
     __tablename__ = "media_objects"
     __table_args__ = (
+        Index(
+            "ix_media_objects_private_lifecycle",
+            "bucket_name",
+            "status",
+            "updated_at",
+            "id",
+            postgresql_where=text("is_public IS FALSE"),
+            sqlite_where=text("is_public = 0"),
+        ),
         UniqueConstraint(
             "bucket_name",
             "object_key",
@@ -121,7 +132,6 @@ class ProductMedia(Base, IntegerIdMixin, TimestampMixin):
     product_id: Mapped[int] = mapped_column(
         ForeignKey("products.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     )
     media_object_id: Mapped[int] = mapped_column(
         ForeignKey("media_objects.id", ondelete="RESTRICT"),
@@ -159,7 +169,6 @@ class ProductVariantMedia(Base, IntegerIdMixin, TimestampMixin):
     product_variant_id: Mapped[int] = mapped_column(
         ForeignKey("product_variants.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     )
     media_object_id: Mapped[int] = mapped_column(
         ForeignKey("media_objects.id", ondelete="RESTRICT"),

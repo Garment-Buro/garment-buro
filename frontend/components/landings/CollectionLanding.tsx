@@ -1,7 +1,7 @@
 import Link from 'next/link';
 
 import type { PublicPartnerLanding } from '@/lib/partners/types';
-import type { ProductData } from '@/lib/products/types';
+import type {CollectionModelsState} from '@/lib/catalog/collection';
 
 import { CollectionDetails } from './CollectionDetails';
 import { CollectionHero } from './CollectionHero';
@@ -11,10 +11,10 @@ import styles from './CollectionLanding.module.css';
 
 export const CollectionLanding = ({
     landing,
-    products,
+    models,
 }: {
     landing: PublicPartnerLanding;
-    products: ProductData[];
+    models: CollectionModelsState;
 }) => (
     <div className={styles.page}>
         <a className={styles.skipLink} href="#collection-content">Перейти к коллекции</a>
@@ -27,9 +27,9 @@ export const CollectionLanding = ({
             </nav>
         </header>
         <main id="collection-content">
-            <CollectionHero landing={landing} hasModels={products.length > 0} />
+            <CollectionHero landing={landing} hasModels={models.status==='error' || models.items.length > 0} />
             <CollectionStory landing={landing} />
-            <CollectionModels landing={landing} products={products} />
+            <CollectionModels landing={landing} models={models} />
             <CollectionDetails landing={landing} />
         </main>
         <footer className={styles.footer}>

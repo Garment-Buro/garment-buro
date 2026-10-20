@@ -2,21 +2,22 @@
 
 import { useEffect, useState, type FormEvent } from 'react';
 
-import { useAdminProducts } from '@/hooks/admin/useAdminProducts';
+import { PartnerSelect } from './PartnerSelect';
+import { AdminProductPicker } from './AdminProductPicker';
 import type { PartnerLanding, PartnerLandingCreatePayload, PartnerProfile } from '@/lib/partners/types';
 
 import { Field, inputClass } from './formStyles';
 
 type LandingCreateFormProps = {
-    partners: PartnerProfile[];
-    initialPartnerId?: number;
+    partnersRevision: number;
+    initialPartner?: PartnerProfile | null;
     createLanding: (partnerId: number, payload: PartnerLandingCreatePayload) => Promise<PartnerLanding>;
     onCreated: (landing: PartnerLanding) => void;
     onError: (message: string) => void;
 };
 
 const initialForm = {
-    partnerId: '',
+    partner: null as PartnerProfile | null,
     slug: '',
     title: '',
     eyebrow: '',
@@ -36,36 +37,27 @@ const initialForm = {
 };
 
 export const LandingCreateForm = ({
-    partners,
-    initialPartnerId,
+    partnersRevision,
+    initialPartner,
     createLanding,
     onCreated,
     onError,
 }: LandingCreateFormProps) => {
-    const { products, isLoading } = useAdminProducts();
     const [saving, setSaving] = useState(false);
     const [form, setForm] = useState(initialForm);
 
     useEffect(() => {
-        if (!initialPartnerId) return;
-        setForm(current => ({ ...current, partnerId: String(initialPartnerId) }));
-    }, [initialPartnerId]);
-
-    const toggleProduct = (productId: number) => {
-        setForm(current => ({
-            ...current,
-            productIds: current.productIds.includes(productId)
-                ? current.productIds.filter(id => id !== productId)
-                : [...current.productIds, productId],
-        }));
-    };
+        if (!initialPartner) return;
+        setForm(current => ({ ...current, partner: initialPartner }));
+    }, [initialPartner]);
 
     const submit = async (event: FormEvent) => {
         event.preventDefault();
+        if (saving || !form.partner) return;
         setSaving(true);
         onError('');
         try {
-            const landing = await createLanding(Number(form.partnerId), {
+            const landing = await createLanding(form.partner.id, {
                 slug: form.slug,
                 title: form.title,
                 eyebrow: form.eyebrow || undefined,
@@ -88,7 +80,7 @@ export const LandingCreateForm = ({
                 product_ids: form.productIds,
                 status: form.status,
             });
-            setForm(current => ({ ...initialForm, partnerId: current.partnerId }));
+            setForm(current => ({ ...initialForm, partner: current.partner }));
             onCreated(landing);
         } catch {
             onError('Не удалось сохранить лендинг. Проверьте адрес, изображения и обязательные поля.');
@@ -99,6 +91,7 @@ export const LandingCreateForm = ({
 
     return (
         <form onSubmit={submit} className="rounded-xl border border-black/10 bg-white p-6">
+            <fieldset disabled={saving} className="min-w-0">
             <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                     <h2 className="text-lg font-semibold">Новый лендинг</h2>
@@ -111,12 +104,8 @@ export const LandingCreateForm = ({
             </div>
 
             <div className="mt-6 grid gap-4 sm:grid-cols-2">
-                <Field label="Партнёр">
-                    <select required className={inputClass} value={form.partnerId} onChange={event => setForm(current => ({ ...current, partnerId: event.target.value }))}>
-                        <option value="">Выберите партнёра</option>
-                        {partners.map(partner => <option key={partner.id} value={partner.id}>{partner.display_name}</option>)}
-                    </select>
-                </Field>
+                <PartnerSelect value={form.partner} revision={partnersRevision}
+                    onChange={partner => setForm(current => ({ ...current, partner }))} />
                 <Field label="Адрес страницы">
                     <input required pattern="[a-z0-9][a-z0-9-]+" className={inputClass} value={form.slug} onChange={event => setForm(current => ({ ...current, slug: event.target.value.toLowerCase() }))} placeholder="author-collection" />
                 </Field>
@@ -140,18 +129,8 @@ export const LandingCreateForm = ({
                 </Field>
             </div>
 
-            <fieldset className="mt-6">
-                <legend className="text-sm font-semibold">Модели коллекции</legend>
-                <p className="mt-1 text-sm text-black/50">Покупатель увидит их крупными блоками и перейдёт сразу в конструктор.</p>
-                <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                    {isLoading ? <p className="text-sm text-black/50">Загружаем модели…</p> : products.map(product => (
-                        <label key={product.id} className="flex cursor-pointer items-center justify-between gap-4 rounded-lg border border-black/10 p-3 text-sm transition hover:bg-black/[.03]">
-                            <span><span className="font-semibold">{product.title}</span><span className="ml-2 text-black/40">#{product.id}</span></span>
-                            <input type="checkbox" checked={form.productIds.includes(product.id)} onChange={() => toggleProduct(product.id)} className="size-4 accent-black" />
-                        </label>
-                    ))}
-                </div>
-            </fieldset>
+            <AdminProductPicker ids={form.productIds} disabled={saving}
+                onChange={productIds => setForm(current => ({ ...current, productIds }))} />
 
             <details className="mt-6 rounded-lg border border-black/10 p-4">
                 <summary className="cursor-pointer text-sm font-semibold">Дополнительный контент</summary>
@@ -166,9 +145,10 @@ export const LandingCreateForm = ({
                 </div>
             </details>
 
-            <button disabled={saving || !partners.length} className="mt-6 h-11 rounded-lg bg-black px-5 text-sm font-semibold text-white disabled:opacity-40">
+            <button disabled={saving || !form.partner} className="mt-6 h-11 rounded-lg bg-black px-5 text-sm font-semibold text-white disabled:opacity-40">
                 {saving ? 'Сохраняем…' : form.status === 'published' ? 'Опубликовать лендинг' : 'Сохранить черновик'}
             </button>
+            </fieldset>
         </form>
     );
 };

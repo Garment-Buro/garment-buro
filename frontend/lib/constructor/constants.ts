@@ -24,7 +24,6 @@ export const DEFAULT_CONSTRUCTOR_MODEL_BOUNDS = {
 };
 export const CANVAS_REAL_SIZE_CM = 80;
 export const PX_PER_CM = CANVAS_SIZE / CANVAS_REAL_SIZE_CM;
-export const SIZE_MODAL_MODEL_HEIGHT_CM = 168;
 
 export const DEFAULT_SIZE_DIMENSIONS: Record<string, GarmentDimensions> = {
     XS: { widthCm: 64, heightCm: 74 },
@@ -65,7 +64,6 @@ export const SIZE_FIT_RANGES: Record<string, SizeFitRange> = {
 export const DEFAULT_SIZES = Object.keys(DEFAULT_SIZE_DIMENSIONS);
 export const DEFAULT_GARMENT_DIMENSIONS = DEFAULT_SIZE_DIMENSIONS.M;
 export const CUSTOM_UPLOAD_CATEGORIES: HardwareCategory[] = ["prints"];
-export const CUSTOM_BASE_PRICE = 80;
 export const DECORATION_PAGE_SIZE = 10;
 export const ROTATE_PANEL_GAP = 18;
 export const ROTATE_CONTROLS_HEIGHT = 45;

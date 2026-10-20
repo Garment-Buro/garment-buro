@@ -18,7 +18,7 @@ type AdminPageShellProps = {
 
 const SECTIONS: Array<{ href: string; label: string; value: AdminSection }> = [
     { href: '/admin/partners', label: 'Партнёры', value: 'partners' },
-    { href: '/admin/models', label: 'Модели', value: 'models' },
+    { href: '/production?section=presets', label: 'Пресеты', value: 'models' },
     { href: '/admin/orders', label: 'Заказы', value: 'orders' },
     { href: '/admin/crm', label: 'Производство', value: 'crm' },
 ];

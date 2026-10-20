@@ -10,6 +10,8 @@ from app.core.config import AppEnvironment, Settings
 from app.db import models as database_models  # noqa: F401
 from app.db.base import Base
 from app.db.session import DatabaseManager
+from app.modules.catalog.admin_schemas import CatalogAdminQuery
+from app.modules.catalog.admin_service import CatalogAdminReadService
 from app.modules.catalog.mapper import CatalogResponseMapper
 from app.modules.catalog.models import Product
 from app.modules.crm.assortment_schemas import (
@@ -26,6 +28,8 @@ from app.modules.crm.assortment_service import (
     CrmAssortmentService,
     CrmAssortmentVersionConflictError,
 )
+from app.modules.crm.pattern_directory_schemas import PatternFileQuery
+from app.modules.crm.pattern_directory_service import PatternDirectoryService
 from app.modules.crm.reference_schemas import (
     CrmFabricWrite,
     CrmGarmentModelCategoryWrite,
@@ -205,12 +209,11 @@ def test_assortment_models_patterns_materials_accessories_and_boxes(tmp_path: Pa
                 assert height_pattern.grid_key == "M:46.00:70.00:height"
                 assert [
                     item.id
-                    for item in await assortment.list_patterns(
-                        session,
-                        model_id=None,
-                        active=None,
-                        query="tshirt-m-001",
-                    )
+                    for item in (
+                        await PatternDirectoryService().page(
+                            session, "patterns", PatternFileQuery(query="tshirt-m-001")
+                        )
+                    ).items
                 ] == [height_pattern.id, pattern.id]
 
                 with pytest.raises(CrmAssortmentConflictError, match="уже загружено"):
@@ -308,16 +311,22 @@ def test_assortment_models_patterns_materials_accessories_and_boxes(tmp_path: Pa
                 await session.commit()
 
             async with database.session() as session:
-                accessories = await assortment.list_accessories(
-                    session,
-                    category_id=None,
-                    model_id=model.id,
-                    active=True,
+                from app.modules.crm.stock_directory_schemas import (
+                    AccessoryDirectoryQuery,
+                    BoxDirectoryQuery,
                 )
-                assert len(accessories) == 1
-                assert accessories[0].model_ids == [model.id]
-                boxes = await assortment.list_boxes(session, active=True)
-                assert boxes[0].stock_quantity == 50
+                from app.modules.crm.stock_directory_service import StockDirectoryService
+
+                directory = StockDirectoryService()
+                accessories = await directory.page(
+                    session,
+                    "accessories",
+                    AccessoryDirectoryQuery(garment_model_id=model.id, active=True),
+                )
+                assert len(accessories.items) == 1
+                assert accessories.items[0].model_count == 1
+                boxes = await directory.page(session, "boxes", BoxDirectoryQuery(active=True))
+                assert boxes.items[0].stock_quantity == 50
         finally:
             await database.shutdown()
 
@@ -358,14 +367,13 @@ def test_product_references_include_admin_card_image(tmp_path: Path) -> None:
                 await session.commit()
 
             async with database.session() as session:
-                products = await CrmAssortmentService().list_products(
+                page = await CatalogAdminReadService(
+                    CatalogResponseMapper(database.settings)
+                ).list_page(
                     session,
-                    model_id=None,
-                    category_id=None,
-                    active=None,
-                    mapper=CatalogResponseMapper(database.settings),
+                    CatalogAdminQuery(),
                 )
-                assert products[0].image_url == "/uploads/catalog-card.webp"
+                assert page.items[0].image_url == "/uploads/catalog-card.webp"
         finally:
             await database.shutdown()
 

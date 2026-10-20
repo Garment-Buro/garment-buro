@@ -6,38 +6,49 @@
     font-size: 16px;
     line-height: 24px;
 }
-.screen * {
+.screen *,
+.assortmentDialog * {
     box-sizing: border-box;
 }
 .screen h1,
+.assortmentDialog h1,
 .screen h2,
+.assortmentDialog h2,
 .screen h3,
-.screen h4 {
+.assortmentDialog h3,
+.screen h4,
+.assortmentDialog h4 {
     font-weight: 600;
     text-wrap: balance;
     margin: 0;
 }
-.screen h1 {
+.screen h1,
+.assortmentDialog h1 {
     font-size: 30px;
     line-height: 36px;
 }
-.screen h2 {
+.screen h2,
+.assortmentDialog h2 {
     font-size: 24px;
     line-height: 32px;
 }
-.screen h3 {
+.screen h3,
+.assortmentDialog h3 {
     font-size: 20px;
     line-height: 28px;
 }
-.screen h4 {
+.screen h4,
+.assortmentDialog h4 {
     font-size: 16px;
     line-height: 24px;
 }
-.screen p {
+.screen p,
+.assortmentDialog p {
     text-wrap: pretty;
     margin: 12px 0;
 }
 .screen button,
+.assortmentDialog button,
 .actions a {
     display: inline-flex;
     align-items: center;
@@ -55,17 +66,21 @@
     cursor: pointer;
 }
 .screen button:hover,
+.assortmentDialog button:hover,
 .actions a:hover {
     background: #ece6f1;
 }
-.screen button:active {
+.screen button:active,
+.assortmentDialog button:active {
     transform: translateY(1px);
 }
-.screen button:disabled {
+.screen button:disabled,
+.assortmentDialog button:disabled {
     opacity: 0.5;
     cursor: not-allowed;
 }
-.screen .iconButton {
+.screen .iconButton,
+.assortmentDialog .iconButton {
     width: 48px;
     min-width: 48px;
     padding: 0;
@@ -76,10 +91,15 @@
     height: 20px;
 }
 .screen button:focus-visible,
+.assortmentDialog button:focus-visible,
 .screen a:focus-visible,
+.assortmentDialog a:focus-visible,
 .screen input:focus-visible,
+.assortmentDialog input:focus-visible,
 .screen select:focus-visible,
+.assortmentDialog select:focus-visible,
 .screen textarea:focus-visible,
+.assortmentDialog textarea:focus-visible,
 .tableScroll:focus-visible {
     outline: 3px solid #71528c;
     outline-offset: 4px;
@@ -155,12 +175,14 @@
     margin-bottom: 16px;
 }
 .muted,
-.screen small {
+.screen small,
+.assortmentDialog small {
     color: #656166;
     font-size: 14px;
     line-height: 20px;
 }
-.screen small {
+.screen small,
+.assortmentDialog small {
     display: block;
     margin-top: 4px;
     overflow-wrap: anywhere;
@@ -171,7 +193,8 @@
     gap: 16px;
     margin: 24px 0;
 }
-.screen .metricCard {
+.screen .metricCard,
+.assortmentDialog .metricCard {
     grid-column: span 3;
     display: flex;
     flex-direction: column;
@@ -190,15 +213,18 @@
         background-color 700ms cubic-bezier(0.32, 0.72, 0, 1),
         transform 700ms cubic-bezier(0.32, 0.72, 0, 1);
 }
-.screen .metricCard[data-width='wide'] {
+.screen .metricCard[data-width='wide'],
+.assortmentDialog .metricCard[data-width='wide'] {
     grid-column: span 4;
 }
-.screen .metricCard:hover {
+.screen .metricCard:hover,
+.assortmentDialog .metricCard:hover {
     border-color: #a894b7;
     background: #f7f3f9;
     transform: translateY(-2px);
 }
-.screen .metricCard:active {
+.screen .metricCard:active,
+.assortmentDialog .metricCard:active {
     transform: scale(0.98);
 }
 .metricTopline {
@@ -229,7 +255,8 @@
     font-size: 14px;
     line-height: 20px;
 }
-.screen .metricCard > strong {
+.screen .metricCard > strong,
+.assortmentDialog .metricCard > strong {
     display: block;
     margin-top: auto;
     overflow-wrap: anywhere;
@@ -387,7 +414,8 @@
     font-size: 12px;
     line-height: 1;
 }
-.screen label {
+.screen label,
+.assortmentDialog label {
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -399,8 +427,11 @@
     min-width: 192px;
 }
 .screen input,
+.assortmentDialog input,
 .screen select,
-.screen textarea {
+.assortmentDialog select,
+.screen textarea,
+.assortmentDialog textarea {
     min-height: 48px;
     padding: 12px;
     color: #181818;
@@ -410,7 +441,8 @@
     font: inherit;
     width: 100%;
 }
-.screen textarea {
+.screen textarea,
+.assortmentDialog textarea {
     min-height: 96px;
     resize: vertical;
 }
@@ -424,36 +456,43 @@
     border-radius: 12px;
     background: #fff;
 }
-.screen table {
+.screen table,
+.assortmentDialog table {
     border-collapse: collapse;
     width: 100%;
     min-width: 720px;
     text-align: left;
 }
 .screen th,
-.screen td {
+.assortmentDialog th,
+.screen td,
+.assortmentDialog td {
     padding: 16px;
     vertical-align: top;
     max-width: 320px;
     overflow-wrap: anywhere;
 }
-.screen th {
+.screen th,
+.assortmentDialog th {
     background: #f2f0ef;
     font-size: 14px;
     font-weight: 600;
 }
-.screen tbody tr:nth-child(even) {
+.screen tbody tr:nth-child(even),
+.assortmentDialog tbody tr:nth-child(even) {
     background: #faf9f8;
 }
 .contactBlock,
-.screen .contactButton {
+.screen .contactButton,
+.assortmentDialog .contactButton {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
     gap: 2px;
     min-width: 0;
 }
-.screen .contactButton {
+.screen .contactButton,
+.assortmentDialog .contactButton {
     width: 100%;
     min-height: 0;
     padding: 0;
@@ -462,7 +501,8 @@
     background: transparent;
     text-align: left;
 }
-.screen .contactButton:hover {
+.screen .contactButton:hover,
+.assortmentDialog .contactButton:hover {
     color: #5e4274;
     background: transparent;
 }
@@ -513,13 +553,15 @@
     padding: 16px;
     margin-top: 12px;
 }
-.screen pre {
+.screen pre,
+.assortmentDialog pre {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     font-size: 14px;
     line-height: 20px;
 }
-.screen summary {
+.screen summary,
+.assortmentDialog summary {
     cursor: pointer;
 }
 .modalBackdrop {
@@ -606,7 +648,8 @@
 .filterActions button {
     width: 100%;
 }
-.screen .maskedCode {
+.screen .maskedCode,
+.assortmentDialog .maskedCode {
     width: fit-content;
     min-height: 40px;
     margin-top: 8px;
@@ -655,7 +698,8 @@
     justify-content: flex-end;
     gap: 8px;
 }
-.screen .iconButton {
+.screen .iconButton,
+.assortmentDialog .iconButton {
     flex: 0 0 48px;
     width: 48px;
     min-height: 48px;
@@ -731,7 +775,8 @@
     gap: 12px;
     margin: 0 0 16px;
 }
-.screen .assortmentCategoryGrid > article {
+.screen .assortmentCategoryGrid > article,
+.assortmentDialog .assortmentCategoryGrid > article {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     min-height: 88px;
@@ -742,11 +787,13 @@
     border-radius: 12px;
     background: #fff;
 }
-.screen .assortmentCategoryGrid > article[data-selected='true'] {
+.screen .assortmentCategoryGrid > article[data-selected='true'],
+.assortmentDialog .assortmentCategoryGrid > article[data-selected='true'] {
     border-color: #181818;
     box-shadow: inset 0 0 0 1px #181818;
 }
-.screen .assortmentCategorySelect {
+.screen .assortmentCategorySelect,
+.assortmentDialog .assortmentCategorySelect {
     display: flex;
     min-width: 0;
     min-height: 86px;
@@ -759,7 +806,8 @@
     background: transparent;
     text-align: left;
 }
-.screen .assortmentCategoryGrid > article > .iconButton {
+.screen .assortmentCategoryGrid > article > .iconButton,
+.assortmentDialog .assortmentCategoryGrid > article > .iconButton {
     margin-right: 10px;
 }
 .assortmentCategorySelect svg {
@@ -787,7 +835,8 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 16px;
 }
-.screen .catalogHubCard {
+.screen .catalogHubCard,
+.assortmentDialog .catalogHubCard {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
     min-height: 148px;
@@ -829,7 +878,8 @@
     width: 30px;
     height: 30px;
 }
-.screen .workspaceBack {
+.screen .workspaceBack,
+.assortmentDialog .workspaceBack {
     width: fit-content;
     min-height: 36px;
     margin-bottom: 10px;
@@ -841,7 +891,8 @@
 .communityGrid {
     grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
 }
-.screen .communityCard {
+.screen .communityCard,
+.assortmentDialog .communityCard {
     display: grid;
     grid-template-columns: 112px minmax(0, 1fr);
     min-height: 144px;
@@ -1264,7 +1315,8 @@
     gap: 12px;
     margin-bottom: 12px;
 }
-.screen .patternSizeSummary > button {
+.screen .patternSizeSummary > button,
+.assortmentDialog .patternSizeSummary > button {
     min-height: 36px;
     padding: 6px 10px;
     font-size: 13px;
@@ -1319,7 +1371,8 @@
     gap: 6px;
     min-width: 112px;
 }
-.screen .patternVariantSlot {
+.screen .patternVariantSlot,
+.assortmentDialog .patternVariantSlot {
     display: flex;
     align-items: center;
     justify-content: flex-start;
@@ -1334,13 +1387,15 @@
     line-height: 16px;
     white-space: nowrap;
 }
-.screen .patternVariantSlot[data-state='ready'] {
+.screen .patternVariantSlot[data-state='ready'],
+.assortmentDialog .patternVariantSlot[data-state='ready'] {
     border-style: solid;
     border-color: #a9d5b9;
     color: #245e3c;
     background: #eff8f2;
 }
-.screen .patternVariantSlot[data-state='hidden'] {
+.screen .patternVariantSlot[data-state='hidden'],
+.assortmentDialog .patternVariantSlot[data-state='hidden'] {
     border-style: solid;
     color: #765a2d;
     background: #f8f0df;
@@ -1441,7 +1496,8 @@
     font-weight: 600;
     font-variant-numeric: tabular-nums;
 }
-.screen .patternMeasureToggle {
+.screen .patternMeasureToggle,
+.assortmentDialog .patternMeasureToggle {
     min-height: 36px;
     padding: 6px 10px;
     font-size: 14px;
@@ -1482,7 +1538,8 @@
     font-size: 14px;
     line-height: 20px;
 }
-.screen .patternFilePicker {
+.screen .patternFilePicker,
+.assortmentDialog .patternFilePicker {
     display: flex;
     flex-direction: row;
     align-items: center;
@@ -1493,7 +1550,8 @@
     background: #fff;
     cursor: pointer;
 }
-.screen .patternFilePicker:has(input:focus-visible) {
+.screen .patternFilePicker:has(input:focus-visible),
+.assortmentDialog .patternFilePicker:has(input:focus-visible) {
     outline: 3px solid #71528c;
     outline-offset: 4px;
 }
@@ -1566,7 +1624,8 @@
     background: #fff;
     box-shadow: 0 16px 40px rgb(24 24 24 / 16%);
 }
-.screen .patternStatusMenu > div button {
+.screen .patternStatusMenu > div button,
+.assortmentDialog .patternStatusMenu > div button {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -1622,7 +1681,9 @@
     margin: 8px 0 16px;
 }
 .screen .sizeCard,
-.screen .sizeCardAdd {
+.assortmentDialog .sizeCard,
+.screen .sizeCardAdd,
+.assortmentDialog .sizeCardAdd {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
@@ -1633,7 +1694,8 @@
     border-radius: 12px;
     text-align: left;
 }
-.screen .sizeCard[data-selected='true'] {
+.screen .sizeCard[data-selected='true'],
+.assortmentDialog .sizeCard[data-selected='true'] {
     border-color: #71528c;
     background: #eee8f2;
     box-shadow: inset 0 0 0 1px #71528c;
@@ -1651,7 +1713,8 @@
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
 }
-.screen .sizeCardAdd {
+.screen .sizeCardAdd,
+.assortmentDialog .sizeCardAdd {
     flex-direction: row;
     align-items: center;
     border-style: dashed;
@@ -1757,7 +1820,8 @@
 .sizeChartPreview figcaption > svg {
     flex: 0 0 20px;
 }
-.screen .sizeChartPreview figcaption button {
+.screen .sizeChartPreview figcaption button,
+.assortmentDialog .sizeChartPreview figcaption button {
     min-height: 36px;
     margin-left: auto;
     padding: 6px 10px;
@@ -1799,7 +1863,8 @@
     gap: 8px;
     margin-top: 12px;
 }
-.screen .squareChoiceGrid button {
+.screen .squareChoiceGrid button,
+.assortmentDialog .squareChoiceGrid button {
     position: relative;
     display: grid;
     align-content: center;
@@ -1809,7 +1874,8 @@
     border-radius: 12px;
     text-align: left;
 }
-.screen .squareChoiceGrid button > svg {
+.screen .squareChoiceGrid button > svg,
+.assortmentDialog .squareChoiceGrid button > svg {
     position: absolute;
     top: 10px;
     right: 10px;
@@ -1817,12 +1883,14 @@
     height: 18px;
     opacity: 0;
 }
-.screen .squareChoiceGrid button[data-selected='true'] {
+.screen .squareChoiceGrid button[data-selected='true'],
+.assortmentDialog .squareChoiceGrid button[data-selected='true'] {
     border-color: #71528c;
     background: #eee8f2;
     box-shadow: inset 0 0 0 1px #71528c;
 }
-.screen .squareChoiceGrid button[data-selected='true'] > svg {
+.screen .squareChoiceGrid button[data-selected='true'] > svg,
+.assortmentDialog .squareChoiceGrid button[data-selected='true'] > svg {
     opacity: 1;
 }
 .squareChoiceGrid strong,
@@ -1843,7 +1911,8 @@
     grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
     gap: 8px;
 }
-.screen .variantChoiceGrid button {
+.screen .variantChoiceGrid button,
+.assortmentDialog .variantChoiceGrid button {
     position: relative;
     display: grid;
     align-content: center;
@@ -1854,18 +1923,21 @@
     border-radius: 12px;
     text-align: left;
 }
-.screen .variantChoiceGrid button[data-selected='true'] {
+.screen .variantChoiceGrid button[data-selected='true'],
+.assortmentDialog .variantChoiceGrid button[data-selected='true'] {
     border-color: #71528c;
     background: #eee8f2;
     box-shadow: inset 0 0 0 1px #71528c;
 }
-.screen .variantChoiceGrid button > svg {
+.screen .variantChoiceGrid button > svg,
+.assortmentDialog .variantChoiceGrid button > svg {
     position: absolute;
     top: 10px;
     right: 10px;
     opacity: 0;
 }
-.screen .variantChoiceGrid button[data-selected='true'] > svg {
+.screen .variantChoiceGrid button[data-selected='true'] > svg,
+.assortmentDialog .variantChoiceGrid button[data-selected='true'] > svg {
     opacity: 1;
 }
 .variantChoiceGrid strong,
@@ -1943,7 +2015,8 @@
     gap: 8px;
     margin-top: 16px;
 }
-.screen .relationshipCard {
+.screen .relationshipCard,
+.assortmentDialog .relationshipCard {
     justify-content: space-between;
     min-width: 0;
     text-align: left;
@@ -2029,7 +2102,8 @@
     grid-template-columns: minmax(240px, 0.8fr) minmax(0, 1.2fr);
     gap: 16px;
 }
-.screen .customerLink {
+.screen .customerLink,
+.assortmentDialog .customerLink {
     justify-content: flex-start;
     min-width: 0;
     padding: 16px;
@@ -2384,7 +2458,8 @@
     background: #faf9f8;
     scrollbar-width: thin;
 }
-.screen .clientTabs > button {
+.screen .clientTabs > button,
+.assortmentDialog .clientTabs > button {
     display: inline-flex;
     flex: 0 0 auto;
     align-items: center;
@@ -2393,7 +2468,8 @@
     padding: 8px 12px;
     white-space: nowrap;
 }
-.screen .clientTabs > button[aria-selected='true'] {
+.screen .clientTabs > button[aria-selected='true'],
+.assortmentDialog .clientTabs > button[aria-selected='true'] {
     border-color: #181818;
     background: #181818;
     color: #fff;
@@ -2488,7 +2564,8 @@
     gap: 8px;
     margin-top: 16px;
 }
-.screen .clientHistoryList > button {
+.screen .clientHistoryList > button,
+.assortmentDialog .clientHistoryList > button {
     display: grid;
     grid-template-columns: 40px minmax(0, 1fr) auto;
     align-items: center;
@@ -2641,12 +2718,14 @@
     justify-content: flex-end;
     padding-top: 4px;
 }
-.screen .primaryButton {
+.screen .primaryButton,
+.assortmentDialog .primaryButton {
     border-color: #181818;
     background: #181818;
     color: #fff;
 }
-.screen .primaryButton:hover {
+.screen .primaryButton:hover,
+.assortmentDialog .primaryButton:hover {
     background: #313131;
 }
 .uploadStatus {
@@ -2710,7 +2789,8 @@
     text-align: center;
     font-variant-numeric: tabular-nums;
 }
-.screen .copyCodeButton {
+.screen .copyCodeButton,
+.assortmentDialog .copyCodeButton {
     width: 48px;
     min-height: 48px;
     padding: 0;
@@ -2773,10 +2853,13 @@
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
     .screen .metricCard,
-    .screen .metricCard[data-width='wide'] {
+    .assortmentDialog .metricCard,
+    .screen .metricCard[data-width='wide'],
+    .assortmentDialog .metricCard[data-width='wide'] {
         grid-column: auto;
     }
-    .screen .metricCard:last-child {
+    .screen .metricCard:last-child,
+    .assortmentDialog .metricCard:last-child {
         grid-column: 1 / -1;
     }
 }
@@ -2882,10 +2965,12 @@
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 8px;
     }
-    .screen .assortmentCategoryGrid > article {
+    .screen .assortmentCategoryGrid > article,
+    .assortmentDialog .assortmentCategoryGrid > article {
         min-height: 72px;
     }
-    .screen .assortmentCategorySelect {
+    .screen .assortmentCategorySelect,
+    .assortmentDialog .assortmentCategorySelect {
         min-height: 70px;
         gap: 8px;
         padding: 10px 4px 10px 10px;
@@ -2900,7 +2985,8 @@
         grid-template-columns: 1fr;
         gap: 10px;
     }
-    .screen .catalogHubCard {
+    .screen .catalogHubCard,
+    .assortmentDialog .catalogHubCard {
         min-height: 104px;
         gap: 12px;
         padding: 16px;
@@ -2918,7 +3004,8 @@
         font-size: 17px;
         line-height: 22px;
     }
-    .screen .communityCard {
+    .screen .communityCard,
+    .assortmentDialog .communityCard {
         grid-template-columns: 92px minmax(0, 1fr);
         min-height: 120px;
     }
@@ -3038,7 +3125,9 @@
         scroll-snap-type: x proximity;
     }
     .screen .sizeCard,
-    .screen .sizeCardAdd {
+    .assortmentDialog .sizeCard,
+    .screen .sizeCardAdd,
+    .assortmentDialog .sizeCardAdd {
         flex: 0 0 152px;
         min-height: 72px;
         scroll-snap-align: start;
@@ -3060,13 +3149,15 @@
     .variantRows {
         grid-template-columns: 1fr;
     }
-    .screen .squareChoiceGrid button {
+    .screen .squareChoiceGrid button,
+    .assortmentDialog .squareChoiceGrid button {
         min-height: 88px;
     }
     .variantChoiceGrid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
-    .screen .variantChoiceGrid button {
+    .screen .variantChoiceGrid button,
+    .assortmentDialog .variantChoiceGrid button {
         min-height: 92px;
     }
     .variantRows article {
@@ -3111,7 +3202,9 @@
         margin: 16px 0;
     }
     .screen .metricCard,
-    .screen .metricCard[data-width='wide'] {
+    .assortmentDialog .metricCard,
+    .screen .metricCard[data-width='wide'],
+    .assortmentDialog .metricCard[data-width='wide'] {
         min-height: 176px;
         padding: 12px;
     }
@@ -3119,7 +3212,8 @@
         width: 32px;
         height: 32px;
     }
-    .screen .metricCard > strong {
+    .screen .metricCard > strong,
+    .assortmentDialog .metricCard > strong {
         font-size: 20px;
         line-height: 28px;
     }
@@ -3190,10 +3284,12 @@
         border: 0;
         background: transparent;
     }
-    .screen table {
+    .screen table,
+    .assortmentDialog table {
         min-width: 0;
     }
-    .screen thead {
+    .screen thead,
+    .assortmentDialog thead {
         position: absolute;
         width: 1px;
         height: 1px;
@@ -3201,17 +3297,23 @@
         clip-path: inset(50%);
     }
     .screen tbody,
+    .assortmentDialog tbody,
     .screen tr,
-    .screen td {
+    .assortmentDialog tr,
+    .screen td,
+    .assortmentDialog td {
         display: block;
         width: 100%;
     }
-    .screen tbody {
+    .screen tbody,
+    .assortmentDialog tbody {
         display: grid;
         gap: 12px;
     }
     .screen tbody tr,
-    .screen tbody tr:nth-child(even) {
+    .assortmentDialog tbody tr,
+    .screen tbody tr:nth-child(even),
+    .assortmentDialog tbody tr:nth-child(even) {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         overflow: hidden;
@@ -3220,7 +3322,8 @@
         background: #fff;
         box-shadow: 0 4px 16px rgb(24 24 24 / 4%);
     }
-    .screen td {
+    .screen td,
+    .assortmentDialog td {
         display: flex;
         flex-direction: column;
         gap: 4px;
@@ -3230,10 +3333,12 @@
         border: 0;
         border-top: 1px solid #ece8eb;
     }
-    .screen td:nth-child(even) {
+    .screen td:nth-child(even),
+    .assortmentDialog td:nth-child(even) {
         border-left: 1px solid #ece8eb;
     }
-    .screen td::before {
+    .screen td::before,
+    .assortmentDialog td::before {
         content: attr(data-label);
         color: #656166;
         font-size: 13px;
@@ -3241,42 +3346,55 @@
         line-height: 20px;
     }
     .screen td[data-primary='true'],
+    .assortmentDialog td[data-primary='true'],
     .screen td[data-wide='true'],
+    .assortmentDialog td[data-wide='true'],
     .screen td[data-tail='true'],
-    .screen td[data-action='true'] {
+    .assortmentDialog td[data-tail='true'],
+    .screen td[data-action='true'],
+    .assortmentDialog td[data-action='true'] {
         grid-column: 1 / -1;
         border-left: 0;
     }
-    .screen td[data-primary='true'] {
+    .screen td[data-primary='true'],
+    .assortmentDialog td[data-primary='true'] {
         padding: 16px;
         border-top: 0;
         background: #faf9f8;
     }
-    .screen td[data-primary='true']::before {
+    .screen td[data-primary='true']::before,
+    .assortmentDialog td[data-primary='true']::before {
         display: none;
     }
-    .screen td[data-primary='true'] > strong:first-child {
+    .screen td[data-primary='true'] > strong:first-child,
+    .assortmentDialog td[data-primary='true'] > strong:first-child {
         font-size: 18px;
         line-height: 28px;
     }
-    .screen td[data-primary='true'] button {
+    .screen td[data-primary='true'] button,
+    .assortmentDialog td[data-primary='true'] button {
         width: fit-content;
         min-height: 40px;
     }
-    .screen td[data-tail='true'] {
+    .screen td[data-tail='true'],
+    .assortmentDialog td[data-tail='true'] {
         flex-direction: row;
         align-items: center;
         justify-content: space-between;
         gap: 12px;
     }
-    .screen td[data-action='true'] {
+    .screen td[data-action='true'],
+    .assortmentDialog td[data-action='true'] {
         padding: 12px 16px 16px;
     }
-    .screen td[data-action='true'] button {
+    .screen td[data-action='true'] button,
+    .assortmentDialog td[data-action='true'] button {
         width: 100%;
     }
     .screen table[data-section='orders'] tbody tr,
-    .screen table[data-section='orders'] tbody tr:nth-child(even) {
+    .assortmentDialog table[data-section='orders'] tbody tr,
+    .screen table[data-section='orders'] tbody tr:nth-child(even),
+    .assortmentDialog table[data-section='orders'] tbody tr:nth-child(even) {
         grid-template-areas:
             'order total'
             'client client'
@@ -3284,7 +3402,9 @@
         grid-template-columns: minmax(0, 1fr) auto;
     }
     .screen table[data-section='payouts'] tbody tr,
-    .screen table[data-section='payouts'] tbody tr:nth-child(even) {
+    .assortmentDialog table[data-section='payouts'] tbody tr,
+    .screen table[data-section='payouts'] tbody tr:nth-child(even),
+    .assortmentDialog table[data-section='payouts'] tbody tr:nth-child(even) {
         grid-template-areas:
             'payout amount'
             'partner partner'
@@ -3292,67 +3412,87 @@
         grid-template-columns: minmax(0, 1fr) auto;
     }
     .screen table[data-section='orders'] td,
-    .screen table[data-section='payouts'] td {
+    .assortmentDialog table[data-section='orders'] td,
+    .screen table[data-section='payouts'] td,
+    .assortmentDialog table[data-section='payouts'] td {
         grid-column: auto;
         width: auto;
         padding: 8px 12px;
     }
-    .screen td[data-field='order'] {
+    .screen td[data-field='order'],
+    .assortmentDialog td[data-field='order'] {
         grid-area: order;
     }
-    .screen td[data-field='client'] {
+    .screen td[data-field='client'],
+    .assortmentDialog td[data-field='client'] {
         grid-area: client;
     }
-    .screen td[data-field='status'] {
+    .screen td[data-field='status'],
+    .assortmentDialog td[data-field='status'] {
         grid-area: status;
     }
-    .screen td[data-field='payment'] {
+    .screen td[data-field='payment'],
+    .assortmentDialog td[data-field='payment'] {
         grid-area: payment;
     }
-    .screen td[data-field='total'] {
+    .screen td[data-field='total'],
+    .assortmentDialog td[data-field='total'] {
         grid-area: total;
         align-items: flex-end;
         border-top: 0;
         border-left: 1px solid #ece8eb;
         white-space: nowrap;
     }
-    .screen td[data-field='payout'] {
+    .screen td[data-field='payout'],
+    .assortmentDialog td[data-field='payout'] {
         grid-area: payout;
     }
-    .screen td[data-field='partner'] {
+    .screen td[data-field='partner'],
+    .assortmentDialog td[data-field='partner'] {
         grid-area: partner;
     }
-    .screen td[data-field='amount'] {
+    .screen td[data-field='amount'],
+    .assortmentDialog td[data-field='amount'] {
         grid-area: amount;
         align-items: flex-end;
         border-top: 0;
         border-left: 1px solid #ece8eb;
         white-space: nowrap;
     }
-    .screen td[data-field='state'] {
+    .screen td[data-field='state'],
+    .assortmentDialog td[data-field='state'] {
         grid-area: state;
     }
-    .screen td[data-field='action'] {
+    .screen td[data-field='action'],
+    .assortmentDialog td[data-field='action'] {
         grid-area: action;
         align-self: stretch;
         padding: 8px 12px;
         border-left: 1px solid #ece8eb;
     }
     .screen td[data-field='action']::before,
+    .assortmentDialog td[data-field='action']::before,
     .screen td[data-field='total']::before,
-    .screen td[data-field='amount']::before {
+    .assortmentDialog td[data-field='total']::before,
+    .screen td[data-field='amount']::before,
+    .assortmentDialog td[data-field='amount']::before {
         font-size: 12px;
         line-height: 16px;
     }
-    .screen td[data-field='action'] button {
+    .screen td[data-field='action'] button,
+    .assortmentDialog td[data-field='action'] button {
         height: 100%;
         min-height: 40px;
         white-space: nowrap;
     }
     .screen table[data-section='orders'] .contactDetails,
+    .assortmentDialog table[data-section='orders'] .contactDetails,
     .screen table[data-section='payouts'] small,
+    .assortmentDialog table[data-section='payouts'] small,
     .screen table[data-section='orders'] .badge,
-    .screen table[data-section='payouts'] .badge {
+    .assortmentDialog table[data-section='orders'] .badge,
+    .screen table[data-section='payouts'] .badge,
+    .assortmentDialog table[data-section='payouts'] .badge {
         max-width: 100%;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -3456,7 +3596,8 @@
         grid-template-columns: 1fr;
         padding: 12px;
     }
-    .screen .customerLink {
+    .screen .customerLink,
+    .assortmentDialog .customerLink {
         padding: 12px;
     }
     .orderInfoCard,
@@ -3514,7 +3655,8 @@
     .clientProfileGrid {
         grid-template-columns: 1fr;
     }
-    .screen .clientHistoryList > button {
+    .screen .clientHistoryList > button,
+    .assortmentDialog .clientHistoryList > button {
         grid-template-columns: 40px minmax(0, 1fr);
     }
     .clientHistoryValue {
@@ -3593,12 +3735,14 @@
     .patternSizeCoverage {
         padding: 10px;
     }
-    .screen .patternCoverageTable {
+    .screen .patternCoverageTable,
+    .assortmentDialog .patternCoverageTable {
         display: table;
         width: max-content;
         min-width: 100%;
     }
-    .screen .patternCoverageTable thead {
+    .screen .patternCoverageTable thead,
+    .assortmentDialog .patternCoverageTable thead {
         position: static;
         display: table-header-group;
         width: auto;
@@ -3606,11 +3750,14 @@
         overflow: visible;
         clip-path: none;
     }
-    .screen .patternCoverageTable tbody {
+    .screen .patternCoverageTable tbody,
+    .assortmentDialog .patternCoverageTable tbody {
         display: table-row-group;
     }
     .screen .patternCoverageTable tr,
-    .screen .patternCoverageTable tr:nth-child(even) {
+    .assortmentDialog .patternCoverageTable tr,
+    .screen .patternCoverageTable tr:nth-child(even),
+    .assortmentDialog .patternCoverageTable tr:nth-child(even) {
         display: table-row;
         width: auto;
         overflow: visible;
@@ -3620,7 +3767,9 @@
         box-shadow: none;
     }
     .screen .patternCoverageTable th,
-    .screen .patternCoverageTable td {
+    .assortmentDialog .patternCoverageTable th,
+    .screen .patternCoverageTable td,
+    .assortmentDialog .patternCoverageTable td {
         display: table-cell;
         width: auto;
         min-width: 0;
@@ -3630,13 +3779,15 @@
         border-bottom: 1px solid #ebe8ea;
         border-left: 0;
     }
-    .screen .patternCoverageTable td::before {
+    .screen .patternCoverageTable td::before,
+    .assortmentDialog .patternCoverageTable td::before {
         display: none;
     }
     .patternSlot {
         min-width: 96px;
     }
-    .screen .patternVariantSlot {
+    .screen .patternVariantSlot,
+    .assortmentDialog .patternVariantSlot {
         min-height: 30px;
         padding: 4px 6px;
     }
@@ -3653,24 +3804,28 @@
     .screen {
         padding: 12px;
     }
-    .screen h1 {
+    .screen h1,
+    .assortmentDialog h1 {
         font-size: 24px;
         line-height: 32px;
     }
     .content {
         margin-top: 12px;
     }
-    .screen h2 {
+    .screen h2,
+    .assortmentDialog h2 {
         font-size: 20px;
         line-height: 28px;
     }
     .metrics .card {
         min-height: 104px;
     }
-    .screen td {
+    .screen td,
+    .assortmentDialog td {
         padding: 12px;
     }
-    .screen td[data-primary='true'] {
+    .screen td[data-primary='true'],
+    .assortmentDialog td[data-primary='true'] {
         padding: 12px;
     }
     .pagination span {
@@ -3681,4 +3836,65 @@
     .accessCode {
         font-size: 36px;
     }
+}
+
+.adminFields {
+    border: 0;
+    padding: 0;
+    margin: 0;
+    min-width: 0;
+}
+
+.patternPager {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    min-width: 0;
+}
+
+.patternFilters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    width: 100%;
+}
+
+.patternFilters .assortmentSearch {
+    flex: 1 1 260px;
+    min-width: 0;
+    width: auto;
+}
+
+.patternFilters > button {
+    align-self: end;
+    margin-bottom: 24px;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+    .patternFilters .assortmentSearch {
+        flex-basis: 100%;
+        margin-bottom: 0;
+    }
+    .patternFilters > button {
+        flex: 1 1 0;
+        min-width: 0;
+        margin: 0 0 16px;
+        white-space: normal;
+    }
+}
+
+.patternPager label {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+    flex: 1 1 130px;
+}
+
+.patternPager input {
+    width: 100%;
+    max-width: 130px;
+    min-width: 0;
 }

@@ -72,16 +72,23 @@ class Order(Base, IntegerIdMixin, TimestampMixin):
         ),
         CheckConstraint("version > 0", name="order_version_positive"),
         CheckConstraint(
+            "(buyer_name IS NULL AND buyer_phone IS NULL AND recipient_email IS NULL) OR "
+            "(buyer_name IS NOT NULL AND length(trim(buyer_name)) > 0 "
+            "AND buyer_phone IS NOT NULL AND length(trim(buyer_phone)) > 0 "
+            "AND recipient_email IS NOT NULL AND length(trim(recipient_email)) > 0)",
+            name="order_contact_snapshots_complete",
+        ),
+        CheckConstraint(
             "length(request_fingerprint_sha256) = 64",
             name="order_request_fingerprint_length",
         ),
         Index("ix_orders_created_at", "created_at"),
+        Index("ix_orders_owner_recent", "user_id", "id"),
     )
 
     user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
-        index=True,
     )
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     email: Mapped[str | None] = mapped_column(String(320), nullable=True)
@@ -90,6 +97,9 @@ class Order(Base, IntegerIdMixin, TimestampMixin):
     first_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     last_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     patronymic: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    buyer_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    buyer_phone: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    recipient_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     delivery_city: Mapped[str | None] = mapped_column(String(255), nullable=True)
     delivery_method: Mapped[str | None] = mapped_column(String(64), nullable=True)
     delivery_address: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -281,14 +291,14 @@ class OrderCreationRequest(Base, IntegerIdMixin, TimestampMixin):
         String(64),
         nullable=False,
         unique=True,
-        index=True,
+        index=False,
     )
     request_fingerprint_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     order_id: Mapped[int | None] = mapped_column(
         ForeignKey("orders.id", ondelete="RESTRICT"),
         nullable=True,
         unique=True,
-        index=True,
+        index=False,
     )
 
 
@@ -310,13 +320,13 @@ class LegacyOrderImport(Base, IntegerIdMixin, TimestampMixin):
         ForeignKey("orders.id", ondelete="RESTRICT"),
         nullable=False,
         unique=True,
-        index=True,
+        index=False,
     )
     source_order_id: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
         unique=True,
-        index=True,
+        index=False,
     )
     source_row_sha256: Mapped[str] = mapped_column(
         String(64),
@@ -386,13 +396,13 @@ class OrderGuestAccess(Base, IntegerIdMixin, TimestampMixin):
         ForeignKey("orders.id", ondelete="CASCADE"),
         nullable=False,
         unique=True,
-        index=True,
+        index=False,
     )
     token_digest_sha256: Mapped[str] = mapped_column(
         String(64),
         nullable=False,
         unique=True,
-        index=True,
+        index=False,
     )
     expires_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -410,6 +420,7 @@ class OrderGuestAccess(Base, IntegerIdMixin, TimestampMixin):
 class LegacyOrderClaim(Base, IntegerIdMixin, TimestampMixin):
     __tablename__ = "legacy_order_claims"
     __table_args__ = (
+        Index("ix_legacy_order_claims_owner_recent", "user_id", "legacy_order_id"),
         UniqueConstraint(
             "legacy_order_id",
             name="uq_legacy_order_claim_legacy_order_id",
@@ -431,7 +442,6 @@ class LegacyOrderClaim(Base, IntegerIdMixin, TimestampMixin):
     user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     )
     legacy_order_id: Mapped[int] = mapped_column(Integer, nullable=False)
     source: Mapped[str] = mapped_column(String(32), nullable=False)

@@ -1,21 +1,18 @@
-import type { ProductData } from "../../products/types.ts";
+import { constructorImageUrls, type ConstructorProduct } from "../product.ts";
 import type { CartItem } from "../../cart/types.ts";
-import { isSupportedImageFile } from "../../media/utils/upload.ts";
 
 import {
     CANVAS_SIZE,
     CANVAS_REAL_SIZE_CM,
     CONSTRUCTOR_MEDIA_VERSION,
-    CUSTOM_BASE_PRICE,
     DEFAULT_GARMENT_DIMENSIONS,
     DEFAULT_SIZE_DIMENSIONS,
-    DEFAULT_SIZES,
     PX_PER_CM,
     SIZE_FIT_RANGES,
 } from "../constants.ts";
-import { DEFAULT_DECORATION_CATALOG } from "../config/defaultDecorations.ts";
 import type {
     ConstructorCustomization,
+    ConstructorDraftState,
     CanvasBounds,
     ClothingModel,
     GarmentDimensions,
@@ -25,15 +22,10 @@ import type {
     PlacedHardware,
     PlacedItemsByView,
     SizeFitRange,
-    UploadedImage,
     HardwareVariant,
 } from "../types.ts";
 import { getCustomDecorationScaleLimits } from "./interaction.ts";
-
-export const parseCsv = (value?: string) => {
-    if (!value) return [];
-    return value.split(",").map((item) => item.trim()).filter(Boolean);
-};
+import { constructorSizeOptions, initialConstructorSelection } from '../selection.ts';
 
 export const versionConstructorMedia = (src: string | null | undefined) => {
     if (!src || !src.startsWith("/uploads/")) return src || null;
@@ -43,22 +35,7 @@ export const versionConstructorMedia = (src: string | null | undefined) => {
 
 export const unique = (items: string[]) => Array.from(new Set(items.filter(Boolean)));
 
-export const readUploadedImage = (file: File) => new Promise<UploadedImage>((resolve, reject) => {
-    if (!isSupportedImageFile(file)) {
-        reject(new Error("Поддерживаются только безопасные растровые изображения."));
-        return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-        const src = String(reader.result || "");
-        const image = new Image();
-        image.onload = () => resolve({ src, width: image.naturalWidth || 1, height: image.naturalHeight || 1 });
-        image.onerror = () => reject(new Error("Uploaded image could not be loaded"));
-        image.src = src;
-    };
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-});
+export { readUploadedImage } from '../imageInput.ts';
 
 export const chunkArray = <T,>(items: T[], size: number) => {
     const chunks: T[][] = [];
@@ -66,14 +43,15 @@ export const chunkArray = <T,>(items: T[], size: number) => {
     return chunks;
 };
 
-export const clampCanvasPoint = (value: number) => Math.min(Math.max(value, 0), CANVAS_SIZE);
+export const clampCanvasPoint = (value: number, limit = CANVAS_SIZE) => Math.min(Math.max(value, 0), limit);
 
 export const getDefaultDimensionsForSize = (size: string): GarmentDimensions => (
     DEFAULT_SIZE_DIMENSIONS[size] || DEFAULT_GARMENT_DIMENSIONS
 );
 
-export const getProductDimensions = (product: ProductData | null, selectedSize: string): GarmentDimensions => {
-    const variantForSize = product?.variants?.find((variant) => variant.size === selectedSize);
+export const getProductDimensions = (product: ConstructorProduct | null, selectedSize: string, selectedColor?: string | null): GarmentDimensions => {
+    const variantForSize = product?.variants?.find((variant) => (variant.size ?? '') === selectedSize
+        && (selectedColor === undefined || (variant.color ?? '') === selectedColor));
     const variantWidth = Number(variantForSize?.width_cm || 0);
     const variantHeight = Number(variantForSize?.height_cm || 0);
     const defaultDimensions = getDefaultDimensionsForSize(selectedSize);
@@ -91,11 +69,8 @@ export const clampMeasurement = (value: number, range: MeasurementRange) => (
 export const getFitRangeForSize = (size: string): SizeFitRange => SIZE_FIT_RANGES[size] || SIZE_FIT_RANGES.M;
 
 export const createDefaultFit = (size: string, dimensions?: GarmentDimensions): GarmentFit => {
-    const safeSize = size || "M";
+    const safeSize = size;
     const range = getFitRangeForSize(safeSize);
-    const lengthSource = dimensions?.heightCm && dimensions.heightCm >= range.length.min
-        ? dimensions.heightCm
-        : range.length.defaultValue;
     const widthSource = dimensions?.widthCm && dimensions.widthCm >= range.width.min
         ? dimensions.widthCm
         : range.width.defaultValue;
@@ -103,7 +78,7 @@ export const createDefaultFit = (size: string, dimensions?: GarmentDimensions): 
     return {
         selectedSize: safeSize,
         sleeveMode: "standard",
-        lengthCm: clampMeasurement(lengthSource, range.length),
+        lengthCm: range.length.defaultValue,
         widthCm: clampMeasurement(widthSource, range.width),
         lengthRange: { min: range.length.min, max: range.length.max },
         widthRange: { min: range.width.min, max: range.width.max },
@@ -116,29 +91,53 @@ export const getModelBounds = (dimensions: GarmentDimensions): CanvasBounds => {
     return { x: (CANVAS_SIZE - width) / 2, y: (CANVAS_SIZE - height) / 2, width, height };
 };
 
+export const resolveConstructorGeometry = (
+    product: ConstructorProduct | null,
+    selectedSize: string,
+    restored: ConstructorDraftState | null = null,
+    selectedFit: GarmentFit | null = null,
+    selectedColor?: string | null,
+) => {
+    const canvasPixelSize = restored?.canvasPixelSize || { width: CANVAS_SIZE, height: CANVAS_SIZE };
+    const canvas = restored?.customization.canvas || { widthCm: CANVAS_REAL_SIZE_CM, heightCm: CANVAS_REAL_SIZE_CM };
+    const pixelsPerCm = { x: canvasPixelSize.width / canvas.widthCm, y: canvasPixelSize.height / canvas.heightCm };
+    const savedFit = restored && (restored.customization.fit || createDefaultFit(restored.customization.selectedSize, restored.customization.garment));
+    const fitUnchanged = !selectedFit || (savedFit?.selectedSize === selectedFit.selectedSize
+        && savedFit.widthCm === selectedFit.widthCm);
+    const sameSelection = restored?.customization.selectedSize === selectedSize
+        && (selectedColor === undefined || restored.customization.selectedColor === selectedColor);
+    const preserve = sameSelection && fitUnchanged;
+    const catalogDimensions = getProductDimensions(product, selectedSize, selectedColor);
+    const garment = preserve ? restored.customization.garment
+        : selectedFit?.selectedSize === selectedSize ? { widthCm: selectedFit.widthCm,
+            heightCm: sameSelection ? restored.customization.garment.heightCm : catalogDimensions.heightCm }
+            : catalogDimensions;
+    const width = Math.min(canvasPixelSize.width, Math.max(1, garment.widthCm * pixelsPerCm.x));
+    const height = Math.min(canvasPixelSize.height, Math.max(1, garment.heightCm * pixelsPerCm.y));
+    const modelBounds = preserve ? restored.modelBounds
+        : { x: (canvasPixelSize.width - width) / 2, y: (canvasPixelSize.height - height) / 2, width, height };
+    return { canvasPixelSize, canvas, garment, modelBounds, pixelsPerCm };
+};
+type ConstructorGeometry = ReturnType<typeof resolveConstructorGeometry>;
+type PixelsPerCm = { x: number; y: number };
+const defaultPixelsPerCm = { x: PX_PER_CM, y: PX_PER_CM };
+
 export const getHardwareSizePx = (hardware: HardwareVariant) => ({
     width: hardware.defaultWidth || 50,
     height: hardware.defaultHeight || hardware.defaultWidth || 50,
 });
 
-export const getItemSizeCm = (item: PlacedHardware, hardware: HardwareVariant) => {
+export const getItemSizeCm = (item: PlacedHardware, hardware: HardwareVariant, pixelsPerCm: PixelsPerCm = defaultPixelsPerCm) => {
     const sizePx = getHardwareSizePx(hardware);
-    const widthCm = sizePx.width * (item.scale || 1) / PX_PER_CM;
-    const heightCm = sizePx.height * (item.scale || 1) / PX_PER_CM;
+    const widthCm = sizePx.width * (item.scale || 1) / pixelsPerCm.x;
+    const heightCm = sizePx.height * (item.scale || 1) / pixelsPerCm.y;
     return { widthCm, heightCm, longSideCm: Math.max(widthCm, heightCm) };
-};
-
-export const getPlacedItemPrice = (item: PlacedHardware, hardware: HardwareVariant | undefined) => {
-    if (!hardware) return 0;
-    if (!hardware.isCustom) return hardware.price;
-    const baseLongSideCm = item.baseLongSideCm || getItemSizeCm({ ...item, scale: 1 }, hardware).longSideCm || 1;
-    const currentLongSideCm = getItemSizeCm(item, hardware).longSideCm;
-    return Math.max(CUSTOM_BASE_PRICE, Math.round(CUSTOM_BASE_PRICE * (currentLongSideCm / baseLongSideCm)));
 };
 
 type BuildConstructorCustomizationOptions = {
     selectedModel: ClothingModel | null;
     selectedSize: string;
+    selectedColor?: string;
     selectedFit: GarmentFit | null;
     garmentDimensions: GarmentDimensions;
     placedItemsByView: PlacedItemsByView;
@@ -146,12 +145,15 @@ type BuildConstructorCustomizationOptions = {
     frontImage: string | null;
     backImage: string | null;
     totalPrice: number;
+    decorationPrices?: Record<string, number>;
     comment: string;
+    geometry?: ConstructorGeometry;
 };
 
 export const buildConstructorCustomization = ({
     selectedModel,
     selectedSize,
+    selectedColor,
     selectedFit,
     garmentDimensions,
     placedItemsByView,
@@ -159,7 +161,9 @@ export const buildConstructorCustomization = ({
     frontImage,
     backImage,
     totalPrice,
+    decorationPrices = {},
     comment,
+    geometry,
 }: BuildConstructorCustomizationOptions): ConstructorCustomization | null => {
     if (!selectedModel) return null;
     const fit = selectedFit?.selectedSize === selectedSize
@@ -168,53 +172,55 @@ export const buildConstructorCustomization = ({
     const decorations = (Object.entries(placedItemsByView) as Array<[ModelView, PlacedHardware[]]>)
         .flatMap(([view, items]) => items.map((item) => {
             const hardware = hardwareMap[item.variantId];
-            const size = hardware ? getItemSizeCm(item, hardware) : { widthCm: 0, heightCm: 0 };
+            const size = hardware ? getItemSizeCm(item, hardware, geometry?.pixelsPerCm) : { widthCm: 0, heightCm: 0 };
             return {
                 view,
                 uid: item.uid,
                 variantId: item.variantId,
                 ...(hardware?.categoryId ? { categoryId: hardware.categoryId } : {}),
                 name: hardware?.name || "",
-                price: getPlacedItemPrice(item, hardware),
+                price: decorationPrices[item.uid] ?? 0,
                 image: hardware?.src || "",
-                widthCm: Math.round(size.widthCm),
-                heightCm: Math.round(size.heightCm),
+                widthCm: size.widthCm,
+                heightCm: size.heightCm,
                 x: item.x,
                 y: item.y,
                 scale: item.scale,
                 rotation: item.rotation || 0,
-                ...(hardware?.text ? {
-                    text: hardware.text,
+                ...(hardware ? {
                     originalWidth: hardware.defaultWidth,
-                    originalHeight: hardware.defaultHeight,
+                    originalHeight: hardware.defaultHeight || hardware.defaultWidth,
                 } : {}),
+                ...(hardware?.text ? { text: hardware.text } : {}),
             };
         }));
 
     return {
         kind: "constructor",
         selectedSize,
+        ...(selectedColor !== undefined ? { selectedColor } : {}),
         modelImages: {
             front: frontImage || selectedModel.src,
             back: backImage || frontImage || selectedModel.src,
         },
-        canvas: {
+        canvas: geometry?.canvas || {
             widthCm: CANVAS_REAL_SIZE_CM,
             heightCm: CANVAS_REAL_SIZE_CM,
         },
-        garment: {
+        garment: geometry?.garment || {
             widthCm: fit.widthCm,
-            heightCm: fit.lengthCm,
+            heightCm: garmentDimensions.heightCm,
         },
         fit,
+        ...(geometry ? { geometry: { canvasPixelSize: geometry.canvasPixelSize, modelBounds: geometry.modelBounds } } : {}),
         decorations,
         totalPrice,
         comment,
     };
 };
 
-export const getHardwareScaleLimits = (item: PlacedHardware, hardware: HardwareVariant) => {
-    const baseLongSideMm = Math.max(1, getItemSizeCm({ ...item, scale: 1 }, hardware).longSideCm * 10);
+export const getHardwareScaleLimits = (item: PlacedHardware, hardware: HardwareVariant, pixelsPerCm: PixelsPerCm = defaultPixelsPerCm) => {
+    const baseLongSideMm = Math.max(1, getItemSizeCm({ ...item, scale: 1 }, hardware, pixelsPerCm).longSideCm * 10);
     const minScale = hardware.minSizeMm ? hardware.minSizeMm / baseLongSideMm : 0.25;
     const maxScale = hardware.maxSizeMm ? hardware.maxSizeMm / baseLongSideMm : 4;
     const safeMin = Math.max(0.01, Math.min(minScale, maxScale));
@@ -235,7 +241,6 @@ export const getPlacedItemsFromCustomization = (
             y: decoration.y,
             scale: decoration.scale,
             rotation: decoration.rotation,
-            baseLongSideCm: Math.max(decoration.widthCm, decoration.heightCm) / Math.max(decoration.scale || 1, 0.01),
         }));
     return { front: getItemsForView("front"), back: getItemsForView("back") };
 };
@@ -244,29 +249,48 @@ export const getPlacedItemsFromCartItem = (item: CartItem): PlacedItemsByView =>
     getPlacedItemsFromCustomization(item.customization)
 );
 
+export const getConstructorDraftFromCartItem = (item: Pick<CartItem, 'customization' | 'image'>): ConstructorDraftState | null => {
+    const customization = item.customization;
+    if (!customization || customization.kind !== 'constructor') return null;
+    const positive = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0;
+    if (![customization.canvas?.widthCm, customization.canvas?.heightCm,
+        customization.garment?.widthCm, customization.garment?.heightCm].every(positive)) return null;
+    const mapping = customization.geometry;
+    const validMapping = mapping
+        && [mapping.canvasPixelSize?.width, mapping.canvasPixelSize?.height, mapping.modelBounds?.width, mapping.modelBounds?.height]
+            .every(value => positive(value) && value <= 16384)
+        && [mapping.modelBounds?.x, mapping.modelBounds?.y].every(value => typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 1_000_000);
+    const canvasPixelSize = validMapping ? mapping.canvasPixelSize : { width: CANVAS_SIZE, height: CANVAS_SIZE };
+    const width = Math.min(canvasPixelSize.width, customization.garment.widthCm * canvasPixelSize.width / customization.canvas.widthCm);
+    const height = Math.min(canvasPixelSize.height, customization.garment.heightCm * canvasPixelSize.height / customization.canvas.heightCm);
+    return {
+        activeView: item.image === customization.modelImages.back && customization.modelImages.front !== customization.modelImages.back ? 'back' : 'front',
+        canvasPixelSize,
+        modelBounds: validMapping ? mapping.modelBounds : { x: (canvasPixelSize.width - width) / 2, y: (canvasPixelSize.height - height) / 2, width, height },
+        customization,
+    };
+};
+
 export const getCustomDecorationsFromCustomization = (
     customization: ConstructorCustomization | undefined,
+    pixelsPerCm: PixelsPerCm = defaultPixelsPerCm,
 ): HardwareVariant[] => {
-    const knownHardwareIds = new Set(DEFAULT_DECORATION_CATALOG.map((hardware) => hardware.id));
-    const customDecorations = customization?.decorations.filter((decoration) => (
-        decoration.image && !knownHardwareIds.has(decoration.variantId)
-    )) || [];
+    const customDecorations = customization?.decorations.filter(decoration => decoration.image) || [];
     const seenIds = new Set<string>();
 
     return customDecorations.flatMap((decoration): HardwareVariant[] => {
         if (seenIds.has(decoration.variantId)) return [];
         seenIds.add(decoration.variantId);
         const safeScale = Math.max(decoration.scale || 1, 0.01);
-        const defaultWidth = decoration.originalWidth || Math.max(24, Math.round((decoration.widthCm / safeScale) * PX_PER_CM));
-        const defaultHeight = decoration.originalHeight || Math.max(24, Math.round((decoration.heightCm / safeScale) * PX_PER_CM));
-        const price = decoration.price || CUSTOM_BASE_PRICE;
+        const defaultWidth = decoration.originalWidth || Math.max(1, (decoration.widthCm / safeScale) * pixelsPerCm.x);
+        const defaultHeight = decoration.originalHeight || Math.max(1, (decoration.heightCm / safeScale) * pixelsPerCm.y);
+        const price = decoration.price ?? 0;
         return [{
             id: decoration.variantId,
-            categoryId: "prints",
+            categoryId: decoration.categoryId || "prints",
             name: decoration.name || "свой принт",
             src: decoration.image,
             price,
-            basePrice: price,
             defaultWidth,
             defaultHeight,
             minSizeMm: 10,
@@ -277,45 +301,34 @@ export const getCustomDecorationsFromCustomization = (
     });
 };
 
-export const getCustomDecorationsFromCartItem = (item: CartItem): HardwareVariant[] => (
-    getCustomDecorationsFromCustomization(item.customization)
-);
-
 export const formatCm = (value: number) => `${Math.max(1, Math.round(value))} см`;
-export const formatDecorationPrice = (variant: HardwareVariant) => variant.isCustom ? `${variant.price} ₽` : `+${variant.price} ₽`;
 
-export const getProductImageList = (product: ProductData | null) => {
+export const getProductImageList = (product: ConstructorProduct | null) => {
     if (!product) return [];
-    const variantImages = product.variants?.find((variant) => parseCsv(variant.images).length > 0)?.images;
+    const role = (name: string) => constructorImageUrls(product, product.images, name);
+    const variantImages = product.variants?.map(variant => constructorImageUrls(product, variant.images, 'images')).find(images => images.length > 0) ?? [];
     const imageSets = [
-        parseCsv(product.desktop_slider_images),
-        parseCsv(variantImages),
-        parseCsv(product.mobile_product_slider_images),
-        parseCsv(product.mobile_slider_images),
-        parseCsv(product.gallery_images),
-        parseCsv(product.desktop_card_images),
-        [product.image_left, product.image_right, product.mobile_card_image].filter(Boolean) as string[],
+        role('desktop_slider_images'), variantImages,
+        role('mobile_product_slider_images'), role('mobile_slider_images'),
+        role('gallery_images'), role('desktop_card_images'),
+        ['image_left', 'image_right', 'mobile_card_image'].flatMap(name => role(name).slice(0, 1)),
     ];
     return imageSets.find((images) => images.length > 0) || [];
 };
 
-export const getProductSizeOptions = (product: ProductData | null) => {
-    const sizes = unique([...DEFAULT_SIZES, ...parseCsv(product?.sizes), ...(product?.variants?.map((variant) => variant.size) || [])]);
-    return sizes.map((size) => {
+export const getProductSizeOptions = (product: ConstructorProduct | null) => {
+    return constructorSizeOptions(product).map(({ size, stock }) => {
         const variant = product?.variants?.find((item) => item.size === size);
         const defaultDimensions = getDefaultDimensionsForSize(size);
         return {
             size,
-            stock: variant?.stock_quantity ?? 1,
+            stock,
             widthCm: variant?.width_cm || defaultDimensions.widthCm,
             heightCm: variant?.height_cm || defaultDimensions.heightCm,
         };
     });
 };
 
-export const getFirstAvailableSize = (product: ProductData | null) => {
-    const variantSize = product?.variants?.find((variant) => variant.stock_quantity > 0)?.size;
-    if (variantSize) return variantSize;
-    const sizeOptions = getProductSizeOptions(product);
-    return (sizeOptions.find((option) => option.stock > 0) || sizeOptions[0])?.size || "";
+export const getFirstAvailableSize = (product: ConstructorProduct | null) => {
+    return initialConstructorSelection(product).size;
 };

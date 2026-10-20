@@ -133,7 +133,6 @@ export function ProductionWorkspace() {
                 <span>
                     <strong>{item.customer}</strong>
                     <small>
-                        {item.is_demo && 'ТЕСТ · '}
                         Заказ №{item.order_id} · {thingsCount(item.units_count)}
                     </small>
                     <em>
@@ -176,7 +175,7 @@ export function ProductionWorkspace() {
                     <div className={styles.topbarInner}>
                         <ProductionMark />
                         <div className={styles.account}>
-                            <small>Производственный терминал</small>
+                            <small>Производство</small>
                             <strong title={employee?.name}>
                                 {employee?.name ?? 'Сотрудник'}
                             </strong>
@@ -244,13 +243,6 @@ export function ProductionWorkspace() {
                         </nav>
                     </div>
                     <div aria-live="polite">
-                        {employee?.is_demo && (
-                            <p className={styles.notice}>
-                                Учебный режим. Только тестовые заказы, без
-                                оплаты и реальной отправки. Файлы примеров не
-                                являются производственными лекалами.
-                            </p>
-                        )}
                         {(terminal.error || printError || authError) && (
                             <p className={styles.error} role="alert">
                                 {terminal.error || printError || authError}

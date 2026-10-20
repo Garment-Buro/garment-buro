@@ -1,15 +1,17 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal
 
-from sqlalchemy import exists, func, or_, select
+from sqlalchemy import case, exists, func, literal, or_, select, tuple_
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Load, selectinload
 from sqlalchemy.sql.elements import ColumnElement
 
+from app.modules.delivery.models import CdekShipment
 from app.modules.inventory.models import InventoryReservation
 from app.modules.orders.models import (
     LegacyOrderClaim,
@@ -22,7 +24,20 @@ from app.modules.orders.models import (
     OrderMigrationRun,
     OrderStatusHistory,
 )
+from app.modules.orders.workflow_models import OrderWorkflow
 from app.modules.payments.models import Payment, PaymentAttempt, PaymentEvent
+
+
+@dataclass(frozen=True)
+class OrderHistoryRecord:
+    id: int
+    total_price: Decimal
+    created_at: datetime
+    status: str
+    payment_status: str
+    workflow_state: str | None
+    cdek_number: str | None
+    cdek_status: str | None
 
 
 class OrderRepository:
@@ -89,45 +104,37 @@ class LegacyOrderClaimRepository:
         session: AsyncSession,
         *,
         user_id: int,
-        legacy_order_ids: Sequence[int],
+        email_normalized: str,
         identifier_digest: str,
     ) -> None:
-        values = [
-            {
-                "user_id": user_id,
-                "legacy_order_id": order_id,
-                "source": LegacyOrderClaimSource.VERIFIED_EMAIL.value,
-                "identifier_digest": identifier_digest,
-            }
-            for order_id in sorted(set(legacy_order_ids))
-            if order_id > 0
-        ]
-        if not values:
-            return
         dialect_name = session.get_bind().dialect.name
         if dialect_name == "postgresql":
-            statement = postgresql_insert(LegacyOrderClaim).values(values)
+            statement = postgresql_insert(LegacyOrderClaim)
         elif dialect_name == "sqlite":
-            statement = sqlite_insert(LegacyOrderClaim).values(values)
+            statement = sqlite_insert(LegacyOrderClaim)
         else:
             raise RuntimeError("Legacy order claims require PostgreSQL or SQLite")
-        await session.execute(
-            statement.on_conflict_do_nothing(
-                index_elements=[LegacyOrderClaim.legacy_order_id],
+        unclaimed = (
+            select(
+                literal(user_id),
+                Order.id,
+                literal(LegacyOrderClaimSource.VERIFIED_EMAIL.value),
+                literal(identifier_digest),
+            )
+            .join(LegacyOrderImport, LegacyOrderImport.order_id == Order.id)
+            .where(
+                Order.email_normalized == email_normalized,
+                ~exists(
+                    select(LegacyOrderClaim.id).where(LegacyOrderClaim.legacy_order_id == Order.id)
+                ),
             )
         )
-
-    async def list_claimed_order_ids(
-        self,
-        session: AsyncSession,
-        *,
-        user_id: int,
-    ) -> list[int]:
-        return list(
-            await session.scalars(
-                select(LegacyOrderClaim.legacy_order_id)
-                .where(LegacyOrderClaim.user_id == user_id)
-                .order_by(LegacyOrderClaim.legacy_order_id.desc())
+        await session.execute(
+            statement.from_select(
+                ["user_id", "legacy_order_id", "source", "identifier_digest"],
+                unclaimed,
+            ).on_conflict_do_nothing(
+                index_elements=[LegacyOrderClaim.legacy_order_id],
             )
         )
 
@@ -166,34 +173,70 @@ class OrderMigrationRepository:
 
 
 class TargetOrderReadRepository:
-    async def find_imported_ids_by_verified_email(
-        self,
-        session: AsyncSession,
-        *,
-        email_normalized: str,
-    ) -> list[int]:
-        return list(
-            await session.scalars(
-                select(Order.id)
-                .join(LegacyOrderImport, LegacyOrderImport.order_id == Order.id)
-                .where(Order.email_normalized == email_normalized)
-                .order_by(Order.id)
-            )
-        )
-
-    async def list_owned(
+    async def list_owned_summaries(
         self,
         session: AsyncSession,
         *,
         user_id: int,
-    ) -> list[Order]:
-        return list(
-            await session.scalars(
-                select(Order)
-                .where(self._owned_expression(user_id))
-                .options(*self._read_options())
-                .order_by(Order.id.desc())
+        limit: int,
+        before_id: int | None,
+    ) -> list[OrderHistoryRecord]:
+        rows = await session.execute(
+            self.history_statement(user_id=user_id, limit=limit, before_id=before_id)
+        )
+        return [OrderHistoryRecord(**row) for row in rows.mappings()]
+
+    @staticmethod
+    def history_statement(*, user_id: int, limit: int, before_id: int | None):
+        # Bound each indexed owner branch before merging. OR + correlated EXISTS
+        # over all orders can otherwise scan an unrelated account's entire history.
+        # Keep the owner in the ordered range. With only owner = X / id < cursor,
+        # PostgreSQL can choose the global primary key and filter thousands of
+        # foreign rows when this owner's branch is exhausted (verified by EXPLAIN).
+        direct_key = tuple_(Order.user_id, Order.id)
+        claimed_key = tuple_(LegacyOrderClaim.user_id, LegacyOrderClaim.legacy_order_id)
+        direct = select(Order.id).where(direct_key >= (user_id, 1))
+        claimed = select(LegacyOrderClaim.legacy_order_id.label("id")).where(
+            claimed_key >= (user_id, 1)
+        )
+        if before_id is not None:
+            direct = direct.where(direct_key < (user_id, before_id))
+            claimed = claimed.where(claimed_key < (user_id, before_id))
+        else:
+            direct = direct.where(direct_key <= (user_id, 2147483647))
+            claimed = claimed.where(claimed_key <= (user_id, 2147483647))
+        direct = direct.order_by(Order.user_id.desc(), Order.id.desc()).limit(limit).subquery()
+        claimed = (
+            claimed.order_by(
+                LegacyOrderClaim.user_id.desc(), LegacyOrderClaim.legacy_order_id.desc()
             )
+            .limit(limit)
+            .subquery()
+        )
+        candidates = select(direct.c.id).union(select(claimed.c.id)).subquery()
+        page = select(candidates.c.id).order_by(candidates.c.id.desc()).limit(limit).subquery()
+        return (
+            select(
+                Order.id,
+                Order.total_price,
+                Order.created_at,
+                Order.status,
+                Order.payment_status,
+                OrderWorkflow.state.label("workflow_state"),
+                case(
+                    (CdekShipment.id.is_not(None), CdekShipment.provider_cdek_number),
+                    else_=LegacyOrderImport.delivery_provider_number,
+                ).label("cdek_number"),
+                case(
+                    (CdekShipment.id.is_not(None), CdekShipment.provider_status_code),
+                    else_=LegacyOrderImport.delivery_provider_status,
+                ).label("cdek_status"),
+            )
+            .join(page, page.c.id == Order.id)
+            .outerjoin(OrderWorkflow, OrderWorkflow.order_id == Order.id)
+            .outerjoin(CdekShipment, CdekShipment.order_id == Order.id)
+            .outerjoin(LegacyOrderImport, LegacyOrderImport.order_id == Order.id)
+            .order_by(Order.id.desc())
         )
 
     async def get_owned(

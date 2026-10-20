@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import {
-    PiArchive,
     PiBlueprint,
     PiPackage,
     PiScissors,
@@ -19,7 +18,6 @@ import { AdminBoxes } from './assortment/AdminBoxes';
 import { AdminFabrics } from './assortment/AdminFabrics';
 import { AdminModels } from './assortment/AdminModels';
 import { AdminPatterns } from './assortment/AdminPatterns';
-import { AdminProducts } from './assortment/AdminProducts';
 import { AdminTechCards } from './assortment/AdminTechCards';
 import styles from './ProductionAdmin.module.css';
 
@@ -30,7 +28,6 @@ const icons = {
     fabrics: PiYarn,
     accessories: PiWrench,
     boxes: PiPackage,
-    products: PiArchive,
 };
 
 export function AdminAssortment() {
@@ -42,21 +39,20 @@ export function AdminAssortment() {
         fabrics: AdminFabrics,
         accessories: AdminAccessories,
         boxes: AdminBoxes,
-        products: AdminProducts,
     }[section];
 
     return (
         <section>
             <div className={styles.sectionHeading}>
                 <div>
-                    <h2>Товары и склад</h2>
+                    <h2>Модели и склад</h2>
                     <p className={styles.muted}>
-                        Модели, производство, материалы, упаковка и каталог в
+                        Модели, производство, материалы и упаковка в
                         одном месте.
                     </p>
                 </div>
             </div>
-            <nav className={styles.subnav} aria-label="Разделы товаров и склада">
+            <nav className={styles.subnav} aria-label="Разделы моделей и склада">
                 {(Object.keys(assortmentLabels) as AssortmentSection[]).map(
                     (key) => {
                         const Icon = icons[key];

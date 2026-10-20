@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import type {
     Dispatch,
     RefObject,
@@ -6,7 +7,9 @@ import type {
     WheelEventHandler,
 } from 'react';
 
-import type { CartActionCoupon, CartDeliveryMethod, CartPaymentMethod } from '@/lib/cart/actionTypes';
+import type { CartDeliveryMethod, CartPaymentMethod } from '@/lib/cart/actionTypes';
+import type { PendingPurchase } from '@/lib/checkout/operation';
+import { PurchaseRecovery } from '@/components/checkout/PurchaseRecovery';
 import {
     CART_ACTION_PRODUCT_SECTION_BACKGROUND,
     CART_ACTION_SECTION_GAP_BACKGROUND,
@@ -14,13 +17,12 @@ import {
 import type { CartItem } from '@/lib/cart/types';
 
 import { CartDeliveryDetails } from '@/components/checkout/CartDeliveryDetails';
-import { CartAddProductCard } from './CartAddProductCard';
 import {
-    CartCouponSection,
     CartGrandTotalSection,
     CartTotalsSection,
 } from './CartCheckoutSections';
 import { CartItemRow } from './CartItemRow';
+import { CartSyncNotice } from './CartSyncNotice';
 
 const ExpandedCartSeparator = () => (
     <div
@@ -34,6 +36,9 @@ const ExpandedCartSeparator = () => (
 );
 
 type CartExpandedContentProps = {
+    active: boolean;
+    onNativeTouchMove: (event: TouchEvent) => void;
+    qrAvailable: boolean;
     expandedContentRef: RefObject<HTMLDivElement | null>;
     onWheel: WheelEventHandler<HTMLDivElement>;
     onTouchStart: TouchEventHandler<HTMLDivElement>;
@@ -42,31 +47,21 @@ type CartExpandedContentProps = {
     setDeliveryMethod: Dispatch<SetStateAction<CartDeliveryMethod>>;
     paymentMethod: CartPaymentMethod;
     setPaymentMethod: Dispatch<SetStateAction<CartPaymentMethod>>;
-    showAddProductCard: boolean;
-    displayTitle: string;
-    displayColor: string;
-    displayPrice: number;
-    displayImage: string;
-    currentCartItem?: CartItem;
-    disabled: boolean;
-    onAdd: () => void;
     onEdit: () => void;
     onDetails: (item: CartItem | null) => void;
     updateQuantity: (id: string, quantity: number) => void;
     items: CartItem[];
-    isCouponOpen: boolean;
-    setIsCouponOpen: Dispatch<SetStateAction<boolean>>;
-    pendingCoupon: CartActionCoupon | null;
-    setPendingCoupon: Dispatch<SetStateAction<CartActionCoupon | null>>;
-    appliedCoupon: CartActionCoupon | null;
-    setAppliedCoupon: Dispatch<SetStateAction<CartActionCoupon | null>>;
+    pending: PendingPurchase | null;
+    isPaymentSubmitting: boolean;
+    resumePurchase: () => void;
+    retryPayment: () => void;
+    newPurchase: () => void;
     productsTotal: number;
     deliveryPrice: number;
     checkoutError: string;
     retryQuote: () => void;
     quoteLoading: boolean;
     deliveryQuoted: boolean;
-    discount: number;
     grandTotal: number;
     agreementIdPrefix: string;
     isOfferAccepted: boolean;
@@ -76,6 +71,9 @@ type CartExpandedContentProps = {
 };
 
 export const CartExpandedContent = ({
+    active,
+    onNativeTouchMove,
+    qrAvailable,
     expandedContentRef,
     onWheel,
     onTouchStart,
@@ -84,38 +82,37 @@ export const CartExpandedContent = ({
     setDeliveryMethod,
     paymentMethod,
     setPaymentMethod,
-    showAddProductCard,
-    displayTitle,
-    displayColor,
-    displayPrice,
-    displayImage,
-    currentCartItem,
-    disabled,
-    onAdd,
     onEdit,
     onDetails,
     updateQuantity,
     items,
-    isCouponOpen,
-    setIsCouponOpen,
-    pendingCoupon,
-    setPendingCoupon,
-    appliedCoupon,
-    setAppliedCoupon,
+    pending,
+    isPaymentSubmitting,
+    resumePurchase,
+    retryPayment,
+    newPurchase,
     productsTotal,
     deliveryPrice,
     checkoutError,
     retryQuote,
     quoteLoading,
     deliveryQuoted,
-    discount,
     grandTotal,
     agreementIdPrefix,
     isOfferAccepted,
     setIsOfferAccepted,
     isPolicyAccepted,
     setIsPolicyAccepted,
-}: CartExpandedContentProps) => (
+}: CartExpandedContentProps) => {
+    useEffect(() => {
+        const expandedContent = expandedContentRef.current;
+        if (!active || !expandedContent) return;
+        const handleTouchMove = onNativeTouchMove;
+        expandedContent.addEventListener('touchmove', handleTouchMove, { passive: false });
+        return () => expandedContent.removeEventListener('touchmove', handleTouchMove);
+    }, [active, expandedContentRef, onNativeTouchMove]);
+
+    return (
     <div
         ref={expandedContentRef}
         className="flex h-full w-full flex-col overflow-y-auto"
@@ -132,26 +129,11 @@ export const CartExpandedContent = ({
         }}
     >
         <CartDeliveryDetails method={deliveryMethod} onChange={setDeliveryMethod} />
+        <CartSyncNotice />
         {checkoutError && <p role="alert" className="px-6 py-3 text-sm text-red-800">{checkoutError}</p>}
-        {!deliveryQuoted && items.length > 0 && <button type="button" disabled={quoteLoading} onClick={retryQuote} className="px-6 py-3 text-left text-sm underline disabled:opacity-50">{quoteLoading ? 'Рассчитываем доставку…' : 'Рассчитать доставку'}</button>}
+        <PurchaseRecovery pending={pending} busy={isPaymentSubmitting} onResume={resumePurchase} onRetry={retryPayment} onNew={newPurchase} />
+        {!deliveryQuoted && !pending && items.length > 0 && <button type="button" disabled={quoteLoading} onClick={retryQuote} className="px-6 py-3 text-left text-sm underline disabled:opacity-50">{quoteLoading ? 'Рассчитываем доставку…' : 'Рассчитать доставку'}</button>}
 
-        {showAddProductCard ? (
-            <>
-                <ExpandedCartSeparator />
-                <CartAddProductCard
-                    title={displayTitle}
-                    color={displayColor}
-                    price={displayPrice}
-                    image={displayImage}
-                    item={currentCartItem}
-                    disabled={disabled}
-                    onAdd={onAdd}
-                    onEdit={onEdit}
-                    onDetails={onDetails}
-                    updateQuantity={updateQuantity}
-                />
-            </>
-        ) : null}
         {items.length > 0 ? (
             <>
                 <ExpandedCartSeparator />
@@ -176,23 +158,14 @@ export const CartExpandedContent = ({
         ) : null}
 
         <ExpandedCartSeparator />
-        <CartCouponSection
-            isOpen={isCouponOpen}
-            pendingCoupon={pendingCoupon}
-            setIsOpen={setIsCouponOpen}
-            setPendingCoupon={setPendingCoupon}
-            setAppliedCoupon={setAppliedCoupon}
-        />
-        <ExpandedCartSeparator />
         <CartTotalsSection
             deliveryLabel={quoteLoading ? 'Рассчитываем…' : !deliveryQuoted ? 'После выбора адреса' : undefined}
             productsTotal={productsTotal}
             deliveryPrice={deliveryPrice}
-            appliedCoupon={appliedCoupon}
-            discount={discount}
         />
         <ExpandedCartSeparator />
         <CartGrandTotalSection
+            qrAvailable={qrAvailable}
             paymentMethod={paymentMethod}
             setPaymentMethod={setPaymentMethod}
             grandTotal={grandTotal}
@@ -203,4 +176,5 @@ export const CartExpandedContent = ({
             setIsPolicyAccepted={setIsPolicyAccepted}
         />
     </div>
-);
+    );
+};

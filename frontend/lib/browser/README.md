@@ -10,8 +10,19 @@ Browser-specific behavior has one ownership path. UI components should consume i
 - `lib/browser/utils/pageChrome.ts` maps routes to page colors and bottom offsets. Add route-level chrome changes here.
 - `lib/browser/utils/splash.ts` owns splash route rules and the pre-hydration bootstrap script; `providers/SplashBoundary.tsx` owns its global lifecycle. It is a layout boundary, not a React Context provider.
 - `lib/browser/utils/scriptLoader.ts` is the shared deferred-loader used by browser SDK integrations.
-- `lib/browser/config/vendorScripts.ts` is the audited allowlist for third-party browser SDK assets. Business data still travels through the same-origin `/api` boundary; only the Yandex Maps and CDEK widget runtime assets load from their providers.
+- `lib/browser/config/vendorScripts.ts` is the audited allowlist for third-party browser SDK assets. Yandex Maps provides map rendering. Pickup directory and delivery quotes travel through the same-origin `/api/cdek` boundary to the backend; Next.js does not authenticate with CDEK or calculate delivery tariffs.
 - `hooks/browser/useCookieConsent.ts` owns browser storage and splash-event coordination for the cookie banner.
+- `lib/browser/utils/storage.ts` guards optional preferences and auth/cart cache
+  hydration. A denied getter, quota error or malformed cache does not stop the
+  app shell. Failed writes remain only in document memory; closing/reloading
+  that document does not preserve them. SSR never writes this fallback.
+
+Auth cookie mutations still require Web Locks and a successful native shared
+storage probe; an in-memory cache cannot coordinate account lifetimes between
+tabs. Failed shared-marker publications are not broadcast as successful login
+or logout. Checkout recovery deliberately uses native sessionStorage and refuses
+to send a purchase when its recovery record cannot be saved. Do not replace that
+storage with the optional cache adapter. Backend data ownership is unchanged.
 
 ## CSS contract
 

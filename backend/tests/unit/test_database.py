@@ -65,7 +65,7 @@ def test_database_manager_lifecycle_and_transaction_rollback() -> None:
     asyncio.run(scenario())
 
 
-def test_disabled_database_manager_is_explicitly_legacy() -> None:
+def test_disabled_database_manager_reports_disabled() -> None:
     settings = Settings(
         _env_file=None,
         app_env=AppEnvironment.TEST,
@@ -74,5 +74,5 @@ def test_disabled_database_manager_is_explicitly_legacy() -> None:
     )
     database = DatabaseManager(settings)
 
-    assert database.backend_name == "legacy"
+    assert database.backend_name == "disabled"
     assert not asyncio.run(database.ping())

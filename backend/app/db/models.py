@@ -43,12 +43,17 @@ from app.modules.crm.reference_models import (
     CrmTechCardCheckpoint,
     CrmTechCardRevision,
 )
+from app.modules.customer_projects.models import CustomerProject, CustomerProjectMedia
 from app.modules.delivery.directory_models import PickupDirectoryState, PickupPoint
 from app.modules.delivery.models import CdekShipment, CdekShipmentAttempt, CdekShipmentEvent
+from app.modules.design_assets.models import CartDesignAsset, DesignAsset, OrderDesignAsset
+from app.modules.favorites.models import UserFavorite
 from app.modules.fulfillment.models import FulfillmentJob, FulfillmentJobAttempt
 from app.modules.identity.models import (
+    ExternalAuthIdentity,
     IdentityMigrationRun,
     OtpChallenge,
+    PasswordCredential,
     Permission,
     RefreshSession,
     Role,
@@ -57,7 +62,7 @@ from app.modules.identity.models import (
     User,
     UserRole,
 )
-from app.modules.inventory.models import InventoryReservation
+from app.modules.inventory.models import InventoryFabricHold, InventoryReservation
 from app.modules.media.models import MediaObject, ProductMedia, ProductVariantMedia
 from app.modules.notifications.models import NotificationDeliveryAttempt, NotificationOutbox
 from app.modules.orders.models import (
@@ -71,6 +76,7 @@ from app.modules.orders.models import (
     OrderStatusHistory,
 )
 from app.modules.orders.workflow_models import OrderWorkflow, OrderWorkflowEvent, OrderWorkflowJob
+from app.modules.partners.community_favorite_models import UserCommunityFavorite
 from app.modules.partners.models import (
     PartnerCommission,
     PartnerLanding,
@@ -103,8 +109,15 @@ from app.modules.production.models import (
     ProductionSpecificationFile,
     ProductionWorkItem,
 )
+from app.modules.public_profiles.models import PublicUserProfile
 
 __all__ = [
+    "DesignAsset",
+    "CartDesignAsset",
+    "OrderDesignAsset",
+    "PublicUserProfile",
+    "UserCommunityFavorite",
+    "UserFavorite",
     "ProductionCredential",
     "ProductionEmployee",
     "ProductionSession",
@@ -150,6 +163,8 @@ __all__ = [
     "CrmAssignmentEvent",
     "CrmStaffCommand",
     "MediaObject",
+    "CustomerProject",
+    "CustomerProjectMedia",
     "CdekShipment",
     "CdekShipmentAttempt",
     "CdekShipmentEvent",
@@ -166,7 +181,10 @@ __all__ = [
     "CatalogDocument",
     "CatalogDocumentRevision",
     "IdentityMigrationRun",
+    "ExternalAuthIdentity",
+    "PasswordCredential",
     "InventoryReservation",
+    "InventoryFabricHold",
     "LegacyOrderClaim",
     "LegacyOrderImport",
     "Order",

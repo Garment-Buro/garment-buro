@@ -10,6 +10,7 @@ export type PartnerProfile = {
 
 export type PartnerDashboard = {
     partner: PartnerProfile;
+    has_requisites: boolean;
     visits: number;
     orders: number;
     conversion_percent: string;
@@ -22,6 +23,7 @@ export type PartnerDashboard = {
 export type PartnerLanding = {
     id: number;
     partner_id: number;
+    version: number;
     slug: string;
     title: string;
     eyebrow?: string;
@@ -38,6 +40,9 @@ export type PartnerLanding = {
     created_at: string;
     updated_at: string;
 };
+
+export type OwnLandingCard = Pick<PartnerLanding, 'id' | 'version' | 'slug' | 'title' | 'status'> & { image_url: string | null; product_count: number };
+export type OwnLandingPage = { items: OwnLandingCard[]; next_cursor: string | null };
 
 export type PartnerLandingFaqItem = {
     question: string;
@@ -56,19 +61,9 @@ export type PartnerLandingContent = {
 };
 
 export type PublicPartnerLanding = Omit<PartnerLanding,
-    'id' | 'partner_id' | 'status' | 'published_at' | 'created_at' | 'updated_at'
+    'id' | 'partner_id' | 'version' | 'status' | 'published_at' | 'created_at' | 'updated_at'
 > & {
     partner_name: string;
-};
-
-export type PartnerCommission = {
-    id: number;
-    order_id: number;
-    amount: string;
-    currency: 'RUB';
-    status: 'pending' | 'canceled';
-    available_at: string;
-    created_at: string;
 };
 
 export type PartnerPayout = {
@@ -95,7 +90,10 @@ export type PartnerRequisitesPayload = {
     settlement_account: string;
 };
 
+export type PartnerRequisitesWrite = PartnerRequisitesPayload & { expected_version: number };
+
 export type PartnerRequisites = PartnerRequisitesPayload & {
+    version: number;
     updated_at: string;
 };
 
@@ -122,4 +120,7 @@ export type PartnerLandingCreatePayload = {
     status: 'draft' | 'published';
 };
 
-export type PartnerLandingUpdatePayload = Partial<Omit<PartnerLandingCreatePayload, 'slug'>>;
+export type PartnerLandingUpdatePayload = Partial<Omit<PartnerLandingCreatePayload, 'slug' | 'status'>> & {
+    expected_version: number;
+    status?: PartnerLanding['status'];
+};

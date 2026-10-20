@@ -1,11 +1,11 @@
-import Image from "next/image";
+import { CustomerMediaImage } from '@/components/shared/CustomerMediaImage';
 import type { CSSProperties } from "react";
 
-import type { SavedProfileItem } from "@/lib/unfinished/utils/savedItems";
+import type { ConstructorDraftState } from '@/lib/constructor/types';
 import styles from "./ConstructorDraftPreview.module.css";
 
 type ConstructorDraftPreviewProps = {
-    item: SavedProfileItem;
+    item: { imageSrc?: string; draftState?: ConstructorDraftState };
     className?: string;
     priority?: boolean;
 };
@@ -18,8 +18,9 @@ export function ConstructorDraftPreview({
     const draftState = item.draftState;
 
     if (!draftState) {
+        if (!item.imageSrc) return null;
         return (
-            <Image
+            <CustomerMediaImage
                 src={item.imageSrc}
                 alt=""
                 width={288}
@@ -31,7 +32,7 @@ export function ConstructorDraftPreview({
     }
 
     const { activeView, canvasPixelSize, modelBounds, customization } = draftState;
-    const modelImageSrc = customization.modelImages[activeView] || item.imageSrc;
+    const modelImageSrc = customization.modelImages[activeView];
     const canvasWidthCm = Math.max(1, customization.canvas.widthCm);
     const canvasHeightCm = Math.max(1, customization.canvas.heightCm);
     const safeModelWidth = Math.max(1, modelBounds.width);
@@ -49,7 +50,7 @@ export function ConstructorDraftPreview({
         >
             <div className={styles.canvas} style={canvasStyle}>
                 <span className={styles.model}>
-                    <Image
+                    <CustomerMediaImage
                         src={modelImageSrc}
                         alt=""
                         fill
@@ -81,7 +82,7 @@ export function ConstructorDraftPreview({
                                 transform: `translate(-50%, -50%) rotate(${decoration.rotation}deg)`,
                             }}
                         >
-                            <Image
+                            <CustomerMediaImage
                                 src={decoration.image}
                                 alt=""
                                 fill

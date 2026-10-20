@@ -4,8 +4,9 @@ type AuthCloseButtonProps = {
 
 export const AuthCloseButton = ({ onClick }: AuthCloseButtonProps) => (
     <button
+        type="button"
         onClick={onClick}
-        className="absolute top-[40px] right-[40px] z-20 w-8 h-8 flex items-center justify-center rounded-full hover:bg-black/5 transition-colors text-[#ABABAB]"
+        className="absolute top-2 right-2 md:top-[40px] md:right-[40px] z-20 w-8 h-8 flex items-center justify-center rounded-full hover:bg-black/5 transition-colors text-[#ABABAB]"
         aria-label="Закрыть"
     >
         <svg width="20" height="20" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">

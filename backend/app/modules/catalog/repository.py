@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import literal_column, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import raiseload, selectinload
 
 from app.modules.catalog.models import (
     CatalogAuditEvent,
@@ -10,6 +10,7 @@ from app.modules.catalog.models import (
     ProductCategory,
     ProductVariant,
 )
+from app.modules.catalog.public_policy import public_product_ids
 from app.modules.crm.assortment_models import CrmGarmentFabricRequirement
 from app.modules.crm.reference_models import CrmFabric, CrmGarmentModel, CrmGarmentSize
 from app.modules.media.models import ProductMedia, ProductVariantMedia
@@ -17,8 +18,24 @@ from app.modules.media.models import ProductMedia, ProductVariantMedia
 
 class CatalogRepository:
     @staticmethod
-    async def list_categories(session: AsyncSession) -> list[ProductCategory]:
-        return list(await session.scalars(select(ProductCategory).order_by(ProductCategory.name)))
+    async def has_fabric_holds(session: AsyncSession, product_id: int) -> bool:
+        from app.modules.inventory.models import InventoryFabricHold, InventoryReservation
+
+        return (
+            await session.scalar(
+                select(InventoryFabricHold.id)
+                .join(
+                    InventoryReservation,
+                    InventoryReservation.id == InventoryFabricHold.reservation_id,
+                )
+                .where(
+                    InventoryReservation.product_id_snapshot == product_id,
+                    InventoryFabricHold.remaining_meters > 0,
+                )
+                .limit(1)
+            )
+            is not None
+        )
 
     @staticmethod
     async def get_category(
@@ -28,7 +45,11 @@ class CatalogRepository:
         lock: bool = False,
     ) -> ProductCategory | None:
         statement = select(ProductCategory).where(ProductCategory.id == category_id)
-        return await session.scalar(statement.with_for_update() if lock else statement)
+        return await session.scalar(
+            statement.with_for_update().execution_options(populate_existing=True)
+            if lock
+            else statement
+        )
 
     @staticmethod
     async def add_category(session: AsyncSession, category: ProductCategory) -> None:
@@ -48,38 +69,62 @@ class CatalogRepository:
         )
 
     @staticmethod
-    async def get_garment_size(
-        session: AsyncSession, garment_size_id: int
-    ) -> CrmGarmentSize | None:
-        return await session.get(CrmGarmentSize, garment_size_id)
-
-    @staticmethod
-    async def get_active_fabric(session: AsyncSession, fabric_id: int) -> CrmFabric | None:
-        return await session.scalar(
-            select(CrmFabric).where(CrmFabric.id == fabric_id, CrmFabric.is_active.is_(True))
-        )
-
-    @staticmethod
-    async def model_allows_fabric(
-        session: AsyncSession,
-        *,
-        garment_model_id: int,
-        fabric_id: int,
-    ) -> bool:
+    async def active_category_exists(session: AsyncSession, category_id: int) -> bool:
         return (
             await session.scalar(
-                select(CrmGarmentFabricRequirement.id).where(
-                    CrmGarmentFabricRequirement.garment_model_id == garment_model_id,
-                    CrmGarmentFabricRequirement.fabric_id == fabric_id,
+                select(ProductCategory.id).where(
+                    ProductCategory.id == category_id, ProductCategory.is_active.is_(True)
                 )
             )
             is not None
         )
 
+    @staticmethod
+    async def active_size_codes(
+        session: AsyncSession, *, garment_model_id: int, size_ids: set[int]
+    ) -> dict[int, str]:
+        if not size_ids:
+            return {}
+        rows = await session.execute(
+            select(CrmGarmentSize.id, CrmGarmentSize.code).where(
+                CrmGarmentSize.id.in_(size_ids),
+                CrmGarmentSize.garment_model_id == garment_model_id,
+                CrmGarmentSize.is_active.is_(True),
+            )
+        )
+        return dict(rows.tuples().all())
+
+    @staticmethod
+    async def allowed_active_fabric_ids(
+        session: AsyncSession,
+        *,
+        garment_model_id: int,
+        fabric_ids: set[int],
+    ) -> set[int]:
+        if not fabric_ids:
+            return set()
+        return set(
+            await session.scalars(
+                select(CrmFabric.id)
+                .join(
+                    CrmGarmentFabricRequirement,
+                    CrmGarmentFabricRequirement.fabric_id == CrmFabric.id,
+                )
+                .where(
+                    CrmGarmentFabricRequirement.garment_model_id == garment_model_id,
+                    CrmFabric.id.in_(fabric_ids),
+                    CrmFabric.is_active.is_(True),
+                )
+            )
+        )
+
     async def list_products(self, session: AsyncSession) -> list[Product]:
         result = await session.scalars(
             select(Product)
-            .options(selectinload(Product.media_links).selectinload(ProductMedia.media))
+            .options(
+                selectinload(Product.media_links).selectinload(ProductMedia.media),
+                selectinload(Product.variants),
+            )
             .order_by(Product.id.desc())
         )
         return list(result.unique())
@@ -88,10 +133,15 @@ class CatalogRepository:
         self,
         session: AsyncSession,
         product_id: int,
+        *,
+        public_only: bool = False,
     ) -> Product | None:
         return await session.scalar(
             select(Product)
-            .where(Product.id == product_id)
+            .where(
+                Product.id == product_id,
+                *([Product.id.in_(public_product_ids())] if public_only else []),
+            )
             .options(
                 selectinload(Product.media_links).selectinload(ProductMedia.media),
                 selectinload(Product.variants)
@@ -108,45 +158,27 @@ class CatalogRepository:
         return await session.scalar(
             select(Product)
             .where(Product.id == product_id)
-            .options(
-                selectinload(Product.media_links).selectinload(ProductMedia.media),
-                selectinload(Product.variants)
-                .selectinload(ProductVariant.media_links)
-                .selectinload(ProductVariantMedia.media),
-            )
+            .options(raiseload("*"))
             .with_for_update()
+            .execution_options(populate_existing=True)
         )
 
-    async def get_variant_for_update(
-        self,
-        session: AsyncSession,
-        variant_id: int,
-    ) -> ProductVariant | None:
-        return await session.scalar(
-            select(ProductVariant)
-            .where(ProductVariant.id == variant_id)
-            .options(
-                selectinload(ProductVariant.media_links).selectinload(ProductVariantMedia.media),
-                selectinload(ProductVariant.product),
+    @staticmethod
+    def reserved_variant_statement(product_id: int):
+        # Literal zero keeps the partial index applicable to PostgreSQL generic plans.
+        return (
+            select(ProductVariant.id)
+            .where(
+                ProductVariant.product_id == product_id,
+                ProductVariant.reserved_quantity > literal_column("0"),
             )
-            .with_for_update()
+            .order_by(ProductVariant.id)
+            .limit(1)
         )
 
-    async def list_variants(
-        self,
-        session: AsyncSession,
-        product_id: int,
-    ) -> list[ProductVariant]:
-        return list(
-            await session.scalars(
-                select(ProductVariant)
-                .where(ProductVariant.product_id == product_id)
-                .options(
-                    selectinload(ProductVariant.media_links).selectinload(ProductVariantMedia.media)
-                )
-                .order_by(ProductVariant.id)
-            )
-        )
+    @classmethod
+    async def has_reserved_variants(cls, session: AsyncSession, product_id: int) -> bool:
+        return await session.scalar(cls.reserved_variant_statement(product_id)) is not None
 
     async def get_order_products_for_update(
         self,
@@ -203,18 +235,4 @@ class CatalogRepository:
                 details=details,
             )
         )
-        await session.flush()
-
-    @staticmethod
-    async def clear_product_children(session: AsyncSession, product: Product) -> None:
-        product.variants.clear()
-        product.media_links.clear()
-        await session.flush()
-
-    @staticmethod
-    async def clear_variant_media(
-        session: AsyncSession,
-        variant: ProductVariant,
-    ) -> None:
-        variant.media_links.clear()
         await session.flush()

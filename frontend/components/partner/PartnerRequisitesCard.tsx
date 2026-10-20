@@ -1,6 +1,7 @@
 import { PiBank, PiCaretDown, PiCheckCircle, PiLockKey } from 'react-icons/pi';
 
-import type { PartnerCabinetViewModel } from '@/hooks/partner/usePartnerCabinet';
+import { usePartnerRequisites } from '@/hooks/partner/usePartnerRequisites';
+import { emptyRequisitesDraft } from '@/lib/partners/requisitesEditor';
 import type { PartnerEntityType } from '@/lib/partners/types';
 
 import styles from './PartnerDashboard.module.css';
@@ -12,18 +13,25 @@ const ENTITY_OPTIONS: Array<{ id: PartnerEntityType; label: string }> = [
 ];
 
 type PartnerRequisitesCardProps = {
-    cabinet: PartnerCabinetViewModel;
+    hasRequisites: boolean;
+    onSaved: () => void;
     open: boolean;
     onToggle: () => void;
 };
 
 export const PartnerRequisitesCard = ({
-    cabinet,
+    hasRequisites,
+    onSaved,
     open,
     onToggle,
 }: PartnerRequisitesCardProps) => {
-    const draft = cabinet.requisitesDraft;
-    const accountTail = cabinet.requisites?.settlement_account.slice(-4);
+    const editor = usePartnerRequisites(open, onSaved);
+    const state = editor.state;
+    const draft = state?.draft ?? emptyRequisitesDraft();
+    const accountTail = state?.record?.settlement_account.slice(-4);
+    const saving = state?.status === 'saving';
+    const loading = state?.status === 'loading';
+    const locked = saving || loading || state?.conflict;
     const isLegalEntity = draft.entity_type === 'legal_entity';
     const taxIdLength = isLegalEntity ? 10 : 12;
 
@@ -33,8 +41,9 @@ export const PartnerRequisitesCard = ({
                 type="button"
                 className={styles.summaryButton}
                 onClick={onToggle}
+                disabled={saving}
                 aria-expanded={open}
-                aria-controls="partner-requisites-form"
+                aria-controls="partner-requisites-content"
             >
                 <div>
                     <p className={styles.sectionEyebrow}>Для перечисления денег</p>
@@ -47,42 +56,62 @@ export const PartnerRequisitesCard = ({
                 />
             </button>
 
-            {!open && cabinet.requisites && (
+            {!open && state?.record && (
                 <div className={styles.requisitesSummary}>
                     <span className={styles.requisitesSummaryIcon} aria-hidden="true">
                         <PiCheckCircle size={22} />
                     </span>
                     <div>
-                        <p className={styles.landingTitle}>{cabinet.requisites.recipient_name}</p>
+                        <p className={styles.landingTitle}>{state.record.recipient_name}</p>
                         <p className={styles.landingUrl}>
-                            {cabinet.requisites.bank_name}, счёт •••• {accountTail}
+                            {state.record.bank_name}, счёт •••• {accountTail}
                         </p>
                     </div>
                 </div>
             )}
 
-            {!open && !cabinet.requisites && (
+            {!open && !state?.record && !hasRequisites && (
                 <p className={styles.emptyText}>
                     Заполните реквизиты, чтобы отправлять заявки на выплату.
                 </p>
             )}
 
-            {open && (
+            {!open && !state?.record && hasRequisites && <p className={styles.emptyText}>Реквизиты сохранены.</p>}
+            <div id="partner-requisites-content" hidden={!open}>
+            {open && !state?.loaded && !state?.error && <p role="status">Загружаем реквизиты…</p>}
+            {open && Boolean(state?.error) && !state?.conflict && <p role="alert" className={styles.error}>
+                {state?.reloadFailed ? 'Не удалось загрузить актуальные реквизиты. Ваш черновик сохранён.' : state?.loaded ? 'Не удалось сохранить реквизиты. Проверьте поля и повторите.' : 'Не удалось загрузить реквизиты.'}{' '}
+                {!state?.loaded && <button type="button" className={styles.secondaryButton} onClick={() => void editor.retry()}>Повторить загрузку реквизитов</button>}
+            </p>}
+            {open && state?.conflict && <p role="alert" className={styles.error}>
+                Реквизиты изменились в другой вкладке. Ваш черновик сохранён, повторное сохранение остановлено.
+                {state.reloadFailed && ' Не удалось загрузить актуальные реквизиты. Попробуйте ещё раз.'}
+            </p>}
+            {open && state?.loaded && <details>
+                <summary>Загрузить актуальные реквизиты</summary>
+                <p className={styles.helperText}>Текущий черновик будет заменён данными с сервера после успешной загрузки.</p>
+                <button type="button" className={styles.secondaryButton} disabled={saving || loading} onClick={() => void editor.reload()}>
+                    {loading ? 'Загружаем…' : 'Заменить черновик актуальной версией'}
+                </button>
+            </details>}
+            {open && state?.saved && <p role="status" className={styles.notice}>Реквизиты сохранены.</p>}
+            {open && state?.loaded && (
                 <form
                     id="partner-requisites-form"
                     className={styles.requisitesForm}
                     onSubmit={event => {
                         event.preventDefault();
-                        void cabinet.saveRequisites();
+                        void editor.save();
                     }}
                 >
+                    <fieldset className={styles.requisitesFields} disabled={locked}>
                     <div className={styles.entitySelector} aria-label="Тип получателя">
                         {ENTITY_OPTIONS.map(option => (
                             <button
                                 key={option.id}
                                 type="button"
                                 className={`${styles.entityOption} ${draft.entity_type === option.id ? styles.entityOptionActive : ''}`}
-                                onClick={() => cabinet.setEntityType(option.id)}
+                                onClick={() => editor.setEntityType(option.id)}
                                 aria-pressed={draft.entity_type === option.id}
                             >
                                 {option.label}
@@ -100,7 +129,7 @@ export const PartnerRequisitesCard = ({
                                 minLength={2}
                                 maxLength={255}
                                 value={draft.recipient_name}
-                                onChange={event => cabinet.setRequisitesField('recipient_name', event.target.value)}
+                                onChange={event => editor.setField('recipient_name', event.target.value)}
                                 placeholder={isLegalEntity ? 'ООО «Название»' : 'Фамилия Имя Отчество'}
                             />
                         </label>
@@ -116,7 +145,7 @@ export const PartnerRequisitesCard = ({
                                 maxLength={taxIdLength}
                                 pattern={`\\d{${taxIdLength}}`}
                                 value={draft.tax_id}
-                                onChange={event => cabinet.setRequisitesField('tax_id', event.target.value.replace(/\D/g, ''))}
+                                onChange={event => editor.setField('tax_id', event.target.value.replace(/\D/g, ''))}
                                 placeholder={isLegalEntity ? '10 цифр' : '12 цифр'}
                             />
                         </label>
@@ -133,7 +162,7 @@ export const PartnerRequisitesCard = ({
                                     maxLength={9}
                                     pattern="\d{9}"
                                     value={draft.kpp ?? ''}
-                                    onChange={event => cabinet.setRequisitesField('kpp', event.target.value.replace(/\D/g, ''))}
+                                    onChange={event => editor.setField('kpp', event.target.value.replace(/\D/g, ''))}
                                     placeholder="9 цифр"
                                 />
                             </label>
@@ -148,7 +177,7 @@ export const PartnerRequisitesCard = ({
                                 minLength={2}
                                 maxLength={255}
                                 value={draft.bank_name}
-                                onChange={event => cabinet.setRequisitesField('bank_name', event.target.value)}
+                                onChange={event => editor.setField('bank_name', event.target.value)}
                                 placeholder="Название банка"
                             />
                         </label>
@@ -164,7 +193,7 @@ export const PartnerRequisitesCard = ({
                                 maxLength={9}
                                 pattern="\d{9}"
                                 value={draft.bic}
-                                onChange={event => cabinet.setRequisitesField('bic', event.target.value.replace(/\D/g, ''))}
+                                onChange={event => editor.setField('bic', event.target.value.replace(/\D/g, ''))}
                                 placeholder="9 цифр"
                             />
                         </label>
@@ -180,7 +209,7 @@ export const PartnerRequisitesCard = ({
                                 maxLength={20}
                                 pattern="\d{20}"
                                 value={draft.correspondent_account}
-                                onChange={event => cabinet.setRequisitesField('correspondent_account', event.target.value.replace(/\D/g, ''))}
+                                onChange={event => editor.setField('correspondent_account', event.target.value.replace(/\D/g, ''))}
                                 placeholder="20 цифр"
                             />
                         </label>
@@ -196,7 +225,7 @@ export const PartnerRequisitesCard = ({
                                 maxLength={20}
                                 pattern="\d{20}"
                                 value={draft.settlement_account}
-                                onChange={event => cabinet.setRequisitesField('settlement_account', event.target.value.replace(/\D/g, ''))}
+                                onChange={event => editor.setField('settlement_account', event.target.value.replace(/\D/g, ''))}
                                 placeholder="20 цифр"
                             />
                         </label>
@@ -210,13 +239,15 @@ export const PartnerRequisitesCard = ({
                     <button
                         type="submit"
                         className={styles.primaryButton}
-                        disabled={cabinet.requisitesPending}
+                        disabled={saving}
                     >
                         <PiBank size={20} aria-hidden="true" />
-                        {cabinet.requisitesPending ? 'Сохраняем…' : 'Сохранить реквизиты'}
+                        {saving ? 'Сохраняем…' : 'Сохранить реквизиты'}
                     </button>
+                    </fieldset>
                 </form>
             )}
+            </div>
         </section>
     );
 };

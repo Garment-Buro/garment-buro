@@ -2,31 +2,21 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
+import { spawnSync } from 'node:child_process';
 
 const frontendRoot = process.cwd();
-const projectRoot = path.dirname(frontendRoot);
 const readFrontend = (...parts) => fs.readFileSync(path.join(frontendRoot, ...parts), 'utf8');
-const readProject = (...parts) => fs.readFileSync(path.join(projectRoot, ...parts), 'utf8');
 
-test('CRM cabinet is a default-off build feature coupled to identity v2', () => {
-    const authConfig = readFrontend('lib', 'auth', 'config.ts');
-    const nextConfig = readFrontend('next.config.ts');
-    const dockerfile = readFrontend('Dockerfile');
-    const environment = readProject('.env.example');
-    const compose = [
-        readProject('docker-compose.yml'),
-        readProject('docker-compose.local.yml'),
-    ].join('\n');
-
-    assert.match(authConfig, /NEXT_PUBLIC_CRM_CABINET_ENABLED\s*===\s*['"]true['"]/);
-    assert.match(nextConfig, /CRM_CABINET_ENABLED\s*&&\s*!IDENTITY_SESSION_V2_ENABLED/);
-    assert.match(dockerfile, /ARG NEXT_PUBLIC_CRM_CABINET_ENABLED=false/);
-    assert.match(dockerfile, /ENV NEXT_PUBLIC_CRM_CABINET_ENABLED=/);
-    assert.match(environment, /NEXT_PUBLIC_CRM_CABINET_ENABLED=false/);
-    assert.equal(
-        (compose.match(/NEXT_PUBLIC_CRM_CABINET_ENABLED:\s*\$\{/g) || []).length,
-        2,
-    );
+test('CRM build fails without coordinated identity and accepts valid enabled or disabled configurations', () => {
+    for (const [crm, identity, valid] of [['true', 'false', false], ['true', 'true', true], ['false', 'false', true]]) {
+        const result = spawnSync(process.execPath, ['--disable-warning=MODULE_TYPELESS_PACKAGE_JSON', '--input-type=module', '-e', "await import('./next.config.ts')"], {
+            cwd: frontendRoot,
+            env: { ...process.env, NEXT_PUBLIC_CATALOG_WRITES_ENABLED: 'false', NEXT_PUBLIC_CRM_CABINET_ENABLED: crm, NEXT_PUBLIC_IDENTITY_SESSION_V2_ENABLED: identity },
+            encoding: 'utf8',
+        });
+        assert.equal(result.status === 0, valid);
+        if (!valid) assert.match(result.stderr, /NEXT_PUBLIC_CRM_CABINET_ENABLED requires NEXT_PUBLIC_IDENTITY_SESSION_V2_ENABLED/);
+    }
 });
 
 test('CRM access and project reads use authenticated same-origin clients', () => {

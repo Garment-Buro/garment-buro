@@ -4,9 +4,9 @@ export const hasUsableAuthToken = (token: string | null): token is string => (
     Boolean(token && token !== 'null' && token !== 'undefined')
 );
 
-export const parseAuthOrderItems = (cartJson: string): AuthOrderItem[] => {
+export const parseAuthOrderItems = (cartJson: string | null): AuthOrderItem[] => {
     try {
-        const parsed: unknown = JSON.parse(cartJson);
+        const parsed: unknown = JSON.parse(cartJson ?? 'null');
         return Array.isArray(parsed) ? parsed as AuthOrderItem[] : [];
     } catch {
         return [];

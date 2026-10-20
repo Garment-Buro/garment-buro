@@ -297,7 +297,6 @@ def test_packing_rework_resets_quality_status_and_preserves_sibling(tmp_path):
                 await execute(db, service, "plan", unit_id=unit_id, specification=spec)
                 await execute(db, service, "confirm_documents", unit_id=unit_id)
             await execute(db, service, "approve_order")
-            await execute(db, service, "approve_order", actor=people["dtf"])
             await execute(db, service, "release")
             for unit_id in (1, 2):
                 await execute(db, service, "issue_unit_label", actor=2, unit_id=unit_id)

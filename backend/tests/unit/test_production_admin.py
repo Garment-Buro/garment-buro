@@ -9,6 +9,7 @@ from httpx import ASGITransport, AsyncClient
 from pydantic import SecretStr
 from sqlalchemy import select
 
+from app.modules.catalog.models import Product, ProductVariant
 from app.modules.identity.models import RoleName, SecurityAuditEvent, User, UserRole
 from app.modules.identity.repository import IdentityRepository
 from app.modules.orders.models import Order
@@ -25,8 +26,8 @@ from tests.unit.test_production_terminal import setup
 
 
 @asynccontextmanager
-async def admin_app(tmp_path):
-    async with setup(tmp_path) as (db, service, _):
+async def admin_app(tmp_path, postgres_url=None):
+    async with setup(tmp_path, postgres_url=postgres_url) as (db, service, _):
         settings = service.settings.model_copy(
             update={
                 "production_terminal_enabled": True,
@@ -124,13 +125,21 @@ def test_administrator_reads_all_sections_without_exposing_secrets(tmp_path):
                     "problems",
                     "problems/2",
                     "orders/1",
-                    "assortment/models",
-                    "assortment/fabrics",
-                    "assortment/patterns",
-                    "assortment/tech-cards",
-                    "assortment/accessories",
-                    "assortment/boxes",
+                    "assortment/directory/pattern-models",
+                    "assortment/directory/fabrics",
+                    "assortment/directory/models",
+                    "assortment/directory/fabric-requirements",
+                    "assortment/directory/patterns",
+                    "assortment/directory/tech-cards",
+                    "assortment/directory/tech-card-models",
+                    "assortment/directory/accessories",
+                    "assortment/directory/boxes",
+                    "assortment/directory/accessory-categories",
+                    "assortment/directory/accessory-requirements",
+                    "assortment/directory/packaging-rules",
                     "assortment/products",
+                    "assortment/editor-options/models",
+                    "assortment/editor-options/fabrics",
                 ):
                     response = await client.get(f"/api/production/admin/{name}")
                     assert response.status_code == 200, response.text
@@ -176,8 +185,14 @@ def test_administrator_reads_all_sections_without_exposing_secrets(tmp_path):
                 )
                 assert detail.status_code == 200, detail.text
                 assert detail.json()["account"]["id"] == 3
-                assert [order["id"] for order in detail.json()["orders"]] == [1]
-                assert [ticket["id"] for ticket in detail.json()["tickets"]] == [1]
+                assert detail.json()["orders_count"] == 1
+                assert detail.json()["tickets_count"] == 1
+                for kind in ("orders", "tickets"):
+                    history = await client.get(
+                        f"/api/production/admin/clients/{kind}",
+                        params={"key": clients["items"][0]["key"]},
+                    )
+                    assert [item["id"] for item in history.json()["items"]] == [1]
                 assert detail.json()["recipient"]["city"] == "Test city"
                 assert (
                     await client.get("/api/production/admin/employees?q=customer%40example.test")
@@ -373,7 +388,7 @@ def test_floor_code_cannot_be_used_as_admin_even_after_role_grant(tmp_path):
                 assert not (await client.get("/api/production/me")).json()["can_administer"]
                 assert (await client.get("/api/production/admin/employees")).status_code == 403
                 assert (
-                    await client.get("/api/production/admin/assortment/models")
+                    await client.get("/api/production/admin/assortment/directory/pattern-models")
                 ).status_code == 403
                 assert (
                     await client.post(
@@ -418,7 +433,25 @@ def test_production_administrator_only_sees_orders_and_problems(tmp_path):
                     "support",
                     "support/1",
                     "tickets/1",
-                    "assortment/models",
+                    "assortment/directory/pattern-models",
+                    "assortment/directory/models",
+                    "assortment/directory/fabrics",
+                    "assortment/directory/fabric-requirements",
+                    "assortment/directory/selected?kind=models&ids=1",
+                    "assortment/directory/accessories",
+                    "assortment/directory/boxes",
+                    "assortment/directory/accessory-categories",
+                    "assortment/directory/accessory-requirements",
+                    "assortment/directory/packaging-rules",
+                    "assortment/models/1",
+                    "assortment/directory/tech-cards",
+                    "assortment/directory/tech-card-models",
+                    "assortment/tech-cards/1/revision-source",
+                    "assortment/directory/patterns",
+                    "assortment/directory/pattern-sizes?model_id=1",
+                    "assortment/models/1/pattern-coverage",
+                    "assortment/models/1/pattern-size/1",
+                    "assortment/patterns/1",
                 ):
                     assert (await client.get(f"/api/production/admin/{path}")).status_code == 403
 
@@ -765,5 +798,181 @@ def test_admin_filters_employees_by_availability_and_station(tmp_path):
                 assert (
                     await client.get("/api/production/admin/employees?station=unknown")
                 ).status_code == 422
+
+    asyncio.run(scenario())
+
+
+def test_shared_editor_can_update_an_existing_physical_product_without_assigning_a_model(tmp_path):
+    async def scenario():
+        async with admin_app(tmp_path) as (app, db, code, _):
+            async with db.session() as session:
+                product = Product(
+                    title="Физический товар",
+                    price=80,
+                    stock_quantity=7,
+                    variants=[ProductVariant(size="M", color="Белый", stock_quantity=7)],
+                )
+                session.add(product)
+                await session.commit()
+                product_id = product.id
+            app.state.settings = app.state.settings.model_copy(
+                update={"catalog_writes_enabled": True, "crm_writes_enabled": True}
+            )
+            async with AsyncClient(transport=ASGITransport(app), base_url="https://test") as client:
+                assert (
+                    await client.post("/api/production/auth/login", json={"code": code})
+                ).status_code == 200
+                response = await client.get(
+                    f"/api/production/admin/assortment/products/{product_id}"
+                )
+                assert response.status_code == 200, response.text
+                body = response.json()
+                assert body["garment_model_id"] is None
+                body["title"] = "Название физического товара"
+                body["expected_version"] = body["version"]
+                result = await client.put(
+                    f"/api/production/admin/assortment/products/{product_id}", json=body
+                )
+                assert result.status_code == 200, result.text
+                assert body["version"] == 1 and result.json()["version"] == 2
+                stale = await client.put(
+                    f"/api/production/admin/assortment/products/{product_id}", json=body
+                )
+                assert stale.status_code == 409
+                assert stale.json()["detail"]["code"] == "catalog_product_version_conflict"
+                assert result.json()["title"] == body["title"]
+                assert result.json()["garment_model_id"] is None
+                if body["variants"]:
+                    assert result.json()["variants"][0]["id"] == body["variants"][0]["id"]
+
+    asyncio.run(scenario())
+
+
+def test_production_landing_directory_is_paged_and_preserves_system_admin_boundary(tmp_path):
+    async def scenario():
+        from app.modules.partners.models import PartnerLanding, PartnerLandingProduct
+
+        async with admin_app(tmp_path) as (app, db, code, cutter_code):
+            async with db.session() as session:
+                partner = await session.scalar(select(PartnerProfile))
+                product = await session.scalar(select(Product))
+                for index in range(3):
+                    landing = PartnerLanding(
+                        partner_id=partner.id,
+                        title=f"ЛЕНДИНГ {index}",
+                        slug=f"directory-{index}",
+                        headline="Headline",
+                        description="Description",
+                        cta_label="Open",
+                        cta_href="/",
+                        product_links=[PartnerLandingProduct(product_id=product.id, position=0)],
+                    )
+                    session.add(landing)
+                await session.commit()
+            path = "/api/production/admin/assortment/product-communities"
+            async with AsyncClient(transport=ASGITransport(app), base_url="https://test") as client:
+                assert (await client.get(path)).status_code == 401
+                assert (
+                    await client.post("/api/production/auth/login", json={"code": cutter_code})
+                ).status_code == 200
+                assert (await client.get(path)).status_code == 403
+                assert (
+                    await client.post("/api/production/auth/login", json={"code": code})
+                ).status_code == 200
+                page = await client.get(path, params={"limit": 1})
+                assert page.status_code == 200 and page.headers["cache-control"] == "no-store"
+                row = page.json()["items"][0]
+                assert row["product_count"] == 1 and "product_ids" not in row
+                counts = await client.get("/api/production/admin/assortment/product-counts")
+                assert counts.json()["communities"] == 3
+                products = await client.get("/api/production/admin/assortment/products")
+                assert any(
+                    item["community_count"] == 3 and len(item["communities"]) == 3
+                    for item in products.json()["items"]
+                )
+
+                assert len(page.json()["items"]) == 1 and page.json()["next_cursor"]
+                found = await client.get(path, params={"query": "directory-2"})
+                assert [entry["id"] for entry in found.json()["items"]] == [row["id"]]
+                invalid = await client.get(
+                    path, params={"cursor": page.json()["next_cursor"], "query": "changed"}
+                )
+                assert (
+                    invalid.status_code == 422
+                    and invalid.json()["detail"]["code"] == "invalid_cursor"
+                )
+                assert (await client.get(path, params={"limit": 101})).status_code == 422
+
+    asyncio.run(scenario())
+
+
+def test_primary_presets_delete_uses_system_role_write_flags_reservations_and_audit(tmp_path):
+    async def scenario():
+        from app.modules.catalog.models import CatalogAuditEvent
+
+        async with admin_app(tmp_path) as (app, db, code, cutter_code):
+            async with db.session() as session:
+                product = Product(
+                    title="Удаляемый пресет",
+                    price=80,
+                    stock_quantity=7,
+                    variants=[
+                        ProductVariant(
+                            size="M", color="Белый", stock_quantity=7, reserved_quantity=1
+                        )
+                    ],
+                )
+                session.add(product)
+                await session.commit()
+                product_id = product.id
+                employee = await session.scalar(
+                    select(ProductionEmployee).where(ProductionEmployee.user_id == 2)
+                )
+                employee.is_production_admin = True
+                await session.commit()
+            endpoint = f"/api/production/admin/assortment/products/{product_id}"
+            async with AsyncClient(transport=ASGITransport(app), base_url="https://test") as client:
+                assert (await client.delete(endpoint)).status_code == 401
+                await client.post("/api/production/auth/login", json={"code": cutter_code})
+                assert (await client.delete(endpoint)).status_code == 403
+                await client.post("/api/production/auth/login", json={"code": code})
+                for crm, catalog in ((False, True), (True, False)):
+                    app.state.settings = app.state.settings.model_copy(
+                        update={"crm_writes_enabled": crm, "catalog_writes_enabled": catalog}
+                    )
+                    assert (await client.delete(endpoint)).status_code == 503
+                app.state.settings = app.state.settings.model_copy(
+                    update={"crm_writes_enabled": True, "catalog_writes_enabled": True}
+                )
+                reserved = await client.delete(endpoint)
+                assert reserved.status_code == 409, reserved.text
+                async with db.session() as session:
+                    assert await session.get(Product, product_id) is not None
+                    assert not list(
+                        await session.scalars(
+                            select(CatalogAuditEvent).where(
+                                CatalogAuditEvent.product_id == product_id
+                            )
+                        )
+                    )
+                    variant = await session.scalar(
+                        select(ProductVariant).where(ProductVariant.product_id == product_id)
+                    )
+                    variant.reserved_quantity = 0
+                    await session.commit()
+                deleted = await client.delete(endpoint)
+                assert deleted.status_code == 200, deleted.text
+                assert deleted.json() == {"status": "deleted"}
+                assert (await client.delete(endpoint)).status_code == 404
+            async with db.session() as session:
+                assert await session.get(Product, product_id) is None
+                events = list(
+                    await session.scalars(
+                        select(CatalogAuditEvent).where(CatalogAuditEvent.product_id == product_id)
+                    )
+                )
+                assert len(events) == 1 and events[0].action == "product.deleted"
+                assert events[0].actor_user_id is not None
+                assert len(events[0].snapshot_checksum_sha256) == 64
 
     asyncio.run(scenario())

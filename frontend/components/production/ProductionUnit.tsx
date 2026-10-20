@@ -1,6 +1,6 @@
 /* eslint-disable @next/next/no-img-element -- generated production QR */
 'use client';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { PiPrinter, PiQrCode } from 'react-icons/pi';
 import {
     labels,
@@ -9,9 +9,11 @@ import {
     type Station,
     type Unit,
 } from '@/lib/production/types';
-import { canAct, currentStage } from '@/lib/production/workflow';
+import { canAct, currentStage, visibleInstructions } from '@/lib/production/workflow';
 import { productionApi } from '@/lib/api/production';
 import { useProductionAuthStore } from '@/store/productionAuthStore';
+import { ProductionViews } from './workspaces/ProductionViews';
+import { TechCardContent } from './workspaces/ProductionTechCard';
 import { SpecificationForm } from './SpecificationForm';
 import { OrderEvidence } from './OrderEvidence';
 import { UnitHandoff } from './UnitHandoff';
@@ -36,12 +38,14 @@ export function ProductionUnit({
     busy: boolean;
     print?: (target: PrintTarget) => void;
 }) {
+    const patternsDialog = useRef<HTMLDialogElement>(null);
+    const cardDialog = useRef<HTMLDialogElement>(null);
     const run = useProductionAuthStore((state) => state.runAuthenticated);
     const [quality, setQuality] = useState<number[]>([]);
     const [note, setNote] = useState('');
     const [wrapped, setWrapped] = useState(false);
     const [error, setError] = useState('');
-    const [downloading, setDownloading] = useState(false);
+    const [downloading, setDownloading] = useState<Set<number>>(new Set());
     const stage =
             project.flow_version === 2 && unit.lane === 'cut'
                 ? 'cut'
@@ -52,11 +56,11 @@ export function ProductionUnit({
         ? `/api/qr-code?surface=production&size=256&path=${encodeURIComponent(`/production/label?token=${unit.public_token}`)}`
         : null;
     const download = async (id: number) => {
-        setDownloading(true);
+        setDownloading(current => new Set(current).add(id));
         setError('');
         try {
             const file = await run((token) =>
-                productionApi.download(token, id, station),
+                productionApi.download(token, id, station, true),
             );
             const link = document.createElement('a');
             link.href = file.url;
@@ -68,7 +72,7 @@ export function ProductionUnit({
                 error instanceof Error ? error.message : 'Файл недоступен',
             );
         } finally {
-            setDownloading(false);
+            setDownloading(current => { const next = new Set(current); next.delete(id); return next; });
         }
     };
     return (
@@ -107,38 +111,51 @@ export function ProductionUnit({
                     ))}
                 </div>
             )}
-            {tech && station === 'tech' && project.state === 'inbox' && (
-                <SpecificationForm unit={unit} send={send} busy={busy} />
+            {station === 'tech' && (
+                <>
+                    <div className={styles.orderInfo}>
+                        <p data-tone="blue">Размер<strong>{unit.source.size}</strong></p>
+                        <p data-tone="purple">Цвет<strong>{unit.source.color}</strong></p>
+                        <p data-tone="yellow">Нанесение<strong>{!spec ? 'Не задано' : spec.print_file_ids.length ? 'DTF' : 'Без нанесения'}</strong></p>
+                        <button type="button" data-tone="blue" onClick={() => patternsDialog.current?.showModal()}>
+                            Оригиналы лекал
+                            <strong>{spec?.pattern_file_ids.length ? `${spec.pattern_file_ids.length} файл(а)` : 'Не прикреплены'}</strong>
+                            <small>Открыть список файлов</small>
+                        </button>
+                        <button type="button" data-tone="purple" onClick={() => cardDialog.current?.showModal()}>
+                            Техкарта
+                            <strong>{unit.tech_card?.name || unit.cards.find(card => card.id === spec?.tech_card_revision_id)?.name || 'Техкарта не закреплена'}</strong>
+                            <small>Просмотреть техкарту модели</small>
+                        </button>
+                    </div>
+                    <dialog ref={cardDialog} className={styles.techCardDialog} aria-label="Техкарта изделия">
+                        <header><h2>Техкарта изделия</h2><button type="button" onClick={() => cardDialog.current?.close()} aria-label="Закрыть техкарту">Закрыть</button></header>
+                        <p>{unit.source.title} · {unit.source.size} · {unit.source.color}</p>
+                        <TechCardContent unit={unit} />
+                        {tech && project.state === 'inbox' && (
+                            <details className={styles.section}>
+                                <summary>{spec ? 'Изменить задание на эту вещь' : 'Подготовить задание на эту вещь'}</summary>
+                                <SpecificationForm unit={unit} send={send} busy={busy} />
+                            </details>
+                        )}
+                    </dialog>
+                    <dialog ref={patternsDialog} className={styles.techCardDialog} aria-label="Оригиналы лекал">
+                        <header><h2>Оригиналы лекал</h2><button type="button" onClick={() => patternsDialog.current?.close()}>Закрыть</button></header>
+                        <p>{unit.source.title} · {unit.source.size} · вещь #{unit.id}</p>
+                        {spec?.pattern_file_ids.length ? unit.files.filter(file => spec.pattern_file_ids.includes(file.id)).map(file => (
+                            <div className={styles.file} key={file.id}>
+                                <span>{file.name}<small>{Math.ceil(file.size_bytes / 1024)} КБ</small></span>
+                                <button type="button" disabled={downloading.has(file.id)} onClick={() => void download(file.id)}>
+                                    {downloading.has(file.id) ? 'Открываем…' : 'Открыть оригинал лекала'}
+                                </button>
+                            </div>
+                        )) : <p>Лекала ещё не прикреплены к заданию на эту вещь.</p>}
+                        {error && <p className={styles.error} role="alert">{error}</p>}
+                    </dialog>
+                </>
             )}
             {spec && (
                 <>
-                    {station === 'tech' && (
-                        <div className={styles.statusGrid}>
-                            <p>
-                                Привязанная техкарта
-                                <strong>
-                                    {(() => {
-                                        const card = unit.cards.find(
-                                            (item) =>
-                                                item.id ===
-                                                spec.tech_card_revision_id,
-                                        );
-                                        return card
-                                            ? `${card.name} · ревизия ${card.revision}`
-                                            : `Ревизия №${spec.tech_card_revision_id}`;
-                                    })()}
-                                </strong>
-                            </p>
-                            <p>
-                                Оригиналы лекал
-                                <strong>
-                                    {spec.pattern_file_ids.length
-                                        ? `${spec.pattern_file_ids.length} файл(а)`
-                                        : 'Не прикреплены'}
-                                </strong>
-                            </p>
-                        </div>
-                    )}
                     <ol className={styles.route}>
                         {spec.route.map((step, index) => (
                             <li
@@ -156,7 +173,9 @@ export function ProductionUnit({
                             </li>
                         ))}
                     </ol>
-                    <p className={styles.instructions}>{spec.instructions}</p>
+                    {visibleInstructions(spec.instructions) && (
+                        <p className={styles.instructions}>{visibleInstructions(spec.instructions)}</p>
+                    )}
                     {canAct(stations, 'kit') && (
                         <details className={styles.section} open>
                             <summary>Комплектующие</summary>
@@ -201,13 +220,13 @@ export function ProductionUnit({
                     )}
                     {spec.print_file_ids.length > 0 && (
                         <div className={styles.statusGrid}>
-                            <p>
+                            <p data-tone={unit.dtf_ready ? 'green' : 'yellow'}>
                                 DTF у печатника
                                 <strong>
                                     {unit.dtf_ready ? 'Готов' : 'Ожидается'}
                                 </strong>
                             </p>
-                            <p>
+                            <p data-tone={unit.dtf_inserted ? 'green' : 'yellow'}>
                                 DTF в мешке
                                 <strong>
                                     {unit.dtf_inserted
@@ -267,7 +286,7 @@ export function ProductionUnit({
                                                 </small>
                                             </span>
                                             <button
-                                                disabled={downloading}
+                                                disabled={downloading.has(file.id)}
                                                 onClick={() =>
                                                     void download(file.id)
                                                 }
@@ -278,6 +297,7 @@ export function ProductionUnit({
                                     ))}
                             </details>
                         )}
+                    {station === 'tech' && <ProductionViews unit={unit} station={station} />}
                     <div className={styles.actions}>
                         {tech &&
                             project.state === 'inbox' &&
@@ -293,12 +313,6 @@ export function ProductionUnit({
                                 >
                                     Техкарта и лекала проверены
                                 </button>
-                            )}
-                        {unit.documents_confirmed &&
-                            project.state === 'inbox' && (
-                                <span className={styles.success}>
-                                    Документы подтверждены технологом
-                                </span>
                             )}
                         {project.flow_version !== 2 &&
                             ['kitting', 'workshop', 'waiting_dtf'].includes(
@@ -339,36 +353,6 @@ export function ProductionUnit({
                                 </button>
                             )}
                     </div>
-                    {tech && unit.documents_confirmed && unitQr && (
-                        <section className={styles.unitQrCard}>
-                            <div>
-                                <PiQrCode aria-hidden />
-                                <span>
-                                    <strong>QR изделия готов</strong>
-                                    <small>
-                                        Вещь №{unit.id} · заказ №
-                                        {project.order_id}
-                                    </small>
-                                </span>
-                            </div>
-                            <img
-                                src={unitQr}
-                                alt={`QR изделия ${unit.id}`}
-                                width={112}
-                                height={112}
-                            />
-                            {print && (
-                                <button
-                                    type="button"
-                                    disabled={busy}
-                                    onClick={() => print(unit.id)}
-                                >
-                                    <PiPrinter aria-hidden />
-                                    Распечатать QR изделия
-                                </button>
-                            )}
-                        </section>
-                    )}
                     {project.state === 'workshop' &&
                         stage &&
                         (project.flow_version !== 2 || unit.lane === stage) &&
@@ -453,6 +437,37 @@ export function ProductionUnit({
                         )}
                 </>
             )}
+            {station === 'tech' && !spec && <ProductionViews unit={unit} station={station} />}
+                    {tech && (
+                        <section className={styles.unitQrCard} data-ready={Boolean(unit.documents_confirmed && unitQr)}>
+                            <div>
+                                <PiQrCode aria-hidden />
+                                <span>
+                                    <strong>{unit.documents_confirmed && unitQr ? 'QR изделия готов' : 'Ожидает подтверждения техкарты и лекал'}</strong>
+                                    <small>
+                                        Вещь №{unit.id} · заказ №
+                                        {project.order_id}
+                                    </small>
+                                </span>
+                            </div>
+                            {unit.documents_confirmed && unitQr && <img
+                                src={unitQr}
+                                alt={`QR изделия ${unit.id}`}
+                                width={112}
+                                height={112}
+                            />}
+                            {print && unit.documents_confirmed && unitQr && (
+                                <button
+                                    type="button"
+                                    disabled={busy}
+                                    onClick={() => print(unit.id)}
+                                >
+                                    <PiPrinter aria-hidden />
+                                    Распечатать QR изделия
+                                </button>
+                            )}
+                        </section>
+                    )}
             {project.state !== 'dispatched' && station !== 'tech' && (
                 <details className={styles.section}>
                     <summary>

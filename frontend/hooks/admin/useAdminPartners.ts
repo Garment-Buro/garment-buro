@@ -1,71 +1,32 @@
-"use client";
-
-import { useCallback, useEffect, useState } from 'react';
-
-import {
-    createAdminPartner,
-    createAdminPartnerLanding,
-    getAdminPartners,
-    getAdminPartnerLandings,
-    updateAdminPartnerLanding,
-} from '@/lib/api/partners';
-import type {
-    PartnerCreatePayload,
-    PartnerLandingCreatePayload,
-    PartnerLandingUpdatePayload,
-    PartnerLanding,
-    PartnerProfile,
-} from '@/lib/partners/types';
-import { useAuthStore } from '@/store/authStore';
-
+'use client';
+import { useState } from 'react';
+import { useCustomerAccount, runForCustomer } from '@/hooks/catalog/customerSession';
+import { createAdminPartner, createAdminPartnerLanding, updateAdminPartnerLanding } from '@/lib/api/partners';
+import type { PartnerCreatePayload, PartnerLandingCreatePayload, PartnerLandingUpdatePayload } from '@/lib/partners/types';
 export const useAdminPartners = () => {
-    const runAuthenticated = useAuthStore(state => state.runAuthenticated);
-    const [partners, setPartners] = useState<PartnerProfile[]>([]);
-    const [landings, setLandings] = useState<PartnerLanding[]>([]);
-    const [loading, setLoading] = useState(true);
+    const account = useCustomerAccount();
     const [error, setError] = useState('');
-
-    const reload = useCallback(async () => {
-        setLoading(true);
-        setError('');
-        try {
-            const [partnerResult, landingResult] = await runAuthenticated(token => Promise.all([
-                getAdminPartners(token),
-                getAdminPartnerLandings(token),
-            ]));
-            setPartners(partnerResult);
-            setLandings(landingResult);
-        } catch {
-            setError('Не удалось загрузить партнёров. Проверьте доступ администратора.');
-        } finally {
-            setLoading(false);
-        }
-    }, [runAuthenticated]);
-
-    useEffect(() => {
-        void reload();
-    }, [reload]);
-
+    const [landingsRevision, setLandingsRevision] = useState(0);
+    const [partnersRevision, setPartnersRevision] = useState(0);
+    const run = <T,>(operation: (token: string) => Promise<T>) => {
+        if (!account.userId)
+            return Promise.reject<T>(new Error('Войдите в аккаунт для управления партнёрами.'));
+        return runForCustomer(account.userId, operation, account.key);
+    };
     const addPartner = async (payload: PartnerCreatePayload) => {
-        const created = await runAuthenticated(token => createAdminPartner(token, payload));
-        setPartners(current => [created, ...current]);
+        const created = await run(token => createAdminPartner(token, payload));
+        setPartnersRevision(value => value + 1);
         return created;
     };
-
-    const addLanding = async (
-        partnerId: number,
-        payload: PartnerLandingCreatePayload,
-    ) => {
-        const landing = await runAuthenticated(token => createAdminPartnerLanding(token, partnerId, payload));
-        setLandings(current => [landing, ...current]);
+    const addLanding = async (partnerId: number, payload: PartnerLandingCreatePayload) => {
+        const landing = await run(token => createAdminPartnerLanding(token, partnerId, payload));
+        setLandingsRevision(value => value + 1);
         return landing;
     };
-
-    const updateLanding = async (landingId: number, payload: PartnerLandingUpdatePayload) => {
-        const landing = await runAuthenticated(token => updateAdminPartnerLanding(token, landingId, payload));
-        setLandings(current => current.map(item => item.id === landing.id ? landing : item));
+    const updateLanding = async (id: number, payload: PartnerLandingUpdatePayload) => {
+        const landing = await run(token => updateAdminPartnerLanding(token, id, payload));
+        setLandingsRevision(value => value + 1);
         return landing;
     };
-
-    return { partners, landings, loading, error, setError, addPartner, addLanding, updateLanding };
+    return { error, setError, addPartner, addLanding, updateLanding, landingsRevision, partnersRevision };
 };

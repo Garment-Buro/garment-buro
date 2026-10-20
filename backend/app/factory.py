@@ -1,33 +1,27 @@
 from __future__ import annotations
 
-import asyncio
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager, suppress
-
-from anyio import to_thread
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.legacy_admin import router as retired_legacy_admin_router
+from app.api.errors import invalid_request_response
 from app.api.system import router as system_router
 from app.core.config import Settings, get_settings
 from app.db.session import DatabaseManager
+from app.db.verification import verify_postgres_schema
 from app.integrations.minio import MinioStorage
 from app.integrations.tochka.provider import TochkaPayoutProvider
 from app.integrations.tochka.transport import TochkaTransport
 from app.modules.bank_payouts.router import router as bank_payout_router
 from app.modules.bank_payouts.service import PartnerBankPayoutService
-from app.modules.bank_payouts.worker import reconcile_bank_payouts
-from app.modules.carts.cutover import verify_cart_cutover
 from app.modules.carts.router import router as cart_router
-from app.modules.catalog.content import verify_catalog_content_cutover
-from app.modules.catalog.content_router import router as catalog_content_router
-from app.modules.catalog.cutover import verify_catalog_cutover
+from app.modules.catalog.dependencies import require_catalog_writer
+from app.modules.catalog.editor_options import editor_options_router
 from app.modules.catalog.router import category_router as catalog_category_router
 from app.modules.catalog.router import category_write_router as catalog_category_write_router
 from app.modules.catalog.router import router as catalog_router
-from app.modules.catalog.router import variant_write_router
 from app.modules.catalog.router import write_router as catalog_write_router
+from app.modules.catalog.storefront_router import router as storefront_router
 from app.modules.checkout.router import router as checkout_router
 from app.modules.checkout.service import CheckoutService
 from app.modules.crm.assortment_router import router as crm_assortment_router
@@ -40,29 +34,33 @@ from app.modules.crm.read_service import CrmReadService
 from app.modules.crm.reference_router import router as crm_reference_write_router
 from app.modules.crm.router import router as crm_router
 from app.modules.crm.router import write_router as crm_write_router
-from app.modules.delivery.directory import PickupDirectory
+from app.modules.customer_projects.media_router import router as customer_project_media_router
+from app.modules.customer_projects.router import router as customer_projects_router
 from app.modules.delivery.directory_router import router as pickup_directory_router
 from app.modules.delivery.provider import AiohttpCdekTransport, CdekProviderClient
 from app.modules.delivery.quote_router import router as cdek_quote_router
 from app.modules.delivery.quote_service import CdekQuoteService
-from app.modules.identity.cutover import verify_identity_cutover
-from app.modules.identity.factory import build_identity_service
+from app.modules.design_assets.router import owner_router as design_media_owner_router
+from app.modules.design_assets.router import router as design_media_router
+from app.modules.favorites.router import router as favorites_router
+from app.modules.identity.auth_methods.registry import AuthMethodRegistry
+from app.modules.identity.factory import build_auth_method_registry, build_identity_service
 from app.modules.identity.router import router as identity_router
 from app.modules.identity.service import IdentityService
 from app.modules.media.router import router as media_router
 from app.modules.media.router import write_router as media_write_router
 from app.modules.notifications.factory import build_notification_outbox_service
 from app.modules.notifications.service import NotificationOutboxService
-from app.modules.orders.cutover import verify_order_read_cutover
-from app.modules.orders.legacy import LegacyOrderReader
 from app.modules.orders.router import guest_router as order_guest_router
 from app.modules.orders.router import router as order_router
 from app.modules.orders.service import (
     OrderGuestAccessService,
     OrderLifecycleService,
-    OrderOwnershipBridgeService,
     TargetOrderReadService,
 )
+from app.modules.partners.community_favorite_router import router as community_favorite_router
+from app.modules.partners.directory_router import router as community_directory_router
+from app.modules.partners.owner_router import router as partner_owner_router
 from app.modules.partners.router import admin_router as partner_admin_router
 from app.modules.partners.router import partner_router
 from app.modules.partners.router import public_router as partner_public_router
@@ -83,19 +81,22 @@ from app.modules.payouts.router import router as payout_router
 from app.modules.payouts.service import PayoutService
 from app.modules.production.router import router as production_router
 from app.modules.production.support_router import router as support_router
+from app.modules.public_profiles.avatar_router import router as public_profile_avatars_router
+from app.modules.public_profiles.router import router as public_profiles_router
 from app.modules.qr_codes.router import router as qr_code_router
 from app.modules.qr_codes.service import QrCodeService
+from app.observability.middleware import RequestObservabilityMiddleware, unhandled_error_response
+from app.runtime import build_lifespan
 
 
 def create_app(
     *,
     settings: Settings | None = None,
-    legacy_app: FastAPI | None = None,
     database: DatabaseManager | None = None,
     storage: MinioStorage | None = None,
     identity_service: IdentityService | None = None,
+    auth_method_registry: AuthMethodRegistry | None = None,
     notification_outbox_service: NotificationOutboxService | None = None,
-    order_bridge_service: OrderOwnershipBridgeService | None = None,
     target_order_read_service: TargetOrderReadService | None = None,
     order_guest_access_service: OrderGuestAccessService | None = None,
     payment_service: PaymentService | None = None,
@@ -116,8 +117,8 @@ def create_app(
     database_manager = database or DatabaseManager(runtime_settings)
     storage_manager = storage or MinioStorage(runtime_settings)
     identity_manager = identity_service
+    auth_methods = auth_method_registry
     notification_manager = notification_outbox_service
-    order_bridge_manager = order_bridge_service
     target_order_read_manager = target_order_read_service
     order_guest_access_manager = order_guest_access_service
     payment_manager = payment_service
@@ -204,20 +205,16 @@ def create_app(
         )
     if runtime_settings.identity_api_enabled:
         identity_manager = identity_manager or build_identity_service(runtime_settings)
+        auth_methods = auth_methods or build_auth_method_registry(runtime_settings)
         notification_manager = notification_manager or build_notification_outbox_service(
             runtime_settings
         )
+        target_order_read_manager = target_order_read_manager or TargetOrderReadService(
+            identity_manager.otp_security
+        )
         if runtime_settings.order_reads_enabled:
-            target_order_read_manager = target_order_read_manager or TargetOrderReadService(
-                identity_manager.otp_security
-            )
             order_guest_access_manager = order_guest_access_manager or OrderGuestAccessService(
                 runtime_settings
-            )
-        else:
-            order_bridge_manager = order_bridge_manager or OrderOwnershipBridgeService(
-                LegacyOrderReader(runtime_settings.legacy_database_url),
-                identity_manager.otp_security,
             )
     if runtime_settings.crm_api_enabled:
         crm_read_manager = crm_read_manager or CrmReadService()
@@ -233,109 +230,51 @@ def create_app(
             CdekProviderClient(cdek_quote_transport),
         )
 
-    @asynccontextmanager
-    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-        await database_manager.startup()
-        directory_task = None
-        bank_task = None
-        if (
-            database_manager.enabled
-            and runtime_settings.cdek_client_id
-            and runtime_settings.cdek_client_secret
-        ):
-            directory_task = asyncio.create_task(
-                PickupDirectory(database_manager, runtime_settings).run()
+    async def verify_startup() -> None:
+        await verify_postgres_schema(database_manager)
+
+    lifespan = build_lifespan(
+        settings=runtime_settings,
+        database=database_manager,
+        storage=storage_manager,
+        transports=[
+            transport
+            for transport in (
+                payment_transport,
+                payout_transport,
+                cdek_quote_transport,
+                bank_transport,
             )
-        try:
-            if runtime_settings.catalog_reads_enabled:
-                await verify_catalog_cutover(
-                    database_manager,
-                    runtime_settings.catalog_migration_fingerprint or "",
-                    allow_mutations=runtime_settings.catalog_writes_enabled,
-                )
-            if runtime_settings.identity_api_enabled:
-                await verify_identity_cutover(
-                    database_manager,
-                    runtime_settings.identity_migration_fingerprint or "",
-                )
-                if runtime_settings.order_reads_enabled:
-                    if target_order_read_manager is None:
-                        raise RuntimeError("Target order read service was not initialized")
-                    if order_guest_access_manager is None:
-                        raise RuntimeError("Order guest access service was not initialized")
-                    await verify_order_read_cutover(
-                        database_manager,
-                        runtime_settings.order_migration_fingerprint or "",
-                    )
-                else:
-                    if order_bridge_manager is None:
-                        raise RuntimeError("Identity order bridge was not initialized")
-                    await to_thread.run_sync(order_bridge_manager.reader.validate)
-            if runtime_settings.catalog_writes_enabled:
-                await verify_catalog_content_cutover(
-                    database_manager,
-                    runtime_settings.catalog_content_migration_fingerprint or "",
-                )
-            if runtime_settings.carts_v2_enabled:
-                await verify_cart_cutover(
-                    database_manager,
-                    runtime_settings.carts_migration_fingerprint or "",
-                )
-            await storage_manager.startup()
-            try:
-                try:
-                    if payment_transport is not None:
-                        await payment_transport.startup()
-                    if payout_transport is not None:
-                        await payout_transport.startup()
-                    if cdek_quote_transport is not None:
-                        await cdek_quote_transport.startup()
-                    if bank_transport is not None:
-                        await bank_transport.startup()
-                    if runtime_settings.tochka_payouts_enabled and bank_payout_manager is not None:
-                        bank_task = asyncio.create_task(
-                            reconcile_bank_payouts(database_manager, bank_payout_manager)
-                        )
-                    if legacy_app is None:
-                        yield
-                    else:
-                        async with legacy_app.router.lifespan_context(legacy_app):
-                            yield
-                finally:
-                    if bank_task is not None:
-                        bank_task.cancel()
-                        with suppress(asyncio.CancelledError):
-                            await bank_task
-                    if bank_transport is not None:
-                        await bank_transport.shutdown()
-                    if payment_transport is not None:
-                        await payment_transport.shutdown()
-                    if payout_transport is not None:
-                        await payout_transport.shutdown()
-                    if cdek_quote_transport is not None:
-                        await cdek_quote_transport.shutdown()
-            finally:
-                await storage_manager.shutdown()
-        finally:
-            if directory_task is not None:
-                directory_task.cancel()
-                with suppress(asyncio.CancelledError):
-                    await directory_task
-            await database_manager.shutdown()
+            if transport is not None
+        ],
+        verify_startup=verify_startup,
+        bank_payout_service=bank_payout_manager,
+    )
 
     application = FastAPI(
+        # Keep observability in our redacted middleware. Framework exporters
+        # and raw exception telemetry require a separate reviewed integration.
+        telemetry={
+            "tracing": False,
+            "metrics": False,
+            "logs": False,
+            "operation_spans": False,
+            "auto_configure": False,
+        },
         title=runtime_settings.app_name,
         version="0.1.0",
         lifespan=lifespan,
+        exception_handlers={
+            Exception: unhandled_error_response,
+            RequestValidationError: invalid_request_response,
+        },
     )
     application.state.settings = runtime_settings
     application.state.database = database_manager
     application.state.storage = storage_manager
     application.state.identity_service = identity_manager
+    application.state.auth_method_registry = auth_methods
     application.state.notification_outbox_service = notification_manager
-    application.state.order_bridge_service = (
-        target_order_read_manager if runtime_settings.order_reads_enabled else order_bridge_manager
-    )
     application.state.target_order_read_service = target_order_read_manager
     application.state.order_guest_access_service = order_guest_access_manager
     application.state.payment_service = payment_manager
@@ -359,24 +298,34 @@ def create_app(
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    application.add_middleware(RequestObservabilityMiddleware)
     application.include_router(system_router)
     application.include_router(pickup_directory_router)
     application.include_router(qr_code_router)
     if runtime_settings.catalog_reads_enabled:
-        application.include_router(catalog_router)
-        application.include_router(catalog_category_router)
+        application.include_router(storefront_router)
         application.include_router(media_router)
     if runtime_settings.catalog_writes_enabled:
+        application.include_router(
+            editor_options_router("/api/catalog-editor", require_catalog_writer)
+        )
+        application.include_router(catalog_router)
+        application.include_router(catalog_category_router)
         application.include_router(catalog_write_router)
         application.include_router(catalog_category_write_router)
-        application.include_router(variant_write_router)
         application.include_router(media_write_router)
-        application.include_router(catalog_content_router)
-        application.include_router(retired_legacy_admin_router)
     if runtime_settings.carts_v2_enabled:
         application.include_router(cart_router)
+        application.include_router(design_media_router)
+        if runtime_settings.identity_api_enabled:
+            application.include_router(design_media_owner_router)
     if runtime_settings.identity_api_enabled:
         application.include_router(identity_router)
+        application.include_router(public_profiles_router)
+        application.include_router(public_profile_avatars_router)
+        application.include_router(favorites_router)
+        application.include_router(customer_projects_router)
+        application.include_router(customer_project_media_router)
         application.include_router(support_router)
     if runtime_settings.order_reads_enabled:
         application.include_router(order_router)
@@ -403,13 +352,13 @@ def create_app(
     if runtime_settings.cdek_quote_enabled:
         application.include_router(cdek_quote_router)
     if runtime_settings.partner_program_enabled:
+        application.include_router(community_directory_router)
+        if runtime_settings.identity_api_enabled:
+            application.include_router(community_favorite_router)
         application.include_router(partner_public_router)
         application.include_router(partner_router)
+        application.include_router(partner_owner_router)
         application.include_router(partner_admin_router)
         application.include_router(bank_payout_router)
-
-    if legacy_app is not None:
-        legacy_app.state.checkout_database = database_manager
-        application.mount("/", legacy_app, name="legacy")
 
     return application

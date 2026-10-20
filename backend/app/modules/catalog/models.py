@@ -10,17 +10,20 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
     Text,
     UniqueConstraint,
+    column,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, IntegerIdMixin, TimestampMixin
+from app.db.text import UnicodeLower
 
 if TYPE_CHECKING:
     from app.modules.media.models import ProductMedia, ProductVariantMedia
@@ -33,6 +36,7 @@ CATALOG_DOCUMENT_TYPE = JSON().with_variant(JSONB, "postgresql")
 class ProductCategory(Base, IntegerIdMixin, TimestampMixin):
     __tablename__ = "product_categories"
     __table_args__ = (
+        Index("ix_product_categories_directory_name", UnicodeLower(column("name")), "id"),
         CheckConstraint("length(trim(slug)) > 0", name="product_category_slug_nonempty"),
         CheckConstraint("length(trim(name)) > 0", name="product_category_name_nonempty"),
         CheckConstraint("version > 0", name="product_category_version_positive"),
@@ -56,6 +60,7 @@ class ProductCategory(Base, IntegerIdMixin, TimestampMixin):
 class Product(Base, IntegerIdMixin, TimestampMixin):
     __tablename__ = "products"
     __table_args__ = (
+        CheckConstraint("version > 0", name="product_version_positive"),
         CheckConstraint("length(trim(title)) > 0", name="product_title_nonempty"),
         CheckConstraint("price >= 0", name="product_price_nonnegative"),
         CheckConstraint(
@@ -80,6 +85,13 @@ class Product(Base, IntegerIdMixin, TimestampMixin):
         CheckConstraint("length_cm >= 0", name="product_length_nonnegative"),
     )
 
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    preset_source: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="garment_buro", server_default="garment_buro"
+    )
+    tags: Mapped[list[str]] = mapped_column(
+        STRING_LIST_TYPE, nullable=False, default=list, server_default="[]"
+    )
     title: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     slug: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
     category_id: Mapped[int | None] = mapped_column(
@@ -178,9 +190,33 @@ class Product(Base, IntegerIdMixin, TimestampMixin):
     )
 
 
+Index(
+    "ix_products_public_recent",
+    Product.created_at.desc(),
+    Product.id.desc(),
+    postgresql_where=Product.is_active.is_(True) & Product.is_demo.is_(False),
+    sqlite_where=Product.is_active.is_(True) & Product.is_demo.is_(False),
+)
+Index(
+    "ix_products_public_price_cheap",
+    Product.price,
+    Product.id.desc(),
+    postgresql_where=Product.is_active.is_(True) & Product.is_demo.is_(False),
+    sqlite_where=Product.is_active.is_(True) & Product.is_demo.is_(False),
+)
+Index(
+    "ix_products_public_price_expensive",
+    Product.price.desc(),
+    Product.id.desc(),
+    postgresql_where=Product.is_active.is_(True) & Product.is_demo.is_(False),
+    sqlite_where=Product.is_active.is_(True) & Product.is_demo.is_(False),
+)
+
+
 class ProductVariant(Base, IntegerIdMixin, TimestampMixin):
     __tablename__ = "product_variants"
     __table_args__ = (
+        Index("ix_product_variants_editor", "product_id", "id"),
         UniqueConstraint(
             "product_id",
             "garment_size_id",
@@ -212,7 +248,6 @@ class ProductVariant(Base, IntegerIdMixin, TimestampMixin):
     product_id: Mapped[int] = mapped_column(
         ForeignKey("products.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     )
     sku: Mapped[str | None] = mapped_column(String(100), unique=True, nullable=True)
     size: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
@@ -250,6 +285,15 @@ class ProductVariant(Base, IntegerIdMixin, TimestampMixin):
         passive_deletes=True,
         order_by="ProductVariantMedia.sort_order",
     )
+
+
+Index(
+    "ix_product_variants_reserved_product",
+    ProductVariant.product_id,
+    ProductVariant.id,
+    postgresql_where=ProductVariant.reserved_quantity > 0,
+    sqlite_where=ProductVariant.reserved_quantity > 0,
+)
 
 
 class CatalogMigrationRun(Base, IntegerIdMixin, TimestampMixin):

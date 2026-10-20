@@ -1,19 +1,6 @@
-import type { BottomPanelState, ProfilePanelTab, ProfileTab } from "../types.ts";
-import type { SavedProfileItem } from "./savedItems.ts";
+import type { BottomPanelState, ProfilePanelTab } from "../types.ts";
 
 export const isExpandedOnlyProfileTab = (tab: ProfilePanelTab) => tab === "support" || tab === "settings";
-
-export const getGridItems = (
-    activeTab: ProfileTab,
-    savedDrafts: SavedProfileItem[],
-    collectionItems: SavedProfileItem[],
-) => {
-    if (activeTab === "my-collection") return collectionItems;
-    if (activeTab === "profile") return [];
-    return savedDrafts;
-};
-
-export const isPersistedDraft = (item: SavedProfileItem | undefined) => Boolean(item && item.savedAt > 0);
 
 export const getCollapsedPanelOpenState = (
     isProfileTab: boolean,

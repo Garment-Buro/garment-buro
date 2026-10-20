@@ -27,7 +27,10 @@ sort -u "$authorized_keys" -o "$authorized_keys"
 install -m 0600 -o garment -g garment "$authorized_keys" /home/garment/.ssh/authorized_keys
 rm -f "$authorized_keys"
 
-install -d -m 0750 -o garment -g garment /srv/garment-buro
+# Nginx may traverse only the public maintenance directory. Environment
+# directories remain 0750 and their secret files 0600; listing the root is private.
+install -d -m 0751 -o garment -g garment /srv/garment-buro
+install -d -m 0755 -o garment -g garment /srv/garment-buro/maintenance
 install -d -m 0750 -o garment -g garment /srv/garment-buro/production
 install -d -m 0750 -o garment -g garment /srv/garment-buro/development
 install -d -m 0700 -o garment -g garment /srv/garment-buro/backups

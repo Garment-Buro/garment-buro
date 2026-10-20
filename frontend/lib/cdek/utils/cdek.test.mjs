@@ -12,19 +12,24 @@ const compiled = ts.transpile(source, {
 const runtimeModule = { exports: {} };
 vm.runInNewContext(compiled, { module: runtimeModule, exports: runtimeModule.exports, Intl });
 
-const { filterCdekOffices, getOfficeCoords, pickCdekTariff, sanitizeCdekCityCode } = runtimeModule.exports;
+const { getOfficeTitle, getOfficeAddress, getOfficeCoords } = runtimeModule.exports;
 const offices = [
     { code: 'A', name: 'Тверская', location: { latitude: 55.76, longitude: 37.61 } },
     { code: 'B', name: 'Арбат', location: { latitude: 55.75, longitude: 37.59 } },
 ];
 
-test('filterCdekOffices supports text search and distance ordering', () => {
-    assert.deepEqual(filterCdekOffices(offices, 'арбат', null).map((office) => office.code), ['B']);
-    assert.equal(filterCdekOffices(offices, '', [55.75, 37.59])[0].code, 'B');
+test('checkout displays the directory title and preferred full address with fallbacks', () => {
+    assert.equal(getOfficeTitle(offices[0]), 'Тверская');
+    assert.equal(getOfficeTitle({ code: 'C' }), 'C');
+    assert.equal(getOfficeAddress({ location: { address_full: 'Город, улица, 1', address: 'улица, 1' } }), 'Город, улица, 1');
+    assert.equal(getOfficeAddress({ location: { address: 'улица, 1' } }), 'улица, 1');
+    assert.equal(getOfficeAddress({ code: 'C' }), 'Адрес не указан');
 });
 
-test('CDEK helpers normalize API and form data', () => {
+test('checkout map coordinates stay numeric and missing coordinates stay absent', () => {
     assert.deepEqual(JSON.parse(JSON.stringify(getOfficeCoords(offices[0]))), [55.76, 37.61]);
-    assert.equal(pickCdekTariff({ tariff_codes: [{ delivery_sum: 420 }] }).delivery_sum, 420);
-    assert.equal(sanitizeCdekCityCode('44 test'), '44');
+    assert.equal(getOfficeCoords({ code: 'C' }), null);
+    assert.equal(getOfficeCoords({ location: { latitude: 55.76 } }), null);
+    assert.equal(getOfficeCoords({ location: { latitude: '55.76', longitude: 37.61 } }), null);
+    assert.deepEqual(JSON.parse(JSON.stringify(getOfficeCoords({ location: { latitude: 0, longitude: 0 } }))), [0, 0]);
 });

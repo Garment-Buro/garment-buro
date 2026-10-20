@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
+from pydantic import ValidationError
 from sqlalchemy import func, select
 
 from app.core.config import AppEnvironment, Settings
@@ -35,6 +36,30 @@ from app.modules.partners.service import (
 SECRET = "partner-attribution-secret-that-is-long-enough"
 
 
+@pytest.mark.parametrize(
+    "href",
+    [
+        "/\\attacker.example/path",
+        "/\n/attacker.example/path",
+        "/\r/attacker.example/path",
+        "https://garment-buro.ru\\@attacker.example/path",
+    ],
+)
+def test_landing_cta_rejects_browser_normalized_external_navigation(href):
+    """A leading slash alone does not prove the browser stays on our origin."""
+    with pytest.raises(ValidationError):
+        PartnerLandingCreateRequest(
+            slug="safe-collection",
+            title="Collection",
+            headline="Collection",
+            description="Collection",
+            cta_label="Open",
+            cta_href=href,
+        )
+    with pytest.raises(ValidationError):
+        PartnerLandingUpdateRequest(expected_version=1, cta_href=href)
+
+
 def settings(tmp_path) -> Settings:
     return Settings(
         _env_file=None,
@@ -42,7 +67,6 @@ def settings(tmp_path) -> Settings:
         database_enabled=True,
         database_url=f"sqlite+aiosqlite:///{tmp_path / 'partners.db'}",
         identity_api_enabled=True,
-        identity_migration_fingerprint="1" * 64,
         jwt_secret="identity-jwt-secret-that-is-long-enough",
         identity_otp_pepper="identity-otp-pepper-that-is-long-enough",
         notification_encryption_key=("bm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm4="),
@@ -53,7 +77,7 @@ def settings(tmp_path) -> Settings:
 
 
 def test_partner_attribution_security_rejects_tampering() -> None:
-    now = datetime(2026, 9, 4, tzinfo=timezone.utc)
+    now = datetime.now(timezone.utc)
     security = PartnerAttributionSecurity(SECRET, lifetime=timedelta(days=30))
     token, _ = security.create_token(partner_id=7, landing_id=11, now=now)
 
@@ -63,6 +87,9 @@ def test_partner_attribution_security_rejects_tampering() -> None:
     assert len(security.digest_visitor("browser-id")) == 64
     with pytest.raises(InvalidPartnerAttributionTokenError):
         security.decode_token(f"{token}broken")
+    expired, _ = security.create_token(partner_id=7, landing_id=11, now=now - timedelta(days=31))
+    with pytest.raises(InvalidPartnerAttributionTokenError):
+        security.decode_token(expired)
 
 
 def test_partner_lifecycle_tracks_paid_order_and_reserves_payout(tmp_path) -> None:
@@ -157,6 +184,7 @@ def test_partner_lifecycle_tracks_paid_order_and_reserves_payout(tmp_path) -> No
                 session,
                 landing_id=landing.id,
                 payload=PartnerLandingUpdateRequest(
+                    expected_version=landing.version,
                     content={"model_heading": "Выберите основу"},
                     product_ids=[2],
                     status="draft",
@@ -176,7 +204,9 @@ def test_partner_lifecycle_tracks_paid_order_and_reserves_payout(tmp_path) -> No
             updated_landing = await service.update_landing(
                 session,
                 landing_id=landing.id,
-                payload=PartnerLandingUpdateRequest(status="published"),
+                payload=PartnerLandingUpdateRequest(
+                    expected_version=updated_landing.version, status="published"
+                ),
                 now=observed_at,
             )
             assert updated_landing.published_at == observed_at
@@ -236,6 +266,7 @@ def test_partner_lifecycle_tracks_paid_order_and_reserves_payout(tmp_path) -> No
             assert dashboard.orders == 1
             assert dashboard.conversion_percent == Decimal("100.00")
             assert dashboard.available == Decimal("150.00")
+            assert dashboard.has_requisites is False
 
             with pytest.raises(PartnerPayoutRequisitesError):
                 await service.request_payout(
@@ -248,6 +279,7 @@ def test_partner_lifecycle_tracks_paid_order_and_reserves_payout(tmp_path) -> No
             saved_requisites = await service.save_requisites(
                 session,
                 user_id=partner_user.id,
+                expected_version=0,
                 payload=PartnerRequisitesRequest(
                     entity_type="sole_proprietor",
                     recipient_name="ИП Иванов Иван Иванович",
@@ -259,6 +291,9 @@ def test_partner_lifecycle_tracks_paid_order_and_reserves_payout(tmp_path) -> No
                 ),
             )
             assert saved_requisites.tax_id == "123456789012"
+            assert (
+                await service.dashboard(session, user_id=partner_user.id, now=observed_at)
+            ).has_requisites is True
             loaded_requisites = await service.get_requisites(
                 session,
                 user_id=partner_user.id,

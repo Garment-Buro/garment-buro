@@ -1,0 +1,65 @@
+.results {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+    flex-direction: column;
+    border: .5px solid rgb(238 238 238 / 65%);
+    border-radius: 15px;
+    background: linear-gradient(110deg, rgb(175 170 115 / 60%), #afaa73 55%, rgb(175 170 115 / 70%));
+    box-shadow: 0 4px 16.8px -1px rgb(0 0 0 / 25%);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+}
+
+.toolbar { display: flex; height: 47px; flex: none; padding-inline: 11px 9px; align-items: center; gap: 4px; }
+.toolbar h2 { margin-left: auto; padding-right: 4px; font-size: 12px; font-weight: 600; line-height: 1; }
+.toolbar button { display: flex; width: 28px; height: 36px; flex: none; align-items: center; justify-content: center; border-radius: 8px; }
+.toolbar button[data-active=true], .toolbar button[aria-pressed=true] { background: rgb(0 0 0 / 20%); }
+.sort { gap: 0; }
+.sortDown { display: flex; transform: scaleY(-1); }
+.scroller { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 0 7px 10px; overscroll-behavior-y: contain; scrollbar-width: none; }
+.scroller::-webkit-scrollbar { display: none; }
+.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; column-gap: 8px; row-gap: 10px; }
+.card { position: relative; isolation: isolate; min-width: 0; overflow: hidden; padding: 5px; border-radius: 18px; background: rgb(21 21 21 / 70%); }
+.summary { position: relative; display: flex; width: 100%; flex-direction: column; text-align: left; }
+.media { position: relative; display: flex; width: 100%; overflow: hidden; aspect-ratio: 1; align-items: center; justify-content: center; border-radius: 13px; background: #fff; box-shadow: 0 4px 4px rgb(0 0 0 / 25%); }
+.productImage { display: block; width: 100%; height: 100%; object-fit: contain; }
+.noImage { color: #666; font-size: 12px; }
+.loadMore { display: block; min-height: 44px; margin: 15px auto 5px; padding: 8px 16px; border-radius: 12px; background: rgb(0 0 0 / 25%); color: #fff; }
+.favoriteError { padding: 4px 12px; font-size: 12px; }
+.favoriteError button, .empty button { text-decoration: underline; }
+.card button:disabled { opacity: .5; cursor: wait; }
+.cardFavorite { position: absolute; top: 5px; right: 5px; display: flex; width: 28px; height: 28px; align-items: center; justify-content: center; border-radius: 50%; cursor: pointer; }
+.cardFavorite:focus-visible, .card button:focus-visible, .card a:focus-visible { outline: 2px solid #afaa73; outline-offset: -2px; }
+.meta { display: flex; height: 20px; width: 100%; min-width: 0; padding-inline: 7px 5px; align-items: center; justify-content: space-between; gap: 5px; color: #fff; font-size: clamp(9px, 2.7vw, 12px); font-weight: 500; line-height: 1.2; }
+.title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.price { flex: none; white-space: nowrap; }
+.actionsReveal { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 280ms ease, opacity 200ms ease; }
+.card[data-expanded=true] .actionsReveal { grid-template-rows: 1fr; opacity: 1; }
+.actionsClip { min-height: 0; overflow: hidden; }
+.actions { display: flex; height: 35px; padding: 4px 5px; align-items: center; justify-content: space-between; gap: 5px; }
+.actions button, .actions a { display: flex; height: 27px; align-items: center; justify-content: center; border-radius: 13px; }
+.like, .share { width: 30px; flex: none; }
+.add { width: 55px; flex: 0 1 55px; background: rgb(0 0 0 / 44%); }
+.empty { padding: 30px 12px; text-align: center; font-size: 14px; }
+.results button { cursor: pointer; }
+.results button:focus-visible, .results a:focus-visible, .scroller:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
+
+@media (min-width: 600px) {
+    .results { border-radius: 20px; }
+    .toolbar { height: 54px; padding-inline: 15px; }
+    .toolbar h2 { font-size: 14px; }
+    .scroller { padding-inline: 10px; }
+    .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .meta { height: 24px; }
+}
+
+@media (min-width: 900px) {
+    .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .actionsReveal { transition: none; }
+}

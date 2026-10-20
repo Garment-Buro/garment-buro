@@ -14,6 +14,7 @@ export const KonvaCanvas: React.FC<KonvaCanvasProps> = (props) => {
         selectedModel,
         activeImageSrc,
         modelBounds = DEFAULT_CONSTRUCTOR_MODEL_BOUNDS,
+        canvasPixelSize = { width: CANVAS_SIZE, height: CANVAS_SIZE },
         placedItems,
         hardwareMap,
         selectedHardwareUid,
@@ -52,8 +53,8 @@ export const KonvaCanvas: React.FC<KonvaCanvasProps> = (props) => {
             <div
                 className="absolute left-0 top-0 origin-top-left"
                 style={{
-                    width: CANVAS_SIZE,
-                    height: CANVAS_SIZE,
+                    width: canvasPixelSize.width,
+                    height: canvasPixelSize.height,
                     transform: `translate(${stagePos.x}px, ${stagePos.y}px) scale(${stageScale})`,
                 }}
             >

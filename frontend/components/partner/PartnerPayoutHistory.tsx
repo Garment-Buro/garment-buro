@@ -3,6 +3,7 @@
 import { useState } from 'react';
 
 import { formatPartnerDate, formatPartnerMoney } from '@/lib/partners/format';
+import type { usePartnerPayouts } from '@/hooks/partner/usePartnerPayouts';
 import type { PartnerPayout } from '@/lib/partners/types';
 
 import styles from './PartnerDashboard.module.css';
@@ -23,9 +24,9 @@ const statusClassName = (status: PartnerPayout['status']) => {
     return styles.status;
 };
 
-export const PartnerPayoutHistory = ({ payouts }: { payouts: PartnerPayout[] }) => {
+export const PartnerPayoutHistory = ({ payouts }: { payouts: ReturnType<typeof usePartnerPayouts> }) => {
     const [expanded, setExpanded] = useState(false);
-    const visiblePayouts = expanded ? payouts : payouts.slice(0, 3);
+    const visiblePayouts = expanded ? payouts.items : payouts.items.slice(0, 3);
 
     return (
         <section className={styles.panel} aria-labelledby="payout-history-title">
@@ -34,7 +35,7 @@ export const PartnerPayoutHistory = ({ payouts }: { payouts: PartnerPayout[] }) 
                     <p className={styles.sectionEyebrow}>Движение денег</p>
                     <h2 id="payout-history-title">История выплат</h2>
                 </div>
-                {payouts.length > 3 && (
+                {(payouts.items.length > 3 || payouts.hasMore) && (
                     <button
                         type="button"
                         className={styles.textButton}
@@ -46,6 +47,8 @@ export const PartnerPayoutHistory = ({ payouts }: { payouts: PartnerPayout[] }) 
                 )}
             </div>
 
+            {payouts.loading && <p role="status">Загружаем выплаты…</p>}
+            {payouts.message && <p role="alert">{payouts.message} <button type="button" onClick={() => void payouts.retry()}>Обновить выплаты</button></p>}
             {visiblePayouts.length > 0 ? (
                 <div className={styles.historyList}>
                     {visiblePayouts.map(payout => (
@@ -60,9 +63,10 @@ export const PartnerPayoutHistory = ({ payouts }: { payouts: PartnerPayout[] }) 
                         </article>
                     ))}
                 </div>
-            ) : (
+            ) : !payouts.loading && !payouts.message ? (
                 <p className={styles.emptyText}>Выплат пока не было. Первая заявка появится здесь.</p>
-            )}
+            ) : null}
+            {expanded && payouts.hasMore && <button type="button" className={styles.secondaryButton} disabled={payouts.loadingMore} onClick={() => void payouts.loadMore()}>{payouts.loadingMore ? 'Загружаем…' : 'Ещё выплаты'}</button>}
         </section>
     );
 };

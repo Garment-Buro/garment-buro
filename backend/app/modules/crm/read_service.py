@@ -2,36 +2,22 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.crm.material_models import CrmMaterialBalance
 from app.modules.crm.models import (
     CrmOrderProject,
     CrmProductionUnitStatus,
     CrmProjectStatus,
 )
 from app.modules.crm.read_repository import (
-    CrmPublishedTechCard,
     CrmReadRepository,
     CrmUnitEvidence,
 )
 from app.modules.crm.read_schemas import (
-    CrmFabricPage,
-    CrmFabricRead,
-    CrmGarmentModelPage,
-    CrmGarmentModelRead,
-    CrmGarmentSizeRead,
-    CrmMaterialBalanceRead,
     CrmProductionPlanSummary,
     CrmProductionUnitPage,
     CrmProductionUnitRead,
     CrmProjectDetail,
     CrmProjectPage,
     CrmProjectSummary,
-    CrmPublishedTechCardRead,
-)
-from app.modules.crm.reference_models import (
-    CrmFabric,
-    CrmGarmentModel,
-    CrmGarmentSize,
 )
 from app.modules.identity.security import ensure_utc
 
@@ -102,67 +88,6 @@ class CrmReadService:
             ),
         )
 
-    async def list_fabrics(
-        self,
-        session: AsyncSession,
-        *,
-        is_active: bool | None,
-        cursor: int | None,
-        limit: int,
-    ) -> CrmFabricPage:
-        rows, next_cursor = await self.repository.list_fabrics(
-            session,
-            is_active=is_active,
-            cursor=cursor,
-            limit=limit,
-        )
-        return CrmFabricPage(
-            items=[self._fabric(fabric, balance) for fabric, balance in rows],
-            next_cursor=next_cursor,
-            limit=limit,
-        )
-
-    async def list_garment_models(
-        self,
-        session: AsyncSession,
-        *,
-        is_active: bool | None,
-        cursor: int | None,
-        limit: int,
-    ) -> CrmGarmentModelPage:
-        models, next_cursor = await self.repository.list_garment_models(
-            session,
-            is_active=is_active,
-            cursor=cursor,
-            limit=limit,
-        )
-        model_ids = [model.id for model in models]
-        sizes = await self.repository.list_sizes_by_model(
-            session,
-            garment_model_ids=model_ids,
-        )
-        products = await self.repository.list_catalog_products_by_model(
-            session,
-            garment_model_ids=model_ids,
-        )
-        cards = await self.repository.list_published_cards_by_model(
-            session,
-            garment_model_ids=model_ids,
-        )
-        return CrmGarmentModelPage(
-            items=[
-                self._garment_model(
-                    model,
-                    sizes=sizes.get(model.id, []),
-                    catalog_product_ids=products.get(model.id, []),
-                    published_card=cards.get(model.id),
-                )
-                for model in models
-            ],
-            next_cursor=next_cursor,
-            limit=limit,
-        )
-
     @staticmethod
     def _project(project: CrmOrderProject) -> CrmProjectSummary:
         return CrmProjectSummary(
@@ -216,99 +141,4 @@ class CrmReadService:
                 if plan is not None
                 else None
             ),
-        )
-
-    @staticmethod
-    def _fabric(
-        fabric: CrmFabric,
-        balance: CrmMaterialBalance | None,
-    ) -> CrmFabricRead:
-        return CrmFabricRead(
-            id=fabric.id,
-            code=fabric.code,
-            name=fabric.name,
-            material_type=fabric.material_type,
-            color_name=fabric.color_name,
-            color_hex=fabric.color_hex,
-            density_gsm=fabric.density_gsm,
-            width_cm=fabric.width_cm,
-            cost_per_meter=fabric.cost_per_meter,
-            cost_per_kg=fabric.cost_per_kg,
-            minimum_stock_meters=fabric.minimum_stock_meters,
-            currency=fabric.currency,
-            is_active=fabric.is_active,
-            version=fabric.version,
-            balance=(
-                CrmMaterialBalanceRead(
-                    on_hand_meters=balance.on_hand_meters,
-                    reserved_meters=balance.reserved_meters,
-                    available_meters=balance.on_hand_meters - balance.reserved_meters,
-                    version=balance.version,
-                    updated_at=ensure_utc(balance.updated_at),
-                )
-                if balance is not None
-                else None
-            ),
-        )
-
-    @staticmethod
-    def _garment_model(
-        model: CrmGarmentModel,
-        *,
-        sizes: list[CrmGarmentSize],
-        catalog_product_ids: list[int],
-        published_card: CrmPublishedTechCard | None,
-    ) -> CrmGarmentModelRead:
-        published = None
-        if published_card is not None:
-            revision = published_card.revision
-            if revision.published_at is None:
-                raise CrmReadEvidenceError("Published tech-card timestamp is missing")
-            published = CrmPublishedTechCardRead(
-                tech_card_id=published_card.card.id,
-                code=published_card.card.code,
-                revision_id=revision.id,
-                revision_number=revision.revision_number,
-                name=revision.name_snapshot,
-                published_at=ensure_utc(revision.published_at),
-            )
-        return CrmGarmentModelRead(
-            id=model.id,
-            category_id=model.category_id,
-            code=model.code,
-            name=model.name,
-            description=model.description,
-            base_size_code=model.base_size_code,
-            fit_model_name=model.fit_model_name,
-            fit_model_height_cm=model.fit_model_height_cm,
-            base_length_cm=model.base_length_cm,
-            base_width_cm=model.base_width_cm,
-            base_weight_g=model.base_weight_g,
-            size_chart_media_object_id=model.size_chart_media_object_id,
-            is_active=model.is_active,
-            version=model.version,
-            catalog_product_ids=catalog_product_ids,
-            sizes=[
-                CrmGarmentSizeRead(
-                    id=size.id,
-                    code=size.code,
-                    sort_order=size.sort_order,
-                    base_price=size.base_price,
-                    min_height_cm=size.min_height_cm,
-                    max_height_cm=size.max_height_cm,
-                    min_length_cm=size.min_length_cm,
-                    max_length_cm=size.max_length_cm,
-                    min_width_cm=size.min_width_cm,
-                    max_width_cm=size.max_width_cm,
-                    min_sleeve_length_cm=size.min_sleeve_length_cm,
-                    max_sleeve_length_cm=size.max_sleeve_length_cm,
-                    allow_standard_sleeve=size.allow_standard_sleeve,
-                    allow_height_sleeve=size.allow_height_sleeve,
-                    currency=size.currency,
-                    is_active=size.is_active,
-                    version=size.version,
-                )
-                for size in sizes
-            ],
-            published_tech_card=published,
         )

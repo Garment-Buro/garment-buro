@@ -86,13 +86,13 @@ class CdekShipment(Base, IntegerIdMixin, TimestampMixin):
         ForeignKey("orders.id", ondelete="RESTRICT"),
         nullable=False,
         unique=True,
-        index=True,
+        index=False,
     )
     source_fulfillment_job_id: Mapped[int] = mapped_column(
         ForeignKey("fulfillment_jobs.id", ondelete="RESTRICT"),
         nullable=False,
         unique=True,
-        index=True,
+        index=False,
     )
     source_payment_attempt_id: Mapped[int] = mapped_column(
         ForeignKey("payment_attempts.id", ondelete="RESTRICT"),
@@ -103,7 +103,7 @@ class CdekShipment(Base, IntegerIdMixin, TimestampMixin):
         String(64),
         nullable=False,
         unique=True,
-        index=True,
+        index=False,
     )
     request_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     request_schema_version: Mapped[int] = mapped_column(Integer, nullable=False)

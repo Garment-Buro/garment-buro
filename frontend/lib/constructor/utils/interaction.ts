@@ -44,7 +44,7 @@ type DecorationDropPoint = { x: number; y: number };
 type DecorationDropInput = {
     centerPoint: DecorationDropPoint;
     existingItems: DecorationDropPoint[];
-    canvasSize?: number;
+    canvasSize?: number | { width: number; height: number };
     minSpacing?: number;
 };
 
@@ -61,9 +61,11 @@ export const getNextDecorationDropPosition = ({
     canvasSize = 1000,
     minSpacing = 72,
 }: DecorationDropInput): DecorationDropPoint => {
+    const width = typeof canvasSize === 'number' ? canvasSize : canvasSize.width;
+    const height = typeof canvasSize === 'number' ? canvasSize : canvasSize.height;
     const center = {
-        x: clampDropCoordinate(centerPoint.x, canvasSize),
-        y: clampDropCoordinate(centerPoint.y, canvasSize),
+        x: clampDropCoordinate(centerPoint.x, width),
+        y: clampDropCoordinate(centerPoint.y, height),
     };
     const isOccupied = (point: DecorationDropPoint) => existingItems.some(
         (item) => Math.hypot(item.x - point.x, item.y - point.y) < minSpacing,
@@ -73,8 +75,8 @@ export const getNextDecorationDropPosition = ({
     for (let ring = 1; ring <= 6; ring += 1) {
         for (const offset of DECORATION_DROP_OFFSETS) {
             const candidate = {
-                x: clampDropCoordinate(center.x + offset.x * ring, canvasSize),
-                y: clampDropCoordinate(center.y + offset.y * ring, canvasSize),
+                x: clampDropCoordinate(center.x + offset.x * ring, width),
+                y: clampDropCoordinate(center.y + offset.y * ring, height),
             };
             if (!isOccupied(candidate)) return candidate;
         }

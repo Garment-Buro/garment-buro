@@ -88,9 +88,9 @@ def test_target_order_read_mapper_preserves_new_order_cart_contract(tmp_path: Pa
             async with database.session() as session:
                 user = await session.get(User, user.id)
                 assert user is not None
-                owned = await service.list_owned_orders(session, user=user)
-                assert len(owned) == 1
-                payload = json.loads(owned[0].cart_items or "[]")
+                owned = await service.get_owned_order(session, user=user, order_id=order.id)
+                assert owned is not None
+                payload = json.loads(owned.cart_items or "[]")
                 assert payload == [
                     {
                         "id": "direct-line",

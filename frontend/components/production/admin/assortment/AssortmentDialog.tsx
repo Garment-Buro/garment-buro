@@ -63,12 +63,14 @@ export function AssortmentDialog({
     description,
     headerActions,
     onClose,
+    closeDisabled = false,
     children,
 }: {
     title: string;
     description?: ReactNode;
     headerActions?: ReactNode;
     onClose: () => void;
+    closeDisabled?: boolean;
     children: ReactNode;
 }) {
     return (
@@ -90,7 +92,7 @@ export function AssortmentDialog({
                     </div>
                     <div className={styles.dialogHeaderActions}>
                         {headerActions}
-                        <button type="button" onClick={onClose}>
+                        <button type="button" onClick={onClose} disabled={closeDisabled}>
                             Закрыть
                         </button>
                     </div>

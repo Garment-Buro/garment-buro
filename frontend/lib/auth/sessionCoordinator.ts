@@ -1,8 +1,8 @@
 import type { AuthSessionResponse } from '@/lib/auth/types';
 
 export class AuthSessionCoordinator {
-    private refreshPromise: Promise<AuthSessionResponse> | null = null;
-    private logoutPromise: Promise<void> | null = null;
+    private refreshPromises = new Map<string, Promise<AuthSessionResponse>>();
+    private logoutPromises = new Map<string, Promise<void>>();
     private readonly refreshOperation: () => Promise<AuthSessionResponse>;
     private readonly logoutOperation: () => Promise<void>;
 
@@ -14,21 +14,25 @@ export class AuthSessionCoordinator {
         this.logoutOperation = logoutOperation;
     }
 
-    refresh(): Promise<AuthSessionResponse> {
-        if (!this.refreshPromise) {
-            this.refreshPromise = this.refreshOperation().finally(() => {
-                this.refreshPromise = null;
+    refresh(scope = 'default'): Promise<AuthSessionResponse> {
+        let promise = this.refreshPromises.get(scope);
+        if (!promise) {
+            promise = this.refreshOperation().finally(() => {
+                this.refreshPromises.delete(scope);
             });
+            this.refreshPromises.set(scope, promise);
         }
-        return this.refreshPromise;
+        return promise;
     }
 
-    logout(): Promise<void> {
-        if (!this.logoutPromise) {
-            this.logoutPromise = this.logoutOperation().finally(() => {
-                this.logoutPromise = null;
+    logout(scope = 'default'): Promise<void> {
+        let promise = this.logoutPromises.get(scope);
+        if (!promise) {
+            promise = this.logoutOperation().finally(() => {
+                this.logoutPromises.delete(scope);
             });
+            this.logoutPromises.set(scope, promise);
         }
-        return this.logoutPromise;
+        return promise;
     }
 }

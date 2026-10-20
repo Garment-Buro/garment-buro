@@ -14,7 +14,11 @@ export function CheckoutSheet({ title, children, onClose, onSave, busy = false }
         dialog?.showModal();
         return () => { dialog?.close(); previousFocus?.focus(); };
     }, []);
-    const submit = (event: FormEvent) => { event.preventDefault(); onSave(); };
+    const submit = (event: FormEvent) => {
+        event.preventDefault();
+        event.stopPropagation(); // React portal events still reach the owning checkout form.
+        if (!busy) onSave();
+    };
     return createPortal(<dialog ref={ref} className={styles.dialog} aria-label={title}
         onTouchStart={event => event.stopPropagation()} onTouchEnd={event => event.stopPropagation()}
         onPointerDown={event => event.stopPropagation()} onClick={event => event.stopPropagation()}

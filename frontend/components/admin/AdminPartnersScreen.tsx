@@ -1,19 +1,24 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 
 import { AdminPageShell } from '@/components/admin/AdminPageShell';
 import { LandingCreateForm } from '@/components/admin/partners/LandingCreateForm';
 import { LandingList } from '@/components/admin/partners/LandingList';
 import { PartnerCreateForm } from '@/components/admin/partners/PartnerCreateForm';
 import { PartnerList } from '@/components/admin/partners/PartnerList';
+import { useCustomerAccount } from '@/hooks/catalog/customerSession';
+import type { PartnerProfile } from '@/lib/partners/types';
 import { useAdminPartners } from '@/hooks/admin/useAdminPartners';
 
 export const AdminPartnersScreen = () => {
+    const account=useCustomerAccount();
+    return <AdminPartnersWorkspace key={account.key??'signed-out'}/>;
+};
+const AdminPartnersWorkspace = () => {
     const {
-        partners,
-        landings,
-        loading,
+        partnersRevision,
+        landingsRevision,
         error,
         setError,
         addPartner,
@@ -21,11 +26,7 @@ export const AdminPartnersScreen = () => {
         updateLanding,
     } = useAdminPartners();
     const [notice, setNotice] = useState('');
-    const [selectedPartnerId, setSelectedPartnerId] = useState<number>();
-    const activePartners = useMemo(
-        () => partners.filter(partner => partner.status !== 'suspended'),
-        [partners],
-    );
+    const [selectedPartner, setSelectedPartner] = useState<PartnerProfile | null>(null);
 
     return (
         <AdminPageShell activeSection="partners" title="Партнёры и лендинги">
@@ -44,14 +45,14 @@ export const AdminPartnersScreen = () => {
                 <PartnerCreateForm
                     createPartner={addPartner}
                     onCreated={partner => {
-                        setSelectedPartnerId(partner.id);
+                        setSelectedPartner(partner);
                         setNotice('Партнёр создан. Теперь соберите для него лендинг.');
                     }}
                     onError={setError}
                 />
                 <LandingCreateForm
-                    partners={activePartners}
-                    initialPartnerId={selectedPartnerId}
+                    partnersRevision={partnersRevision}
+                    initialPartner={selectedPartner}
                     createLanding={addLanding}
                     onCreated={landing => setNotice(
                         landing.status === 'published'
@@ -63,13 +64,11 @@ export const AdminPartnersScreen = () => {
             </div>
 
             <LandingList
-                landings={landings}
-                partners={partners}
-                loading={loading}
+                revision={landingsRevision}
                 updateLanding={updateLanding}
                 onError={setError}
             />
-            <PartnerList partners={partners} loading={loading} />
+            <PartnerList revision={partnersRevision} />
         </AdminPageShell>
     );
 };

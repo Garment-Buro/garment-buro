@@ -14,6 +14,16 @@ from app.modules.partners.service import (
 )
 from app.modules.production.admin_reads import ProductionAdminReads
 from app.modules.production.auth_router import get_production_user
+from app.modules.production.client_schemas import (
+    ClientHistoryPage,
+    ClientHistoryQuery,
+    ClientOrderSummary,
+    ClientTicketSummary,
+)
+from app.modules.production.client_service import (
+    InvalidClientHistoryCursor,
+    ProductionClientService,
+)
 from app.modules.production.employee_schemas import EmployeeCodeResponse, EmployeeWrite, Station
 from app.modules.production.employee_service import (
     EmployeeConflictError,
@@ -247,12 +257,39 @@ async def client_detail(
     key: str = Query(min_length=3, max_length=512),
 ):
     try:
-        result = await ProductionAdminReads().client_detail(session, key=key)
+        result = await ProductionClientService().detail(session, key=key)
     except ValueError as error:
-        raise HTTPException(400, str(error)) from error
+        raise HTTPException(400, str(error), headers={"Cache-Control": "no-store"}) from error
     if result is None:
-        raise HTTPException(404, "Клиент не найден")
+        raise HTTPException(404, "Клиент не найден", headers={"Cache-Control": "no-store"})
     return result
+
+
+async def client_history(
+    session: Session, kind: Literal["orders", "tickets"], query: ClientHistoryQuery
+):
+    try:
+        return await ProductionClientService().history(session, kind=kind, query=query)
+    except InvalidClientHistoryCursor as error:
+        raise HTTPException(
+            422, {"code": "invalid_cursor"}, headers={"Cache-Control": "no-store"}
+        ) from error
+    except ValueError as error:
+        raise HTTPException(400, str(error), headers={"Cache-Control": "no-store"}) from error
+
+
+@router.get("/clients/orders", response_model=ClientHistoryPage[ClientOrderSummary])
+async def client_orders(
+    _admin: SystemAdmin, session: Session, query: Annotated[ClientHistoryQuery, Query()]
+):
+    return await client_history(session, "orders", query)
+
+
+@router.get("/clients/tickets", response_model=ClientHistoryPage[ClientTicketSummary])
+async def client_tickets(
+    _admin: SystemAdmin, session: Session, query: Annotated[ClientHistoryQuery, Query()]
+):
+    return await client_history(session, "tickets", query)
 
 
 def employee_pepper(request: Request) -> str:

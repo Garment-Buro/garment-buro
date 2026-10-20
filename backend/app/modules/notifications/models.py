@@ -19,6 +19,8 @@ from app.db.base import Base, IntegerIdMixin, TimestampMixin
 
 class NotificationChannel(str, Enum):
     EMAIL = "email"
+    TELEGRAM = "telegram"
+    PHONE = "phone"
 
 
 class NotificationTemplate(str, Enum):
@@ -50,7 +52,7 @@ class NotificationOutbox(Base, IntegerIdMixin, TimestampMixin):
             name="uq_notification_outbox_deduplication_key",
         ),
         CheckConstraint(
-            "channel IN ('email')",
+            "channel IN ('email', 'telegram', 'phone')",
             name="notification_outbox_channel_valid",
         ),
         CheckConstraint(

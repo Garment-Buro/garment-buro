@@ -2,18 +2,18 @@ import { CollectionLanding } from '@/components/landings/CollectionLanding';
 import { PartnerLandingDesktopGate } from '@/components/landings/PartnerLandingDesktopGate';
 import { PartnerAttributionBootstrap } from '@/components/partner/PartnerAttributionBootstrap';
 import type { PublicPartnerLanding as Landing } from '@/lib/partners/types';
-import type { ProductData } from '@/lib/products/types';
+import type {CollectionModelsState} from '@/lib/catalog/collection';
 
 type PublicPartnerLandingProps = {
     landing: Landing;
-    products: ProductData[];
+    models: CollectionModelsState;
 };
 
-export const PublicPartnerLanding = ({ landing, products }: PublicPartnerLandingProps) => (
+export const PublicPartnerLanding = ({ landing, models }: PublicPartnerLandingProps) => (
     <>
         <PartnerAttributionBootstrap slug={landing.slug} />
         <div className="partnerLandingMobilePresentation">
-            <CollectionLanding landing={landing} products={products} />
+            <CollectionLanding landing={landing} models={models} />
         </div>
         <PartnerLandingDesktopGate
             titleId={`partner-landing-${landing.slug}`}

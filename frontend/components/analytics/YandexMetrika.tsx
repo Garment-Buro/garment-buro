@@ -3,78 +3,21 @@
 import { useEffect, useRef } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
 
-import {
-    isYandexMetrikaHost,
-    YANDEX_METRIKA_COUNTER_ID,
-} from '@/lib/analytics/yandexMetrika';
-
-type YandexMetrikaFunction = ((...arguments_: unknown[]) => void) & {
-    a?: unknown[][];
-    l?: number;
-};
-
-declare global {
-    interface Window {
-        dataLayer?: unknown[];
-        ym?: YandexMetrikaFunction;
-        __garmentBuroMetrikaInitialized?: boolean;
-    }
-}
-
-const TAG_URL = `https://mc.yandex.ru/metrika/tag.js?id=${YANDEX_METRIKA_COUNTER_ID}`;
-
-const initialize = () => {
-    if (window.__garmentBuroMetrikaInitialized) return;
-
-    const queued: YandexMetrikaFunction = (...arguments_) => {
-        queued.a = queued.a || [];
-        queued.a.push(arguments_);
-    };
-    queued.l = Date.now();
-    window.ym = window.ym || queued;
-    window.dataLayer = window.dataLayer || [];
-
-    if (![...document.scripts].some((script) => script.src === TAG_URL)) {
-        const script = document.createElement('script');
-        script.async = true;
-        script.src = TAG_URL;
-        document.head.appendChild(script);
-    }
-
-    window.ym(YANDEX_METRIKA_COUNTER_ID, 'init', {
-        ssr: true,
-        defer: true,
-        webvisor: true,
-        clickmap: true,
-        ecommerce: 'dataLayer',
-        referrer: document.referrer,
-        url: window.location.href,
-        accurateTrackBounce: true,
-        trackLinks: true,
-    });
-    window.__garmentBuroMetrikaInitialized = true;
-};
+import { createPublicAnalyticsFrame } from '@/lib/analytics/publicAnalyticsFrame';
 
 export function YandexMetrika() {
     const pathname = usePathname();
-    const searchParams = useSearchParams();
-    const previousUrl = useRef<string | null>(null);
-    const query = searchParams.toString();
+    const query = useSearchParams().toString();
+    const tracker = useRef<ReturnType<typeof createPublicAnalyticsFrame> | null>(null);
 
     useEffect(() => {
-        if (!isYandexMetrikaHost(window.location.hostname)) return;
+        const active = createPublicAnalyticsFrame(window, document);
+        tracker.current = active;
+        active.update();
+        return () => { active.dispose(); tracker.current = null; };
+    }, []);
 
-        initialize();
-        const url = window.location.href;
-        if (previousUrl.current === url) return;
-
-        window.ym?.(YANDEX_METRIKA_COUNTER_ID, 'hit', url, {
-            title: document.title,
-            referer: previousUrl.current || document.referrer,
-        });
-        previousUrl.current = url;
-    }, [pathname, query]);
+    useEffect(() => { tracker.current?.update(); }, [pathname, query]);
 
     return null;
 }
-

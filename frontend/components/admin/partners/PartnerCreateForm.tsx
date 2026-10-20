@@ -18,6 +18,7 @@ export const PartnerCreateForm = ({ createPartner, onCreated, onError }: Partner
 
     const submit = async (event: FormEvent) => {
         event.preventDefault();
+        if (saving) return;
         setSaving(true);
         onError('');
         try {
@@ -39,6 +40,7 @@ export const PartnerCreateForm = ({ createPartner, onCreated, onError }: Partner
 
     return (
         <form onSubmit={submit} className="rounded-xl border border-black/10 bg-white p-6">
+            <fieldset disabled={saving} className="min-w-0">
             <h2 className="text-lg font-semibold">Новый партнёр</h2>
             <p className="mt-2 text-sm text-black/50">Кабинет будет привязан к указанной почте.</p>
             <div className="mt-6 grid gap-4 sm:grid-cols-2">
@@ -58,6 +60,7 @@ export const PartnerCreateForm = ({ createPartner, onCreated, onError }: Partner
             <button disabled={saving} className="mt-6 h-11 rounded-lg bg-black px-5 text-sm font-semibold text-white disabled:opacity-40">
                 {saving ? 'Создаём…' : 'Создать партнёра'}
             </button>
+            </fieldset>
         </form>
     );
 };

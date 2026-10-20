@@ -7,16 +7,18 @@ import {
     PWA_REFRESH_SPLASH_SKIP_KEY,
     SPLASH_APP_RUN_KEY,
     SPLASH_SESSION_KEY,
+    SPLASH_ENABLED,
 } from '@/lib/browser/utils/splash';
 import { useVideoQueue } from '@/store/videoQueueStore';
 import { playSplashVideo } from '@/lib/browser/utils/splashPlayback';
+import { browserSessionStorage } from '@/lib/browser/utils/storage';
 
 type SplashWindow = Window & { [SPLASH_APP_RUN_KEY]?: boolean };
 
 export const useSplashController = () => {
     const pathname = usePathname();
     const isOfferRoute = pathname === '/offer';
-    const isHiddenRoute = isSplashHiddenRoute(pathname);
+    const isHiddenRoute = isSplashHiddenRoute(pathname) || !SPLASH_ENABLED;
     const [show, setShow] = useState(false);
     const [revealed, setRevealed] = useState(false);
     const [exiting, setExiting] = useState(false);
@@ -28,10 +30,14 @@ export const useSplashController = () => {
 
     useEffect(() => {
         if (isHiddenRoute) {
+            if (!SPLASH_ENABLED) {
+                browserSessionStorage.setItem(SPLASH_SESSION_KEY, 'done');
+                window.dispatchEvent(new Event('p2o_splash_done'));
+            }
             if (isOfferRoute) {
                 const splashWindow = window as SplashWindow;
                 splashWindow[SPLASH_APP_RUN_KEY] = true;
-                sessionStorage.setItem(SPLASH_SESSION_KEY, 'done');
+                browserSessionStorage.setItem(SPLASH_SESSION_KEY, 'done');
             }
             setVideoStatus('logo', 'loaded');
             return;
@@ -41,10 +47,10 @@ export const useSplashController = () => {
         const standaloneNavigator = navigator as Navigator & { standalone?: boolean };
         const isStandaloneApp = window.matchMedia('(display-mode: standalone)').matches || standaloneNavigator.standalone === true;
         const splashWindow = window as SplashWindow;
-        const skipAfterPullRefresh = sessionStorage.getItem(PWA_REFRESH_SPLASH_SKIP_KEY) === '1';
-        const alreadyShown = !isStandaloneApp && sessionStorage.getItem(SPLASH_SESSION_KEY);
+        const skipAfterPullRefresh = browserSessionStorage.getItem(PWA_REFRESH_SPLASH_SKIP_KEY) === '1';
+        const alreadyShown = !isStandaloneApp && browserSessionStorage.getItem(SPLASH_SESSION_KEY);
         if (skipAfterPullRefresh) {
-            sessionStorage.removeItem(PWA_REFRESH_SPLASH_SKIP_KEY);
+            browserSessionStorage.removeItem(PWA_REFRESH_SPLASH_SKIP_KEY);
             setVideoStatus('logo', 'loaded');
             return () => unregisterVideo('logo');
         }
@@ -57,7 +63,7 @@ export const useSplashController = () => {
             return () => unregisterVideo('logo');
         }
         splashWindow[SPLASH_APP_RUN_KEY] = true;
-        sessionStorage.setItem(SPLASH_SESSION_KEY, 'showing');
+        browserSessionStorage.setItem(SPLASH_SESSION_KEY, 'showing');
         const openTimer = window.setTimeout(() => setShow(true), 0);
         return () => {
             window.clearTimeout(openTimer);
@@ -81,7 +87,7 @@ export const useSplashController = () => {
     const dismiss = () => {
         if (exiting) return;
         setExiting(true);
-        sessionStorage.setItem(SPLASH_SESSION_KEY, 'done');
+        browserSessionStorage.setItem(SPLASH_SESSION_KEY, 'done');
         window.dispatchEvent(new Event('p2o_splash_done'));
         setTimeout(() => {
             setShow(false);

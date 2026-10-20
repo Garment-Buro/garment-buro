@@ -10,6 +10,8 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from app.core.config import get_settings
 from app.db import models as database_models  # noqa: F401
 from app.db.base import Base
+from app.db.migration_lock import acquire_migration_lock
+from app.db.schema import comparison_metadata
 from app.db.session import normalize_async_database_url
 
 config = context.config
@@ -42,11 +44,14 @@ def run_migrations_offline() -> None:
 def run_migrations(connection: Connection) -> None:
     context.configure(
         connection=connection,
-        target_metadata=target_metadata,
+        target_metadata=comparison_metadata(connection.dialect, target_metadata),
         compare_type=True,
     )
 
     with context.begin_transaction():
+        # NullPool closes the physical connection after commit/rollback. The
+        # session lock also survives client death while PostgreSQL is busy.
+        acquire_migration_lock(connection)
         context.run_migrations()
 
 

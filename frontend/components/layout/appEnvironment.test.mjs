@@ -9,13 +9,6 @@ const manifestSource = fs.readFileSync(path.join(root, "app", "manifest.ts"), "u
 const globalStylesSource = fs.readFileSync(path.join(root, "app", "globals.css"), "utf8");
 const headerStylesSource = fs.readFileSync(path.join(root, "components", "layout", "AdaptiveHeader.module.css"), "utf8");
 const footerSource = fs.readFileSync(path.join(root, "components", "layout", "Footer.tsx"), "utf8");
-const productPageSource = [
-    path.join(root, "components", "product", "ProductPageClient.tsx"),
-    path.join(root, "components", "product", "ProductMobileLayout.tsx"),
-    path.join(root, "components", "product", "ProductDesktopLayout.tsx"),
-    path.join(root, "hooks", "product", "useProductPage.ts"),
-    path.join(root, "lib", "products", "constants.ts"),
-].map(file => fs.readFileSync(file, "utf8")).join("\n");
 const constructorSource = [
     path.join(root, "components", "constructor", "ConstructorPage.tsx"),
     path.join(root, "components", "constructor", "ConstructorWorkspace.tsx"),
@@ -94,7 +87,6 @@ test("catalog and product share the adaptive header backdrop through the top saf
     assert.doesNotMatch(globalStylesSource, /catalogSafariTop/);
     assert.match(appEnvironmentSource, /page:\s*"catalog"[\s\S]*topColor:\s*"#F2F2F2"/);
     assert.match(appEnvironmentSource, /page:\s*"product"[\s\S]*topColor:\s*"#F2F2F2"/);
-    assert.doesNotMatch(productPageSource, /catalogSafariTop|appSafariTopBar/);
     assert.match(globalStylesSource, /html\[data-browser-surface="safari26"\]\[data-app-page="catalog"\] \.appSafariTopBar/);
     assert.match(globalStylesSource, /html\[data-browser-surface="pwa"\]\[data-app-page="catalog"\] \.appSafariTopBar/);
     assert.match(globalStylesSource, /@media \(display-mode:\s*standalone\)\s*\{[\s\S]*\.appSafariTopBar\[data-app-top-page="catalog"\],[\s\S]*\.appSafariTopBar\[data-app-top-page="product"\][\s\S]*display:\s*block/s);
@@ -124,20 +116,12 @@ test("app disables pull down reload gestures everywhere", () => {
     assert.doesNotMatch(globalStylesSource, /appPullRefreshIndicator/);
 });
 
-test("product page uses the shared top substrate in PWA and Safari", () => {
-    assert.doesNotMatch(productPageSource, /catalogSafariTop|appSafariTopBar/);
-    assert.match(globalStylesSource, /html\[data-browser-surface="safari26"\]\[data-app-page="product"\] \.appSafariTopBar/);
-    assert.match(globalStylesSource, /html\[data-browser-surface="pwa"\]\[data-app-page="product"\] \.appSafariTopBar/);
-    assert.doesNotMatch(globalStylesSource, /html\[data-browser-surface="safari26"\]\[data-app-page="product"\] \.catalogSafariTop/);
-    assert.doesNotMatch(globalStylesSource, /html\[data-browser-surface="pwa"\]\[data-app-page="product"\] \.catalogSafariTop/);
-});
-
 test("pwa manifest exposes installable icons for launchers and apple devices", () => {
     assert.match(manifestSource, /id:\s*"\/constructor"/);
-    assert.match(manifestSource, /start_url:\s*"\/constructor\?source=pwa"/);
+    assert.match(manifestSource, /start_url:\s*"\/\?source=pwa"/);
     assert.match(manifestSource, /scope:\s*"\/"/);
-    assert.match(manifestSource, /background_color:\s*"#F2F2F2"/);
-    assert.match(manifestSource, /theme_color:\s*"#F2F2F2"/);
+    assert.match(manifestSource, /background_color:\s*"#77745A"/);
+    assert.doesNotMatch(manifestSource, /theme_color:/);
     assert.match(layoutSource, /manifest:\s*"\/manifest\.webmanifest"/);
     assert.match(layoutSource, /icon:\s*"\/favicon\.ico"/);
     assert.match(layoutSource, /apple:\s*"\/apple-touch-icon\.png"/);
@@ -195,54 +179,6 @@ test("constructor extends only its backdrop and overlays through the bottom safe
     assert.match(appEnvironmentSource, /metaThemeColor\.content = activeTopColor/);
     assert.match(constructorSource, /metaThemeColor|constructorOverlayActive|#FFFFFF/);
     assert.doesNotMatch(constructorSource, /document\.body\.style\.position = "fixed"/);
-});
-
-test("product mobile layout uses clamp sizing for larger phones", () => {
-    assert.doesNotMatch(productPageSource, /pt-\[clamp\(70px,18\.92vw,121px\)\]/);
-    assert.match(productPageSource, /className="pt-0 pb-\[100px\]/);
-    assert.match(productPageSource, /w-\[clamp\(90px,24\.32vw,156px\)\]/);
-    assert.match(productPageSource, /h-\[clamp\(300px,81\.08vw,520px\)\]/);
-    assert.match(productPageSource, /w-\[clamp\(185px,50vw,320px\)\]/);
-    assert.match(productPageSource, /h-\[clamp\(270px,72\.97vw,467px\)\]/);
-    assert.match(productPageSource, /text-\[clamp\(9px,2\.43vw,16px\)\]/);
-    assert.match(productPageSource, /fontSize:\s*'clamp\(14px,\s*3\.78vw,\s*24px\)'/);
-});
-
-test("product mobile second block and color selector use requested spacing", () => {
-    assert.match(productPageSource, /className="flex w-full justify-between items-stretch gap-\[clamp\(25px,6\.76vw,43px\)\]"/);
-    assert.doesNotMatch(productPageSource, /items-stretch gap-\[clamp\(25px,6\.76vw,43px\)\] mb-4/);
-    assert.match(productPageSource, /className="mx-\[-20px\] px-\[5px\]"/);
-    assert.match(productPageSource, /style=\{\{\s*paddingTop:\s*20,\s*paddingBottom:\s*20\s*\}\}/);
-    assert.doesNotMatch(productPageSource, /className="mx-\[-20px\] px-\[5px\]"\s*style=\{\{[^}]*marginTop:\s*20/);
-});
-
-test("product page does not mount the legacy cart overlay over the cart action bar", () => {
-    assert.doesNotMatch(productPageSource, /import \{\s*CartOverlay\s*\}/);
-    assert.doesNotMatch(productPageSource, /<CartOverlay/);
-    assert.doesNotMatch(productPageSource, /isCartOpen|setIsCartOpen/);
-    assert.match(productPageSource, /visible=\{hasScrolled\}/);
-    assert.doesNotMatch(productPageSource, /visible=\{hasScrolled && !isCartOpen\}/);
-});
-
-test("product mobile hero fills the first viewport and follows the PWA header safe area", () => {
-    assert.match(productPageSource, /const PRODUCT_MOBILE_HEADER_TOP_OFFSET = 'var\(--product-mobile-header-top-offset, 20px\)'/);
-    assert.match(productPageSource, /const PRODUCT_MOBILE_HEADER_HEIGHT = 'clamp\(38px,\s*8\.92vw,\s*57px\)'/);
-    assert.match(productPageSource, /const PRODUCT_MOBILE_HEADER_FOOTPRINT = `calc\(\$\{PRODUCT_MOBILE_HEADER_TOP_OFFSET\} \+ \$\{PRODUCT_MOBILE_HEADER_HEIGHT\}\)`/);
-    assert.match(productPageSource, /const PRODUCT_MOBILE_HERO_GAP = 'clamp\(24px,\s*9\.73vw,\s*36px\)'/);
-    assert.match(productPageSource, /const PRODUCT_MOBILE_HERO_TOP_COMPENSATION = 'clamp\(4px,\s*1\.08vw,\s*4px\)'/);
-    assert.match(productPageSource, /const PRODUCT_MOBILE_FIRST_BLOCK_TOP_OFFSET = 'clamp\(10px,\s*2\.7vw,\s*17px\)'/);
-    assert.match(productPageSource, /product-mobile-hero flex min-h-\[100dvh\] w-full flex-col justify-between gap-\[clamp\(24px,9\.73vw,36px\)\]/);
-    assert.doesNotMatch(productPageSource, /product-mobile-hero flex h-\[100dvh\]/);
-    assert.match(productPageSource, /paddingTop:\s*`calc\(\$\{PRODUCT_MOBILE_HEADER_FOOTPRINT\} \+ \$\{PRODUCT_MOBILE_HERO_GAP\} \+ \$\{PRODUCT_MOBILE_HERO_TOP_COMPENSATION\} \+ \$\{PRODUCT_MOBILE_FIRST_BLOCK_TOP_OFFSET\}\)`/);
-    assert.match(productPageSource, /top:\s*`calc\(clamp\(70px, 18\.92vw, 121px\) \+ \$\{PRODUCT_MOBILE_HEADER_TOP_OFFSET\} - 18px\)`/);
-    assert.match(productPageSource, /boxSizing:\s*'border-box'/);
-    assert.match(productPageSource, /className="flex flex-col lg:hidden w-full font-manrope relative"/);
-    assert.doesNotMatch(productPageSource, /className="flex flex-col lg:hidden w-full font-manrope relative pb-10"/);
-    assert.doesNotMatch(productPageSource, /product-mobile-hero[^"\n]*justify-start/);
-    assert.doesNotMatch(productPageSource, /marginTop:\s*`calc\(\$\{PRODUCT_MOBILE_HEADER_FOOTPRINT\} \* -1\)`/);
-    assert.doesNotMatch(productPageSource, /PRODUCT_MOBILE_HERO_MIN_HEIGHT|useIsomorphicLayoutEffect|productMobileHeroMinHeight|productMobileHeroTopPadding/);
-    assert.doesNotMatch(productPageSource, /document\.querySelector\('header'\)\?\.getBoundingClientRect\(\)\.bottom/);
-    assert.doesNotMatch(productPageSource, /min-h-\[calc\(100dvh-clamp\(/);
 });
 
 test("constructor owns only its overlay chrome state, not a separate bottom bar", () => {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useInView } from 'framer-motion';
+import { observeTextOnce } from '@/lib/text/utils/observeTextOnce';
 
 import {
     createDecryptedTextFrame,
@@ -42,7 +42,6 @@ export const useDecryptedText = ({
     const animationRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const containerRef = useRef<HTMLSpanElement>(null);
     const measureRef = useRef<HTMLSpanElement>(null);
-    const isInView = useInView(containerRef, { once: true });
     const isFirstTextChangeRef = useRef(true);
 
     const getRandomCharacter = useCallback((originalChar: string) => getRandomTextCharacter({
@@ -89,10 +88,17 @@ export const useDecryptedText = ({
     }, [displayText, isAnimating, startAnimation, text]);
 
     useEffect(() => {
-        if (animateOn !== 'view' || !isInView || isDecrypted) return;
-        const animationFrameId = window.requestAnimationFrame(startAnimation);
-        return () => window.cancelAnimationFrame(animationFrameId);
-    }, [animateOn, isDecrypted, isInView, startAnimation]);
+        const element = containerRef.current;
+        if (animateOn !== 'view' || isDecrypted || isAnimating || !element) return;
+        let frame: number | undefined;
+        const disconnect = observeTextOnce(element, () => {
+            frame = window.requestAnimationFrame(startAnimation);
+        });
+        return () => {
+            disconnect();
+            if (frame !== undefined) window.cancelAnimationFrame(frame);
+        };
+    }, [animateOn, isAnimating, isDecrypted, startAnimation]);
 
     useEffect(() => () => {
         if (animationRef.current) clearInterval(animationRef.current);

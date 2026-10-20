@@ -8,7 +8,6 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.core.config import AppEnvironment, Settings
@@ -23,10 +22,12 @@ from app.modules.notifications.crypto import (
     EncryptedNotificationPayload,
     NotificationPayloadCodec,
 )
+from app.modules.orders.cutover import verify_order_read_cutover
 from app.modules.orders.migration import LegacyOrderPlanner, OrderMigrationService
 from app.modules.orders.schemas import OrderCreationCommand
 from app.modules.orders.security import digest_order_guest_access_token
 from app.modules.orders.service import OrderCreationService
+from tests.migration_checks import check_migration
 
 IDENTITY_FINGERPRINT = "e" * 64
 JWT_SECRET = "j" * 32
@@ -130,17 +131,14 @@ def _create_legacy_orders(path: Path) -> dict[int, str]:
     return carts
 
 
-def _settings(tmp_path: Path, *, order_fingerprint: str) -> Settings:
+def _settings(tmp_path: Path) -> Settings:
     return Settings(
         _env_file=None,
         app_env=AppEnvironment.TEST,
-        legacy_database_url=f"sqlite:///{tmp_path / 'missing-legacy.db'}",
         database_enabled=True,
         database_url=f"sqlite+aiosqlite:///{tmp_path / 'target.db'}",
         identity_api_enabled=True,
-        identity_migration_fingerprint=IDENTITY_FINGERPRINT,
         order_reads_enabled=True,
-        order_migration_fingerprint=order_fingerprint,
         jwt_secret=JWT_SECRET,
         identity_otp_pepper=OTP_PEPPER,
         notification_encryption_key=NOTIFICATION_KEY,
@@ -251,28 +249,16 @@ def test_guarded_order_reads_require_owner_or_staff_permission(tmp_path: Path) -
     source_path = tmp_path / "legacy.db"
     target_path = tmp_path / "target.db"
     carts = _create_legacy_orders(source_path)
-    plan = LegacyOrderPlanner().build(source_path)
-    settings = _settings(tmp_path, order_fingerprint=plan.fingerprint)
+    settings = _settings(tmp_path)
     guest_order_id = _seed_target(settings, source_path)
-
-    legacy = FastAPI()
-
-    @legacy.post("/api/orders")
-    async def legacy_create_order() -> dict[str, str]:
-        return {"source": "legacy-write"}
-
-    @legacy.get("/api/orders/{order_id}")
-    async def legacy_public_order(order_id: int) -> dict[str, int | str]:
-        return {"source": "legacy-public-read", "id": order_id}
 
     application = create_app(
         settings=settings,
         database=DatabaseManager(settings),
-        legacy_app=legacy,
     )
     with TestClient(application) as client:
         assert client.get("/api/orders/10").status_code == 401
-        assert client.post("/api/orders").json() == {"source": "legacy-write"}
+        assert client.post("/api/orders").status_code == 405
         missing_guest_access = client.get("/api/order-access")
         assert missing_guest_access.status_code == 404
         assert missing_guest_access.headers["cache-control"] == "no-store"
@@ -299,11 +285,13 @@ def test_guarded_order_reads_require_owner_or_staff_permission(tmp_path: Path) -
         customer_headers = {"Authorization": f"Bearer {customer_token}"}
         owned = client.get("/api/auth/orders", headers=customer_headers)
         assert owned.status_code == 200
-        assert [order["id"] for order in owned.json()] == [10]
-        assert owned.json()[0]["cart_items"] == carts[10]
-        assert json.loads(owned.json()[0]["cart_items"])[0]["customization"] == {
-            "fit": {"lengthCm": 70, "widthCm": 58}
-        }
+        assert [order["id"] for order in owned.json()["items"]] == [10]
+        assert (
+            client.get("/api/orders/10", headers=customer_headers).json()["cart_items"] == carts[10]
+        )
+        assert json.loads(
+            client.get("/api/orders/10", headers=customer_headers).json()["cart_items"]
+        )[0]["customization"] == {"fit": {"lengthCm": 70, "widthCm": 58}}
 
         own_detail = client.get("/api/orders/10", headers=customer_headers)
         assert own_detail.status_code == 200
@@ -318,7 +306,7 @@ def test_guarded_order_reads_require_owner_or_staff_permission(tmp_path: Path) -
             )
             connection.commit()
         retained = client.get("/api/auth/orders", headers=customer_headers)
-        assert [order["id"] for order in retained.json()] == [10]
+        assert [order["id"] for order in retained.json()["items"]] == [10]
 
         manager_token, manager_id = _login(client, target_path, "manager@example.test")
         with sqlite3.connect(target_path) as connection:
@@ -361,25 +349,17 @@ def test_order_read_cutover_refuses_wrong_fingerprint_and_tampered_counts(
     source_path = tmp_path / "legacy.db"
     _create_legacy_orders(source_path)
     plan = LegacyOrderPlanner().build(source_path)
-    settings = _settings(tmp_path, order_fingerprint=plan.fingerprint)
+    settings = _settings(tmp_path)
     _seed_target(settings, source_path)
 
-    wrong_settings = _settings(tmp_path, order_fingerprint="f" * 64)
     with pytest.raises(ConfigurationError, match="not present"):
-        with TestClient(
-            create_app(
-                settings=wrong_settings,
-                database=DatabaseManager(wrong_settings),
-            )
-        ):
-            pass
+        check_migration(settings, verify_order_read_cutover, "f" * 64)
 
     with sqlite3.connect(tmp_path / "target.db") as connection:
         connection.execute("DELETE FROM legacy_order_imports WHERE source_order_id = 11")
         connection.commit()
     with pytest.raises(ConfigurationError, match="does not match"):
-        with TestClient(create_app(settings=settings, database=DatabaseManager(settings))):
-            pass
+        check_migration(settings, verify_order_read_cutover, plan.fingerprint)
 
     payment_tamper_dir = tmp_path / "payment-tamper"
     payment_tamper_dir.mkdir()
@@ -388,7 +368,6 @@ def test_order_read_cutover_refuses_wrong_fingerprint_and_tampered_counts(
     payment_plan = LegacyOrderPlanner().build(payment_source)
     payment_settings = _settings(
         payment_tamper_dir,
-        order_fingerprint=payment_plan.fingerprint,
     )
     _seed_target(payment_settings, payment_source)
     with sqlite3.connect(payment_tamper_dir / "target.db") as connection:
@@ -403,10 +382,4 @@ def test_order_read_cutover_refuses_wrong_fingerprint_and_tampered_counts(
         )
         connection.commit()
     with pytest.raises(ConfigurationError, match="does not match"):
-        with TestClient(
-            create_app(
-                settings=payment_settings,
-                database=DatabaseManager(payment_settings),
-            )
-        ):
-            pass
+        check_migration(payment_settings, verify_order_read_cutover, payment_plan.fingerprint)

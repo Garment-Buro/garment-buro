@@ -29,7 +29,7 @@ Garment Buro объединяет клиентскую веб/PWA-часть, ba
 - производственная CRM: материалы, модели, техкарты и движение заказов.
 
 > [!IMPORTANT]
-> Кодовая база подготовлена для безопасного перехода от legacy MVP к новой архитектуре. Новые модули закрыты feature flags и включаются только после миграции данных и проверки на development/staging. Production не переключается на новые пути до rehearsal и проверки внешних интеграций.
+> Идёт подготовка нового релиза. `app.main:app` запускает современный backend без старого SQLite-приложения; основные catalog/cart/identity/order API включены в шаблонах окружения. Нужны настроенные секреты и миграции Alembic. Текущий production в рамках этой работы не переключался; готовность полного релиза отслеживается в `docs/release-refactoring.md`.
 
 ## Технологии
 
@@ -37,7 +37,7 @@ Garment Buro объединяет клиентскую веб/PWA-часть, ba
 | --- | --- |
 | Frontend | Next.js 16, React 19, TypeScript, Zustand, Tailwind CSS, PWA |
 | Backend | FastAPI, Python 3.12, Pydantic, SQLAlchemy 2.0 async |
-| Данные | PostgreSQL 17, Alembic, Redis |
+| Данные | PostgreSQL 17, Alembic; Redis для импорта прежних корзин |
 | Файлы | MinIO / S3-compatible storage |
 | Интеграции | ЮKassa, СДЭК, SMTP |
 | Инфраструктура | Docker Compose, GHCR, GitHub Actions, Nginx, health checks, workers |
@@ -51,7 +51,8 @@ flowchart LR
     F --> S["Domain services"]
     S --> R["Repositories"]
     R --> P[("PostgreSQL")]
-    S --> C[("Redis")]
+    C[("Прежние корзины Redis")] --> I["Отдельный offline import"]
+    I --> P
     S --> M["MinIO / S3"]
     S --> O[("Transactional outbox")]
     O --> W["Background workers"]
@@ -67,7 +68,7 @@ router -> service -> repository -> SQLAlchemy model
                    -> integration client
 ```
 
-HTTP-слой не содержит бизнес-логику, PostgreSQL остаётся источником постоянных данных, Redis используется только для кэша и координации, а внешние побочные действия выполняются через сохраняемую очередь.
+Основное направление HTTP-обработки — router → service → repository. PostgreSQL хранит постоянные данные и очередь фоновых действий. Текущий runtime API не обращается к Redis: он сохранён для отдельного импорта прежних корзин. Внешние побочные действия выполняют workers.
 
 ## Быстрый запуск
 
@@ -123,11 +124,11 @@ docker compose -f docker-compose.local.yml down
 ### Backend
 
 ```bash
-python3.12 -m venv .venv
-.venv/bin/pip install -r backend/requirements-dev.txt
+python3.12 -m venv backend/.venv
+backend/.venv/bin/python -m pip install --require-hashes -r backend/requirements-dev.txt
 
 cd backend
-../.venv/bin/python -m uvicorn app.main:app --reload
+.venv/bin/python -m uvicorn app.main:app --reload
 ```
 
 ### Frontend
@@ -142,9 +143,13 @@ INTERNAL_API_URL=http://localhost:8000 npm run dev
 
 ## Проверки перед коммитом
 
+Python requirements содержат полный набор версий и SHA256. Порядок обновления,
+проверка согласованности dev/production и аудит описаны в
+[backend dependency audit](backend/docs/dependency-audit.md).
+
 ```bash
 cd backend
-make PYTHON=../.venv/bin/python check
+make PYTHON=.venv/bin/python check
 
 cd ../frontend
 npm ci
@@ -173,14 +178,18 @@ garment-buro/
 ├── deploy/                   # server Compose, Nginx, backup и deploy scripts
 ├── .github/workflows/        # CI и GHCR deployment pipelines
 ├── docker-compose.local.yml  # локальная среда
-├── docker-compose.yml        # legacy production compatibility
 ├── .env.example              # полный перечень конфигурации
 └── nginx*.conf               # reverse proxy и TLS bootstrap
 ```
 
 ## Feature flags и безопасное включение
 
-Новые пути миграции по умолчанию выключены. Основные переключатели находятся в `.env.example`:
+В текущей ветке нового релиза основные API каталога, корзин, identity и чтения
+заказов включены в шаблонах окружения. API запускается через `app.main:app`
+без подстановки прежнего приложения. PostgreSQL должна быть предварительно
+мигрирована; при несовпадении Alembic revision startup завершается ошибкой.
+Секреты и подключения необходимо настроить отдельно. Основные переключатели
+находятся в `.env.example`:
 
 - `CATALOG_READS_ENABLED` и `CATALOG_WRITES_ENABLED`;
 - `IDENTITY_API_ENABLED` и `NEXT_PUBLIC_IDENTITY_SESSION_V2_ENABLED`;
@@ -190,7 +199,11 @@ garment-buro/
 - `CRM_API_ENABLED`, `CRM_WRITES_ENABLED`, `CRM_FILES_ENABLED`;
 - `FULFILLMENT_*_ENABLED` и `CDEK_*_ENABLED`.
 
-Не включайте связанные флаги по отдельности. Порядок миграции, fingerprints и staging rehearsal описаны в [плане рефакторинга](backend/REFACTORING_PLAN.md) и [backend README](backend/README.md).
+Связанные флаги включаются вместе. Актуальный ход нового релиза описан в
+[плане рефакторинга](docs/release-refactoring.md), запуск и диагностика — в
+[runtime-инструкции](backend/docs/runtime.md). Старые отчёты `backend/docs/refactoring`
+описывают историю перехода: fingerprints больше не являются условием обычного
+запуска API. Проверки переноса данных сохраняются для отдельной процедуры импорта.
 
 ## Правила работы
 

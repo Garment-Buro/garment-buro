@@ -76,14 +76,14 @@ class CrmOrderProject(Base, IntegerIdMixin, TimestampMixin):
         ForeignKey("orders.id", ondelete="RESTRICT"),
         nullable=False,
         unique=True,
-        index=True,
+        index=False,
     )
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     source_fulfillment_job_id: Mapped[int | None] = mapped_column(
         ForeignKey("fulfillment_jobs.id", ondelete="RESTRICT"),
         nullable=True,
         unique=True,
-        index=True,
+        index=False,
     )
     source_payment_attempt_id: Mapped[int | None] = mapped_column(
         ForeignKey("payment_attempts.id", ondelete="RESTRICT"),

@@ -2,7 +2,6 @@
 import { type KeyboardEvent as ReactKeyboardEvent, useEffect, useState } from 'react';
 import {
     PiChatCircle,
-    PiCheckCircle,
     PiEnvelope,
     PiMapPin,
     PiPackage,
@@ -18,9 +17,9 @@ import {
     type AdminClientDetail,
     date,
     money,
-    priorityLabels,
-    statusLabels,
 } from '@/lib/production/adminTypes';
+import { useProductionClientOrders, useProductionClientTickets } from '@/hooks/production/useProductionClientHistory';
+import { ClientHistoryControls, ClientOrders, ClientTickets } from './AdminClientHistory';
 import styles from './ProductionAdmin.module.css';
 
 type ClientTab = 'profile' | 'orders' | 'tickets' | 'create';
@@ -37,9 +36,11 @@ export function AdminClientDetails({
     onClose: () => void;
 }) {
     const [activeTab, setActiveTab] = useState<ClientTab>('profile');
-    const { data, loading, error } = useAdminResource<AdminClientDetail>(
+    const { data, loading, error, reload } = useAdminResource<AdminClientDetail>(
         `clients/detail?key=${encodeURIComponent(client.key)}`,
     );
+    const orders = useProductionClientOrders(client.key, Boolean(data) && (activeTab === 'orders' || activeTab === 'create'));
+    const tickets = useProductionClientTickets(client.key, Boolean(data) && activeTab === 'tickets');
     useEffect(() => {
         const closeOnEscape = (event: KeyboardEvent) => {
             if (event.key === 'Escape') onClose();
@@ -56,11 +57,11 @@ export function AdminClientDetails({
         icon: typeof PiUserCircle;
     }[] = [
         { id: 'profile', label: 'Данные', icon: PiUserCircle },
-        { id: 'orders', label: 'Заказы', count: data?.orders.length, icon: PiPackage },
+        { id: 'orders', label: 'Заказы', count: data?.orders_count, icon: PiPackage },
         {
             id: 'tickets',
             label: 'Обращения',
-            count: data?.tickets.length,
+            count: data?.tickets_count,
             icon: PiChatCircle,
         },
         ...(canCreateTicket
@@ -151,14 +152,14 @@ export function AdminClientDetails({
                             <span />
                             <span />
                             <span className={styles.srOnly}>
-                                Загружаем историю клиента
+                                Загружаем данные клиента
                             </span>
                         </div>
                     )}
                     {error && (
-                        <p role="alert" className={styles.error}>
-                            {error}
-                        </p>
+                        <div><p role="alert" className={styles.error}>{error}</p>
+                            <button type="button" onClick={reload}>Повторить загрузку данных</button>
+                        </div>
                     )}
                     {data && activeTab === 'profile' && (
                         <div
@@ -206,15 +207,15 @@ export function AdminClientDetails({
                             <dl className={styles.clientTotals}>
                                 <div>
                                     <dt>Заказов</dt>
-                                    <dd>{client.orders_count}</dd>
+                                    <dd>{data.orders_count}</dd>
                                 </div>
                                 <div>
                                     <dt>Сумма заказов</dt>
-                                    <dd>{money(client.orders_total)}</dd>
+                                    <dd>{money(data.orders_total)}</dd>
                                 </div>
                                 <div>
                                     <dt>Оплачено</dt>
-                                    <dd>{money(client.paid_orders_total)}</dd>
+                                    <dd>{money(data.paid_orders_total)}</dd>
                                 </div>
                             </dl>
                         <section className={styles.clientSection}>
@@ -304,123 +305,8 @@ export function AdminClientDetails({
                             )}
                         </div>
                     )}
-                    {data && activeTab === 'orders' && (
-                        <section
-                            className={styles.clientSection}
-                            role="tabpanel"
-                            id="client-panel-orders"
-                            aria-labelledby="client-tab-orders"
-                        >
-                            <div className={styles.orderSectionHeading}>
-                                <PiPackage aria-hidden />
-                                <div>
-                                    <h3>История заказов</h3>
-                                    <small>{data.orders.length} записей</small>
-                                </div>
-                            </div>
-                            {data.orders.length ? (
-                                <div className={styles.clientHistoryList}>
-                                    {data.orders.map((order) => (
-                                    <button
-                                        type="button"
-                                        key={order.id}
-                                        onClick={() => onOrder(order.id)}
-                                    >
-                                        <span className={styles.clientHistoryIcon}>
-                                            <PiPackage aria-hidden />
-                                        </span>
-                                        <span>
-                                            <strong>Заказ №{order.id}</strong>
-                                            <small>
-                                                {date(order.created_at)} ·{' '}
-                                                {statusLabels[
-                                                    order.workflow_state || order.status
-                                                ] || order.status}
-                                            </small>
-                                            <small>
-                                                {[
-                                                    order.delivery_city,
-                                                    order.delivery_method,
-                                                ]
-                                                    .filter(Boolean)
-                                                    .join(' · ') ||
-                                                    'Доставка не указана'}
-                                            </small>
-                                        </span>
-                                        <span className={styles.clientHistoryValue}>
-                                            <strong>{money(order.total)}</strong>
-                                            <small>
-                                                {statusLabels[order.payment_status] ||
-                                                    order.payment_status}
-                                            </small>
-                                        </span>
-                                    </button>
-                                    ))}
-                                </div>
-                            ) : (
-                                <p className={styles.clientEmptyHistory}>
-                                    <PiPackage aria-hidden />
-                                    Заказов пока нет
-                                </p>
-                            )}
-                        </section>
-                    )}
-                    {data && activeTab === 'tickets' && (
-                        <section
-                            className={styles.clientSection}
-                            role="tabpanel"
-                            id="client-panel-tickets"
-                            aria-labelledby="client-tab-tickets"
-                        >
-                            <div className={styles.orderSectionHeading}>
-                                <PiChatCircle aria-hidden />
-                                <div>
-                                    <h3>История обращений</h3>
-                                    <small>{data.tickets.length} записей</small>
-                                </div>
-                            </div>
-                            {data.tickets.length ? (
-                                <div className={styles.clientHistoryList}>
-                                    {data.tickets.map((ticket) => (
-                                        <button
-                                            type="button"
-                                            key={ticket.id}
-                                            onClick={() => onTicket(ticket.id)}
-                                        >
-                                            <span className={styles.clientHistoryIcon}>
-                                                <PiChatCircle aria-hidden />
-                                            </span>
-                                            <span>
-                                                <strong>{ticket.subject}</strong>
-                                                <small>
-                                                    Обращение №{ticket.id} ·{' '}
-                                                    {date(ticket.created_at)}
-                                                </small>
-                                                <small>
-                                                    {ticket.order_id
-                                                        ? `Заказ №${ticket.order_id}`
-                                                        : 'Без заказа'}
-                                                </small>
-                                            </span>
-                                            <span className={styles.clientHistoryValue}>
-                                                <strong>
-                                                    {statusLabels[ticket.status]}
-                                                </strong>
-                                                <small>
-                                                    {priorityLabels[ticket.priority]}
-                                                </small>
-                                            </span>
-                                        </button>
-                                    ))}
-                                </div>
-                            ) : (
-                                <p className={styles.clientEmptyHistory}>
-                                    <PiCheckCircle aria-hidden />
-                                    Обращений пока нет
-                                </p>
-                            )}
-                        </section>
-                    )}
+                    {data && activeTab === 'orders' && <ClientOrders page={orders} total={data.orders_count} onOrder={onOrder} />}
+                    {data && activeTab === 'tickets' && <ClientTickets page={tickets} total={data.tickets_count} onTicket={onTicket} />}
                     {data && activeTab === 'create' && canCreateTicket && (
                         <section
                             className={styles.clientSection}
@@ -437,13 +323,15 @@ export function AdminClientDetails({
                                     </small>
                                 </div>
                             </div>
+                            <p>Выберите заказ из загруженных. Более ранние заказы доступны по кнопке ниже.</p>
+                            <ClientHistoryControls page={orders} total={data.orders_count} label="Ещё заказы для выбора" />
                             <CreateTicket
                                 admin
                                 defaultOpen
                                 embedded
                                 showToggle={false}
                                 customerUserId={client.user_id ?? undefined}
-                                orderOptions={data.orders.map((order) => ({
+                                orderOptions={orders.items.map((order) => ({
                                     id: order.id,
                                     label: `Заказ №${order.id} · ${date(order.created_at)} · ${money(order.total)}`,
                                 }))}

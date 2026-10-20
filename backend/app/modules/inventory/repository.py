@@ -48,6 +48,7 @@ class InventoryRepository:
                 .where(Product.id.in_(product_ids))
                 .order_by(Product.id)
                 .with_for_update()
+                .execution_options(populate_existing=True)
             )
         )
         variants = (
@@ -57,6 +58,7 @@ class InventoryRepository:
                     .where(ProductVariant.id.in_(variant_ids))
                     .order_by(ProductVariant.id)
                     .with_for_update()
+                    .execution_options(populate_existing=True)
                 )
             )
             if variant_ids

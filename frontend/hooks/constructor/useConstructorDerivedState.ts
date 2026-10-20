@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect, useMemo } from 'react';
+import {useConstructorPrice} from './useConstructorPrice';
+import {constructorPriceRequest} from '@/lib/constructor/priceResource';
 
-import { DEFAULT_DECORATION_CATALOG } from '@/lib/constructor/config/defaultDecorations';
 import { CUSTOM_UPLOAD_CATEGORIES, DECORATION_PAGE_SIZE } from '@/lib/constructor/constants';
 import type {
     ClothingModel,
+    ConstructorDraftState,
+    GarmentFit,
     HardwareCategory,
     HardwareVariant,
     ModelView,
@@ -14,38 +17,45 @@ import type {
 } from '@/lib/constructor/types';
 import {
     chunkArray,
-    formatDecorationPrice,
     getItemSizeCm,
-    getModelBounds,
-    getPlacedItemPrice,
-    getProductDimensions,
+    resolveConstructorGeometry,
     getProductImageList,
     versionConstructorMedia,
 } from '@/lib/constructor/utils/constructor';
-import type { ProductData } from '@/lib/products/types';
+import type { ConstructorProduct } from '@/lib/constructor/product';
+import { constructorVariantImages } from '@/lib/constructor/selection';
 
 type ConstructorDerivedStateOptions = {
-    product: ProductData | null;
+    product: ConstructorProduct | null;
     selectedSize: string;
+    selectedColor: string | null;
     modelView: ModelView;
     selectedCategory: HardwareCategory;
     customDecorations: HardwareVariant[];
     placedItemsByView: PlacedItemsByView;
     selectedItemUid: string | null;
     restoredModelImages?: Record<ModelView, string> | null;
+    restoredDraft?: ConstructorDraftState | null;
+    selectedFit?: GarmentFit | null;
 };
 
 export const useConstructorDerivedState = ({
     product,
     selectedSize,
+    selectedColor,
     modelView,
     selectedCategory,
     customDecorations,
     placedItemsByView,
     selectedItemUid,
     restoredModelImages,
+    restoredDraft,
+    selectedFit = null,
 }: ConstructorDerivedStateOptions) => {
-    const productImages = useMemo(() => getProductImageList(product), [product]);
+    const productImages = useMemo(() => {
+        const variantImages = constructorVariantImages(product, { size: selectedSize, color: selectedColor });
+        return variantImages.length ? variantImages : getProductImageList(product);
+    }, [product, selectedSize, selectedColor]);
     const frontImage = restoredModelImages?.front || productImages[0] || null;
     const backImage = restoredModelImages?.back || productImages[1] || frontImage;
     const activeImageSrc = modelView === 'front' ? frontImage : backImage;
@@ -62,8 +72,9 @@ export const useConstructorDerivedState = ({
     }, [frontImage, backImage]);
 
     const placedItems = placedItemsByView[modelView];
-    const garmentDimensions = useMemo(() => getProductDimensions(product, selectedSize), [product, selectedSize]);
-    const modelBounds = useMemo(() => getModelBounds(garmentDimensions), [garmentDimensions]);
+    const geometry = useMemo(() => resolveConstructorGeometry(product, selectedSize, restoredDraft, selectedFit, selectedColor), [product, selectedSize, restoredDraft, selectedFit, selectedColor]);
+    const garmentDimensions = geometry.garment;
+    const modelBounds = geometry.modelBounds;
     const canUploadCustomDecoration = CUSTOM_UPLOAD_CATEGORIES.includes(selectedCategory);
     const selectedModel = useMemo<ClothingModel | null>(() => {
         if (!product) return null;
@@ -71,7 +82,7 @@ export const useConstructorDerivedState = ({
         return {
             id: `product_${product.id}`,
             name: product.title,
-            src: displayActiveImageSrc || versionConstructorMedia(product.mobile_card_image) || versionConstructorMedia(product.image_left) || '',
+            src: displayActiveImageSrc || versionConstructorMedia(getProductImageList(product)[0]) || '',
             price: product.price,
         };
     }, [displayActiveImageSrc, product]);
@@ -80,30 +91,25 @@ export const useConstructorDerivedState = ({
         [customDecorations, selectedCategory],
     );
     const currentVariants = useMemo(
-        () => [
-            ...visibleCustomDecorations,
-            ...DEFAULT_DECORATION_CATALOG.filter((hardware) => hardware.categoryId === selectedCategory),
-        ],
-        [selectedCategory, visibleCustomDecorations],
+        () => visibleCustomDecorations,
+        [visibleCustomDecorations],
     );
     const hardwareMap = useMemo(() => {
         const map: Record<string, HardwareVariant> = {};
-        [...DEFAULT_DECORATION_CATALOG, ...customDecorations].forEach((hardware) => {
+        customDecorations.forEach((hardware) => {
             map[hardware.id] = hardware;
         });
         return map;
     }, [customDecorations]);
-    const customizationPrice = useMemo(() => (
-        Object.values(placedItemsByView).flat().reduce((total, item) => (
-            total + getPlacedItemPrice(item, hardwareMap[item.variantId])
-        ), 0)
-    ), [hardwareMap, placedItemsByView]);
-    const totalPrice = (selectedModel?.price || 0) + customizationPrice;
+    const pricing = useConstructorPrice(constructorPriceRequest(product?.id ?? null, placedItemsByView));
+    const decorationPrices = useMemo(() => Object.fromEntries(pricing.quote?.decorations.map(d => [d.uid, d.price]) || []), [pricing.quote]);
+    const customizationPrice = pricing.quote?.customizationPrice ?? 0;
+    const totalPrice = pricing.quote?.totalPrice ?? 0;
     const placedItemDetails = useMemo(() => (
         (Object.entries(placedItemsByView) as Array<[ModelView, PlacedHardware[]]>).flatMap(([view, items]) => (
             items.map((item) => {
                 const hardware = hardwareMap[item.variantId];
-                const size = hardware ? getItemSizeCm(item, hardware) : { widthCm: 0, heightCm: 0 };
+                const size = hardware ? getItemSizeCm(item, hardware, geometry.pixelsPerCm) : { widthCm: 0, heightCm: 0 };
 
                 return {
                     view,
@@ -111,11 +117,11 @@ export const useConstructorDerivedState = ({
                     hardware,
                     widthCm: size.widthCm,
                     heightCm: size.heightCm,
-                    price: getPlacedItemPrice(item, hardware),
+                    price: decorationPrices[item.uid] ?? 0,
                 };
             })
         ))
-    ), [hardwareMap, placedItemsByView]);
+    ), [hardwareMap, placedItemsByView, geometry.pixelsPerCm, decorationPrices]);
     const decorationPages = useMemo(() => {
         if (!canUploadCustomDecoration) return chunkArray(currentVariants, DECORATION_PAGE_SIZE);
 
@@ -126,14 +132,13 @@ export const useConstructorDerivedState = ({
         ];
     }, [canUploadCustomDecoration, currentVariants]);
     const getDecorationPanelPrice = (variant: HardwareVariant) => {
-        if (!variant.isCustom) return formatDecorationPrice(variant);
-
         const placedCustomItems = Object.values(placedItemsByView).flat().filter((item) => item.variantId === variant.id);
         const selectedPlacedItem = selectedItemUid
             ? placedCustomItems.find((item) => item.uid === selectedItemUid)
             : null;
         const priceSource = selectedPlacedItem || placedCustomItems[0];
-        const price = priceSource ? getPlacedItemPrice(priceSource, variant) : variant.price;
+        if (!pricing.quote) return '…';
+        const price = priceSource ? decorationPrices[priceSource.uid] : pricing.quote.decorationBasePrice;
         return `${price.toLocaleString('ru-RU')} ₽`;
     };
 
@@ -145,12 +150,15 @@ export const useConstructorDerivedState = ({
         placedItems,
         garmentDimensions,
         modelBounds,
+        geometry,
         canUploadCustomDecoration,
         selectedModel,
         currentVariants,
         hardwareMap,
         customizationPrice,
         totalPrice,
+        pricing,
+        decorationPrices,
         placedItemDetails,
         decorationPages,
         getDecorationPanelPrice,

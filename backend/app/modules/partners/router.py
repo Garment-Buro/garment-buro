@@ -4,7 +4,7 @@ import secrets
 from datetime import datetime, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,9 +14,17 @@ from app.modules.identity.exceptions import PermissionDeniedError
 from app.modules.identity.models import PermissionCode, User
 from app.modules.identity.router import get_current_identity_user, get_identity_service
 from app.modules.identity.service import IdentityService
+from app.modules.partners.admin_directory_api import read_admin_landing_page
+from app.modules.partners.admin_directory_schemas import AdminLandingPage, AdminLandingQuery
+from app.modules.partners.read_schemas import (
+    AdminPartnerPage,
+    AdminPartnerQuery,
+    PartnerPayoutPage,
+    PartnerPayoutQuery,
+)
+from app.modules.partners.read_service import InvalidPartnerReadCursor, PartnerReadService
 from app.modules.partners.requisites_crypto import PartnerRequisitesDecryptionError
 from app.modules.partners.schemas import (
-    PartnerCommissionResponse,
     PartnerCreateRequest,
     PartnerDashboardResponse,
     PartnerLandingCreateRequest,
@@ -28,6 +36,7 @@ from app.modules.partners.schemas import (
     PartnerProfileResponse,
     PartnerRequisitesRequest,
     PartnerRequisitesResponse,
+    PartnerRequisitesWriteRequest,
     PartnerUpdateRequest,
     PartnerVisitResponse,
     PublicPartnerLandingResponse,
@@ -36,12 +45,14 @@ from app.modules.partners.service import (
     PartnerConflictError,
     PartnerLandingNotFoundError,
     PartnerLandingProductNotFoundError,
+    PartnerLandingVersionConflictError,
     PartnerNotFoundError,
     PartnerPayoutBalanceError,
     PartnerPayoutRequisitesError,
     PartnerPayoutStateError,
     PartnerProgramDisabledError,
     PartnerProgramService,
+    PartnerRequisitesVersionConflictError,
 )
 
 public_router = APIRouter(prefix="/api/partner/landings", tags=["partner-public"])
@@ -66,10 +77,18 @@ async def get_public_landing(
     try:
         result = await service.public_landing(session, slug=slug)
     except PartnerProgramDisabledError as error:
-        raise HTTPException(status_code=404, detail="Partner landing was not found") from error
+        raise HTTPException(
+            status_code=404,
+            detail="Partner landing was not found",
+            headers={"Cache-Control": "no-store"},
+        ) from error
     except PartnerLandingNotFoundError as error:
-        raise HTTPException(status_code=404, detail="Partner landing was not found") from error
-    response.headers["Cache-Control"] = "public, max-age=60, stale-while-revalidate=300"
+        raise HTTPException(
+            status_code=404,
+            detail="Partner landing was not found",
+            headers={"Cache-Control": "no-store"},
+        ) from error
+    response.headers["Cache-Control"] = "no-store"
     return result
 
 
@@ -157,19 +176,6 @@ async def get_partner_dashboard(
     return dashboard
 
 
-@partner_router.get("/landings", response_model=list[PartnerLandingResponse])
-async def list_partner_landings(
-    user: Annotated[User, Depends(get_current_identity_user)],
-    session: Annotated[AsyncSession, Depends(get_database_session)],
-    identity: Annotated[IdentityService, Depends(get_identity_service)],
-    service: Annotated[PartnerProgramService, Depends(get_partner_service)],
-) -> list[PartnerLandingResponse]:
-    await _require_permission(identity, session, user.id, PermissionCode.PARTNERS_READ_OWN)
-    profile = await _partner_profile(service, session, user.id)
-    landings = await service.repository.list_landings(session, partner_id=profile.id)
-    return [PartnerLandingResponse.model_validate(landing) for landing in landings]
-
-
 @partner_router.get(
     "/requisites",
     response_model=PartnerRequisitesResponse | None,
@@ -194,7 +200,7 @@ async def get_partner_requisites(
 
 @partner_router.put("/requisites", response_model=PartnerRequisitesResponse)
 async def save_partner_requisites(
-    payload: PartnerRequisitesRequest,
+    payload: PartnerRequisitesWriteRequest,
     response: Response,
     user: Annotated[User, Depends(get_current_identity_user)],
     session: Annotated[AsyncSession, Depends(get_database_session)],
@@ -206,12 +212,22 @@ async def save_partner_requisites(
         requisites = await service.save_requisites(
             session,
             user_id=user.id,
-            payload=payload,
+            expected_version=payload.expected_version,
+            payload=PartnerRequisitesRequest.model_validate(
+                payload.model_dump(exclude={"expected_version"})
+            ),
         )
         await session.commit()
     except (PartnerProgramDisabledError, PartnerNotFoundError) as error:
         await session.rollback()
         raise HTTPException(status_code=404, detail="Partner profile was not found") from error
+    except PartnerRequisitesVersionConflictError as error:
+        await session.rollback()
+        raise HTTPException(
+            409,
+            detail={"code": "requisites_version_conflict"},
+            headers={"Cache-Control": "no-store"},
+        ) from error
     except SQLAlchemyError as error:
         await session.rollback()
         raise HTTPException(status_code=503, detail="Partner requisites are unavailable") from error
@@ -219,33 +235,24 @@ async def save_partner_requisites(
     return requisites
 
 
-@partner_router.get("/commissions", response_model=list[PartnerCommissionResponse])
-async def list_partner_commissions(
-    user: Annotated[User, Depends(get_current_identity_user)],
-    session: Annotated[AsyncSession, Depends(get_database_session)],
-    identity: Annotated[IdentityService, Depends(get_identity_service)],
-    service: Annotated[PartnerProgramService, Depends(get_partner_service)],
-) -> list[PartnerCommissionResponse]:
-    await _require_permission(identity, session, user.id, PermissionCode.PARTNERS_READ_OWN)
-    profile = await _partner_profile(service, session, user.id)
-    commissions = await service.repository.list_partner_commissions(
-        session,
-        partner_id=profile.id,
-    )
-    return [PartnerCommissionResponse.model_validate(item) for item in commissions]
-
-
-@partner_router.get("/payouts", response_model=list[PartnerPayoutResponse])
+@partner_router.get("/payouts", response_model=PartnerPayoutPage)
 async def list_partner_payouts(
+    response: Response,
+    query: Annotated[PartnerPayoutQuery, Query()],
     user: Annotated[User, Depends(get_current_identity_user)],
     session: Annotated[AsyncSession, Depends(get_database_session)],
     identity: Annotated[IdentityService, Depends(get_identity_service)],
     service: Annotated[PartnerProgramService, Depends(get_partner_service)],
-) -> list[PartnerPayoutResponse]:
+) -> PartnerPayoutPage:
     await _require_permission(identity, session, user.id, PermissionCode.PARTNERS_READ_OWN)
     profile = await _partner_profile(service, session, user.id)
-    payouts = await service.repository.list_partner_payouts(session, partner_id=profile.id)
-    return [PartnerPayoutResponse.model_validate(item) for item in payouts]
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        return await PartnerReadService.payouts(session, profile.id, query)
+    except InvalidPartnerReadCursor as error:
+        raise HTTPException(
+            422, detail={"code": "invalid_cursor"}, headers={"Cache-Control": "no-store"}
+        ) from error
 
 
 @partner_router.post(
@@ -302,20 +309,27 @@ async def create_partner(
     return PartnerProfileResponse.model_validate(partner)
 
 
-@admin_router.get("", response_model=list[PartnerProfileResponse])
+@admin_router.get("", response_model=AdminPartnerPage)
 async def list_partners(
+    response: Response,
+    query: Annotated[AdminPartnerQuery, Query()],
     user: Annotated[User, Depends(get_current_identity_user)],
     session: Annotated[AsyncSession, Depends(get_database_session)],
     identity: Annotated[IdentityService, Depends(get_identity_service)],
     service: Annotated[PartnerProgramService, Depends(get_partner_service)],
-) -> list[PartnerProfileResponse]:
+) -> AdminPartnerPage:
     await _require_permission(identity, session, user.id, PermissionCode.PARTNERS_MANAGE)
     try:
         service.require_enabled()
     except PartnerProgramDisabledError as error:
         raise HTTPException(status_code=404, detail="Partner program is disabled") from error
-    profiles = await service.repository.list_profiles(session)
-    return [PartnerProfileResponse.model_validate(profile) for profile in profiles]
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        return await PartnerReadService.profiles(session, query)
+    except InvalidPartnerReadCursor as error:
+        raise HTTPException(
+            422, detail={"code": "invalid_cursor"}, headers={"Cache-Control": "no-store"}
+        ) from error
 
 
 @admin_router.patch("/{partner_id}", response_model=PartnerProfileResponse)
@@ -377,20 +391,21 @@ async def create_partner_landing(
     return PartnerLandingResponse.model_validate(landing)
 
 
-@admin_router.get("/landings", response_model=list[PartnerLandingResponse])
+@admin_router.get("/landings", response_model=AdminLandingPage)
 async def list_admin_landings(
+    response: Response,
+    query: Annotated[AdminLandingQuery, Query()],
     user: Annotated[User, Depends(get_current_identity_user)],
     session: Annotated[AsyncSession, Depends(get_database_session)],
     identity: Annotated[IdentityService, Depends(get_identity_service)],
     service: Annotated[PartnerProgramService, Depends(get_partner_service)],
-) -> list[PartnerLandingResponse]:
+) -> AdminLandingPage:
     await _require_permission(identity, session, user.id, PermissionCode.PARTNERS_MANAGE)
     try:
         service.require_enabled()
     except PartnerProgramDisabledError as error:
         raise HTTPException(status_code=404, detail="Partner program is disabled") from error
-    landings = await service.repository.list_all_landings(session)
-    return [PartnerLandingResponse.model_validate(landing) for landing in landings]
+    return await read_admin_landing_page(response, session, query)
 
 
 @admin_router.patch("/landings/{landing_id}", response_model=PartnerLandingResponse)
@@ -413,6 +428,9 @@ async def update_partner_landing(
     except PartnerLandingNotFoundError as error:
         await session.rollback()
         raise HTTPException(status_code=404, detail="Partner landing was not found") from error
+    except PartnerLandingVersionConflictError as error:
+        await session.rollback()
+        raise HTTPException(status_code=409, detail={"code": "landing_version_conflict"}) from error
     except PartnerLandingProductNotFoundError as error:
         await session.rollback()
         raise HTTPException(

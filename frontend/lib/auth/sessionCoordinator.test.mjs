@@ -3,6 +3,16 @@ import test from 'node:test';
 
 import { AuthSessionCoordinator } from './sessionCoordinator.ts';
 
+test('logout requests from different account lifetimes revoke both sessions', async () => {
+    const releases = [];
+    const coordinator = new AuthSessionCoordinator(async () => ({}), () => new Promise(resolve => releases.push(resolve)));
+    const first = coordinator.logout('account-a');
+    const second = coordinator.logout('account-b');
+    assert.equal(releases.length, 2);
+    releases.forEach(resolve => resolve());
+    await Promise.all([first, second]);
+});
+
 const deferred = () => {
     let resolve;
     let reject;

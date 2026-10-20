@@ -18,6 +18,7 @@ from app.modules.checkout.service import (
     CheckoutPaymentMethodError,
     CheckoutService,
 )
+from app.modules.delivery.directory_models import PickupDirectoryState
 from app.modules.delivery.models import CdekShipment
 from app.modules.delivery.provider import CdekOrderSnapshot
 from app.modules.delivery.provider import _snapshot as cdek_snapshot
@@ -26,7 +27,7 @@ from app.modules.fulfillment.models import FulfillmentJob
 from app.modules.identity.models import RoleName, User, UserRole
 from app.modules.identity.repository import IdentityRepository
 from app.modules.inventory.models import InventoryReservation
-from app.modules.orders.models import Order
+from app.modules.orders.models import Order, OrderCreationRequest
 from app.modules.orders.repository import TargetOrderReadRepository
 from app.modules.orders.security import generate_order_guest_access_token
 from app.modules.orders.service import (
@@ -38,7 +39,7 @@ from app.modules.orders.workflow import OrderModerationService, OrderWorkflowCon
 from app.modules.orders.workflow_models import OrderWorkflow, OrderWorkflowEvent, OrderWorkflowJob
 from app.modules.orders.workflow_repository import claim
 from app.modules.orders.workflow_worker import OrderWorkflowProcessor, WorkflowLeaseLost
-from app.modules.payments.creation import PaymentCreationService
+from app.modules.payments.creation import PaymentCreationInProgressError, PaymentCreationService
 from app.modules.payments.models import PaymentAttempt, PaymentOperation
 from app.modules.payments.operation_service import (
     PaymentOperationConflictError,
@@ -47,6 +48,7 @@ from app.modules.payments.operation_service import (
 from app.modules.payments.provider import YooKassaProviderError
 from app.modules.payments.reconciliation import PaymentReconciliationProcessor
 from app.modules.payments.service import PaymentService
+from tests.checkout_quotes import quote_checkout_command
 from tests.unit.test_checkout_service import _command, _seed_catalog, _settings, _snapshot
 
 NOW = datetime.now(timezone.utc) + timedelta(seconds=5)
@@ -142,10 +144,16 @@ async def setup(tmp_path, *, postgres_url=None, checkout=True, provider=None):
         service = CheckoutService(settings, PaymentCreationService(settings, provider))
         if checkout:
             async with db.session() as session:
+                directory = await session.get(PickupDirectoryState, "cdek-ru")
+                directory.updated_at = NOW
+                await session.flush()
+                command = await quote_checkout_command(
+                    settings, session, _command(product_id), now=NOW
+                )
                 await service.checkout(
                     session,
                     idempotency_key="workflow-checkout-0001",
-                    command=_command(product_id),
+                    command=command,
                     guest_access_token=generate_order_guest_access_token(),
                     now=NOW,
                 )
@@ -340,11 +348,16 @@ def test_unknown_creation_is_resumed_without_customer_retry(tmp_path):
                 "timeout", retryable=True, outcome_unknown=True
             )
             async with db.session() as session:
+                from tests.checkout_quotes import quote_checkout_command
+
+                command = await quote_checkout_command(
+                    db.settings, session, _command(product_id), now=NOW
+                )
                 with pytest.raises(CheckoutPaymentError):
                     await checkout.checkout(
                         session,
                         idempotency_key="workflow-checkout-0001",
-                        command=_command(product_id),
+                        command=command,
                         guest_access_token=generate_order_guest_access_token(),
                         now=NOW,
                     )
@@ -468,6 +481,72 @@ def test_managed_checkout_rejects_untrackable_delivery(tmp_path):
                     )
                 assert await session.scalar(select(func.count()).select_from(Order)) == 0
             assert provider.creates == []
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.skipif(
+    not os.getenv("ORDER_WORKFLOW_TEST_POSTGRES_URL"), reason="Requires isolated PostgreSQL schema"
+)
+def test_postgres_signed_checkout_concurrent_retries_create_one_order_and_payment(tmp_path):
+    async def scenario():
+        entered, release = asyncio.Event(), asyncio.Event()
+
+        class WaitingProvider(Provider):
+            async def create_payment(self, **kwargs):
+                result = await super().create_payment(**kwargs)
+                entered.set()
+                await asyncio.wait_for(release.wait(), timeout=15)
+                return result
+
+        provider = WaitingProvider()
+        async with setup(
+            tmp_path,
+            postgres_url=os.environ["ORDER_WORKFLOW_TEST_POSTGRES_URL"],
+            checkout=False,
+            provider=provider,
+        ) as (db, _, service, product_id):
+            async with db.session() as session:
+                command = await quote_checkout_command(
+                    db.settings, session, _command(product_id), now=NOW
+                )
+            guest_token = generate_order_guest_access_token()
+
+            async def purchase():
+                async with db.session() as session:
+                    return await service.checkout(
+                        session,
+                        idempotency_key="signed-concurrent-checkout-0001",
+                        command=command,
+                        guest_access_token=guest_token,
+                        now=NOW,
+                    )
+
+            first = asyncio.create_task(purchase())
+            try:
+                await asyncio.wait_for(entered.wait(), timeout=10)
+                # These are independent PostgreSQL transactions while the
+                # first request is still waiting on the external provider.
+                results = await asyncio.wait_for(
+                    asyncio.gather(*(purchase() for _ in range(5)), return_exceptions=True),
+                    timeout=10,
+                )
+                assert all(isinstance(result, PaymentCreationInProgressError) for result in results)
+                assert len(provider.creates) == 1
+            finally:
+                release.set()
+                created = await asyncio.wait_for(first, timeout=10)
+            replayed = await purchase()
+            assert replayed.order_id == created.order_id
+            assert replayed.payment_attempt_id == created.payment_attempt_id
+            assert replayed.order_replayed and replayed.payment_replayed
+            assert len(provider.creates) == 1
+            async with db.session() as session:
+                for model in (Order, OrderCreationRequest, PaymentAttempt, InventoryReservation):
+                    assert await session.scalar(select(func.count()).select_from(model)) == 1
+                order = await session.get(Order, created.order_id)
+                assert str(order.delivery_price) == "50.00"
+                assert order.delivery_address == "Moscow pickup point"
 
     asyncio.run(scenario())
 

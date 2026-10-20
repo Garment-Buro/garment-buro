@@ -16,12 +16,14 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    column,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, IntegerIdMixin, TimestampMixin
+from app.db.text import UnicodeLower
 
 PARTNER_LANDING_CONTENT_TYPE = JSON().with_variant(JSONB, "postgresql")
 
@@ -54,6 +56,7 @@ class PartnerPayoutStatus(str, Enum):
 class PartnerProfile(Base, IntegerIdMixin, TimestampMixin):
     __tablename__ = "partner_profiles"
     __table_args__ = (
+        Index("ix_partner_profiles_status_id", "status", "id"),
         CheckConstraint(
             "status IN ('invited', 'active', 'suspended')",
             name="partner_profile_status_valid",
@@ -68,9 +71,9 @@ class PartnerProfile(Base, IntegerIdMixin, TimestampMixin):
         ForeignKey("users.id", ondelete="RESTRICT"),
         nullable=False,
         unique=True,
-        index=True,
+        index=False,
     )
-    code: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    code: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=False)
     display_name: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(
         String(16),
@@ -97,14 +100,18 @@ class PartnerLanding(Base, IntegerIdMixin, TimestampMixin):
             "status IN ('draft', 'published', 'archived')",
             name="partner_landing_status_valid",
         ),
+        CheckConstraint("version > 0", name="partner_landing_version_positive"),
+        Index("ix_partner_landings_owner_recent", "partner_id", "id"),
+        Index("ix_partner_landings_status_name", "status", UnicodeLower(column("title")), "id"),
     )
 
     partner_id: Mapped[int] = mapped_column(
         ForeignKey("partner_profiles.id", ondelete="RESTRICT"),
         nullable=False,
-        index=True,
+        index=False,
     )
-    slug: Mapped[str] = mapped_column(String(96), nullable=False, unique=True, index=True)
+    slug: Mapped[str] = mapped_column(String(96), nullable=False, unique=True, index=False)
+    version: Mapped[int] = mapped_column(nullable=False, default=1, server_default="1")
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     eyebrow: Mapped[str | None] = mapped_column(String(120), nullable=True)
     headline: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -135,7 +142,7 @@ class PartnerLanding(Base, IntegerIdMixin, TimestampMixin):
         nullable=False,
         default=PartnerLandingStatus.DRAFT.value,
         server_default=PartnerLandingStatus.DRAFT.value,
-        index=True,
+        index=False,
     )
     published_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
@@ -236,7 +243,7 @@ class PartnerOrderAttribution(Base, IntegerIdMixin):
         ForeignKey("orders.id", ondelete="RESTRICT"),
         nullable=False,
         unique=True,
-        index=True,
+        index=False,
     )
     partner_id: Mapped[int] = mapped_column(
         ForeignKey("partner_profiles.id", ondelete="RESTRICT"),
@@ -288,7 +295,7 @@ class PartnerCommission(Base, IntegerIdMixin, TimestampMixin):
         ForeignKey("partner_order_attributions.id", ondelete="RESTRICT"),
         nullable=False,
         unique=True,
-        index=True,
+        index=False,
     )
     partner_id: Mapped[int] = mapped_column(
         ForeignKey("partner_profiles.id", ondelete="RESTRICT"),
@@ -299,7 +306,7 @@ class PartnerCommission(Base, IntegerIdMixin, TimestampMixin):
         ForeignKey("orders.id", ondelete="RESTRICT"),
         nullable=False,
         unique=True,
-        index=True,
+        index=False,
     )
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     currency: Mapped[str] = mapped_column(
@@ -332,6 +339,7 @@ class PartnerCommission(Base, IntegerIdMixin, TimestampMixin):
 class PartnerPayoutRequest(Base, IntegerIdMixin, TimestampMixin):
     __tablename__ = "partner_payout_requests"
     __table_args__ = (
+        Index("ix_partner_payouts_owner_recent", "partner_id", "created_at", "id"),
         CheckConstraint("amount > 0", name="partner_payout_amount_positive"),
         CheckConstraint("currency = 'RUB'", name="partner_payout_currency_rub"),
         CheckConstraint(
@@ -376,6 +384,7 @@ class PartnerPayoutRequest(Base, IntegerIdMixin, TimestampMixin):
 class PartnerRequisites(Base, IntegerIdMixin, TimestampMixin):
     __tablename__ = "partner_requisites"
     __table_args__ = (
+        CheckConstraint("version > 0", name="partner_requisites_version_positive"),
         CheckConstraint("key_version > 0", name="partner_requisites_key_version_positive"),
         CheckConstraint(
             "schema_version > 0",
@@ -391,8 +400,9 @@ class PartnerRequisites(Base, IntegerIdMixin, TimestampMixin):
         ForeignKey("partner_profiles.id", ondelete="CASCADE"),
         nullable=False,
         unique=True,
-        index=True,
+        index=False,
     )
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     ciphertext: Mapped[str] = mapped_column(Text, nullable=False)
     nonce: Mapped[str] = mapped_column(String(64), nullable=False)
     tag: Mapped[str] = mapped_column(String(64), nullable=False)

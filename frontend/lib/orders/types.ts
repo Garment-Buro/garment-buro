@@ -29,10 +29,15 @@ export interface OrderItem {
 export interface OrderDetails {
     id: string | number;
     status: string;
-    total_price: number;
+    total_price: number | string;
     created_at: string;
-    delivery_method: string;
-    cart_items?: string | OrderItem[];
+    delivery_method?: string | null;
+    cart_items?: string | OrderItem[] | null;
+    payment_status?: string | null;
+    customer_stage?: string | null;
+    customer_stage_label?: string | null;
+    cdek_number?: string | null;
+    cdek_status?: string | null;
 }
 
 export interface OrderDetailRow {

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from datetime import datetime, timedelta, timezone
+from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,20 +11,24 @@ from app.core.config import Settings
 from app.modules.carts.models import Cart, CartItem
 from app.modules.carts.repository import CartRepository
 from app.modules.carts.schemas import (
-    CartDeletedResponse,
     CartItemResponse,
     CartItemWrite,
     CartSnapshotResponse,
-    CartUpdatedResponse,
     CartUpdateRequest,
+    LegacyCartUpdateRequest,
 )
 from app.modules.carts.security import digest_cart_id, normalize_cart_id
+from app.modules.catalog.pricing import price_customization, validate_customization
+from app.modules.design_assets.references import design_image_tokens
+from app.modules.design_assets.repository import DesignAssetRepository
 from app.modules.identity.security import ensure_utc
 
-MAX_CLIENT_CLOCK_SKEW = timedelta(minutes=5)
+
+class CartRevisionConflictError(ValueError):
+    pass
 
 
-class CartTimestampError(ValueError):
+class CartCatalogItemError(ValueError):
     pass
 
 
@@ -56,6 +63,7 @@ class CartService:
     ) -> None:
         self.settings = settings
         self.repository = repository or CartRepository()
+        self.design_assets = DesignAssetRepository()
 
     async def get_snapshot(
         self,
@@ -79,25 +87,56 @@ class CartService:
         cart_id: str,
         payload: CartUpdateRequest,
         now: datetime | None = None,
-    ) -> CartUpdatedResponse:
-        return await self._upsert_snapshot(
+    ) -> CartSnapshotResponse:
+        normalized_id = normalize_cart_id(cart_id)
+        current_time = now or datetime.now(timezone.utc)
+        expires_at = current_time + timedelta(seconds=self.settings.cart_cache_ttl_seconds)
+        cart = await self.repository.acquire(
             session,
-            cart_id=cart_id,
-            payload=payload,
-            now=now,
-            ttl_seconds=self.settings.cart_cache_ttl_seconds,
-            validate_client_clock=True,
+            token_digest_sha256=digest_cart_id(normalized_id),
+            expires_at=expires_at,
         )
+        expired = ensure_utc(cart.expires_at) <= current_time
+        digest = hashlib.sha256(
+            json.dumps(
+                payload.model_dump(mode="json"),
+                sort_keys=True,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest()
+        if cart.last_operation_id == payload.operation_id:
+            if expired or cart.last_write_sha256 != digest:
+                raise CartRevisionConflictError("Operation ID reused with different content")
+            return self._snapshot(normalized_id, cart)
+        revision = None if expired else cart.revision
+        if payload.expected_revision != revision:
+            raise CartRevisionConflictError("Cart changed since it was read")
+        assets = await self.design_assets.lock_available(
+            session,
+            tokens=design_image_tokens(payload.items),
+            bucket_name=self.settings.minio_customer_projects_bucket,
+            now=current_time,
+        )
+        await self._replace_items(session, cart, payload.items, reprice_constructor=True)
+        cart.revision = uuid4().hex
+        cart.last_operation_id = payload.operation_id
+        cart.last_write_sha256 = digest
+        cart.updated_at_ms = int(current_time.timestamp() * 1000)
+        cart.expires_at = expires_at
+        await session.flush()
+        await self.design_assets.replace_cart_links(session, cart_id=cart.id, assets=assets)
+        return self._snapshot(normalized_id, cart)
 
     async def import_legacy_snapshot(
         self,
         session: AsyncSession,
         *,
         cart_id: str,
-        payload: CartUpdateRequest,
+        payload: LegacyCartUpdateRequest,
         remaining_ttl_seconds: int | None,
         now: datetime | None = None,
-    ) -> CartUpdatedResponse:
+    ) -> CartSnapshotResponse:
         ttl_seconds = (
             self.settings.cart_cache_ttl_seconds
             if remaining_ttl_seconds is None
@@ -105,89 +144,73 @@ class CartService:
         )
         if not 1 <= ttl_seconds <= self.settings.cart_cache_ttl_seconds:
             raise ValueError("Legacy cart TTL is outside the configured retention")
-        return await self._upsert_snapshot(
-            session,
-            cart_id=cart_id,
-            payload=payload,
-            now=now,
-            ttl_seconds=ttl_seconds,
-            validate_client_clock=False,
-        )
-
-    async def _upsert_snapshot(
-        self,
-        session: AsyncSession,
-        *,
-        cart_id: str,
-        payload: CartUpdateRequest,
-        now: datetime | None,
-        ttl_seconds: int,
-        validate_client_clock: bool,
-    ) -> CartUpdatedResponse:
         normalized_id = normalize_cart_id(cart_id)
         current_time = now or datetime.now(timezone.utc)
-        current_time_ms = int(current_time.timestamp() * 1000)
-        client_updated_at_ms = payload.updated_at_ms or current_time_ms
-        if validate_client_clock and client_updated_at_ms > int(
-            (current_time + MAX_CLIENT_CLOCK_SKEW).timestamp() * 1000
-        ):
-            raise CartTimestampError("Cart timestamp is too far in the future")
         expires_at = current_time + timedelta(seconds=ttl_seconds)
         cart = await self.repository.acquire(
             session,
             token_digest_sha256=digest_cart_id(normalized_id),
             expires_at=expires_at,
         )
-        expired = ensure_utc(cart.expires_at) <= current_time
-        stored_timestamp_is_untrusted_future = cart.client_updated_at_ms > int(
-            (current_time + MAX_CLIENT_CLOCK_SKEW).timestamp() * 1000
+        assets = await self.design_assets.lock_available(
+            session,
+            tokens=design_image_tokens(payload.items),
+            bucket_name=self.settings.minio_customer_projects_bucket,
+            now=current_time,
         )
-        if (
-            not expired
-            and not stored_timestamp_is_untrusted_future
-            and client_updated_at_ms < cart.client_updated_at_ms
-        ):
-            return self._updated(normalized_id, cart)
-
-        is_new = cart.client_updated_at_ms == 0 and not cart.items
-        items = [
-            self._item_model(item, sort_order) for sort_order, item in enumerate(payload.items)
-        ]
-        await self.repository.replace_items(session, cart, items)
-        cart.client_updated_at_ms = client_updated_at_ms
-        cart.version = 1 if expired or is_new else cart.version + 1
+        await self._replace_items(session, cart, payload.items, reprice_constructor=False)
+        cart.updated_at_ms = payload.updated_at_ms or int(current_time.timestamp() * 1000)
+        cart.revision = uuid4().hex
+        cart.last_operation_id = None
+        cart.last_write_sha256 = None
         cart.expires_at = expires_at
         await session.flush()
-        return self._updated(normalized_id, cart)
+        await self.design_assets.replace_cart_links(session, cart_id=cart.id, assets=assets)
+        return self._snapshot(normalized_id, cart)
 
-    async def delete_snapshot(
+    async def _replace_items(
         self,
         session: AsyncSession,
+        cart: Cart,
+        items: list[CartItemWrite],
         *,
-        cart_id: str,
-    ) -> CartDeletedResponse:
-        normalized_id = normalize_cart_id(cart_id)
-        cart = await self.repository.get_for_update(
-            session,
-            token_digest_sha256=digest_cart_id(normalized_id),
+        reprice_constructor: bool,
+    ) -> None:
+        constructor_ids = {
+            item.product_id
+            for item in items
+            if reprice_constructor and validate_customization(item.customization) is not None
+        }
+        base_prices = (
+            await self.repository.product_prices(session, constructor_ids)
+            if constructor_ids
+            else {}
         )
-        if cart is not None:
-            await self.repository.delete(session, cart)
-        return CartDeletedResponse(cart_id=normalized_id)
+        priced_items = []
+        for item in items:
+            if (
+                item.product_id in constructor_ids
+                and validate_customization(item.customization) is not None
+            ):
+                if item.product_id not in base_prices:
+                    raise CartCatalogItemError("Cart contains an unavailable constructor product")
+                price, customization = price_customization(
+                    base_prices[item.product_id], item.customization
+                )
+                item = item.model_copy(update={"price": price, "customization": customization})
+            priced_items.append(item)
+        await self.repository.replace_items(
+            session,
+            cart,
+            [self._item_model(item, position) for position, item in enumerate(priced_items)],
+        )
 
     def _snapshot(self, cart_id: str, cart: Cart | None) -> CartSnapshotResponse:
         return CartSnapshotResponse(
             cart_id=cart_id,
             items=[self._item_response(item) for item in cart.items] if cart else [],
-            updated_at_ms=cart.client_updated_at_ms if cart else 0,
-            ttl_seconds=self.settings.cart_cache_ttl_seconds,
-        )
-
-    def _updated(self, cart_id: str, cart: Cart) -> CartUpdatedResponse:
-        return CartUpdatedResponse(
-            cart_id=cart_id,
-            items_count=len(cart.items),
-            updated_at_ms=cart.client_updated_at_ms,
+            revision=cart.revision if cart else None,
+            updated_at_ms=cart.updated_at_ms if cart else 0,
             ttl_seconds=self.settings.cart_cache_ttl_seconds,
         )
 

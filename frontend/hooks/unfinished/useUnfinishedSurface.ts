@@ -1,6 +1,6 @@
 "use client";
 
-import type { KeyboardEvent, TouchEvent, UIEvent } from "react";
+import type { TouchEvent, UIEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -16,33 +16,15 @@ import {
     tabTitles,
     UNFINISHED_SHEET_EXIT_MS,
 } from "@/lib/unfinished/config/ui";
-import {
-    COLLECTION_PREVIEW_FIXTURES,
-    DRAFT_PREVIEW_FIXTURES,
-} from "@/lib/unfinished/fixtures/savedItems";
-import {
-    DISCOUNT_CARD_FIXTURES,
-    ORDER_STATUS_FIXTURES,
-    PROFILE_FORM_FIXTURE,
-    PROFILE_ORDER_FIXTURES,
-} from "@/lib/unfinished/fixtures/profile";
-import { isMockDataEnabled } from "@/lib/runtime/config";
+import { useCustomerProjectLibrary } from './useCustomerProjectLibrary';
+import type { ProjectSummary } from '@/lib/projects/types';
 import type { BottomPanelState, ProfilePanelTab, ProfileTab } from "@/lib/unfinished/types";
 import {
     getCollapsedPanelOpenState,
-    getGridItems,
     getPanelStepState,
     getScrollProgress,
     isExpandedOnlyProfileTab,
-    isPersistedDraft,
 } from "@/lib/unfinished/utils/unfinished";
-import type { SavedProfileItem } from "@/lib/unfinished/utils/savedItems";
-import {
-    CONSTRUCTOR_DRAFTS_STORAGE_KEY,
-    MY_COLLECTION_STORAGE_KEY,
-    loadSavedProfileItems,
-    removeSavedProfileItem,
-} from "@/lib/unfinished/utils/savedItems";
 
 type UseUnfinishedSurfaceOptions = {
     isOverlay: boolean;
@@ -50,38 +32,17 @@ type UseUnfinishedSurfaceOptions = {
     initialTab: ProfileTab;
 };
 
-const EMPTY_SAVED_ITEMS: SavedProfileItem[] = [];
-
 export const useUnfinishedSurface = ({ isOverlay, onClose, initialTab }: UseUnfinishedSurfaceOptions) => {
     const router = useRouter();
-    const fixturesEnabled = isMockDataEnabled();
-    const draftFixtures = fixturesEnabled ? DRAFT_PREVIEW_FIXTURES : EMPTY_SAVED_ITEMS;
-    const collectionFixtures = fixturesEnabled ? COLLECTION_PREVIEW_FIXTURES : EMPTY_SAVED_ITEMS;
-    const profileFixture = fixturesEnabled ? PROFILE_FORM_FIXTURE : null;
-    const profileOrderFixtures = fixturesEnabled ? PROFILE_ORDER_FIXTURES : [];
-    const orderStatusFixtures = fixturesEnabled ? ORDER_STATUS_FIXTURES : [];
-    const discountCardFixtures = fixturesEnabled ? DISCOUNT_CARD_FIXTURES : [];
     const [activeTab, setActiveTab] = useState<ProfileTab>(initialTab);
+    const projectLibrary = useCustomerProjectLibrary(activeTab === 'unfinished' ? 'draft' : activeTab === 'my-collection' ? 'collection' : null);
     const [activeProfileTab, setActiveProfileTab] = useState<ProfilePanelTab>("settings");
     const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
-    const [isGenderOpen, setIsGenderOpen] = useState(false);
-    const [isCodeRequested, setIsCodeRequested] = useState(false);
-    const [isProfileSignedIn, setIsProfileSignedIn] = useState(false);
-    const [loginEmail, setLoginEmail] = useState(profileFixture?.loginEmail ?? "");
-    const [profileCode, setProfileCode] = useState(["", "", "", ""]);
-    const [profileName, setProfileName] = useState(profileFixture?.name ?? "");
-    const [profileGender, setProfileGender] = useState(profileFixture?.gender ?? "Не выбран");
-    const [profilePhone, setProfilePhone] = useState(profileFixture?.phone ?? "");
-    const [profileEmail, setProfileEmail] = useState(profileFixture?.email ?? "");
     const [scrollProgress, setScrollProgress] = useState(0);
-    const [savedDrafts, setSavedDrafts] = useState<SavedProfileItem[]>([]);
-    const [collectionItems, setCollectionItems] = useState<SavedProfileItem[]>([]);
-    const [selectedDraftId, setSelectedDraftId] = useState<string | null>(null);
-    const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null);
     const [bottomPanelState, setBottomPanelState] = useState<BottomPanelState>("collapsed");
     const [isTabContentVisible, setIsTabContentVisible] = useState(true);
     const [isClosing, setIsClosing] = useState(false);
-    const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+    const [deleteTarget, setDeleteTarget] = useState<{ key: string; id: number } | null>(null);
     const tabTransitionTimerRef = useRef<number | null>(null);
     const tabFadeInFrameRef = useRef<number | null>(null);
     const closeTimerRef = useRef<number | null>(null);
@@ -89,14 +50,13 @@ export const useUnfinishedSurface = ({ isOverlay, onClose, initialTab }: UseUnfi
     const panelStepTouchStartRef = useRef<{ x: number; y: number; state: BottomPanelState } | null>(null);
     const suppressPanelToggleClickRef = useRef(false);
     const suppressPanelToggleTimerRef = useRef<number | null>(null);
-    const profileCodeInputRefs = useRef<Array<HTMLInputElement | null>>([]);
 
-    const visibleCollectionItems = collectionItems.length > 0 ? collectionItems : collectionFixtures;
-    const visibleDrafts = savedDrafts.length > 0 ? savedDrafts : draftFixtures;
-    const gridItems = getGridItems(activeTab, visibleDrafts, visibleCollectionItems);
-    const selectedDraft = visibleDrafts.find(draft => draft.id === selectedDraftId);
-    const selectedCollectionItem = visibleCollectionItems.find(item => item.id === selectedCollectionId);
+    const gridItems = projectLibrary.items;
+    const selectedDraft = activeTab === 'unfinished' ? projectLibrary.selected : undefined;
+    const selectedCollectionItem = activeTab === 'my-collection' ? projectLibrary.selected : undefined;
     const selectedItem = activeTab === "my-collection" ? selectedCollectionItem : activeTab === "unfinished" ? selectedDraft : undefined;
+    const isDeleteConfirmOpen = Boolean(deleteTarget && deleteTarget.key === projectLibrary.key && deleteTarget.id === selectedItem?.id);
+    const setIsDeleteConfirmOpen = (open: boolean) => setDeleteTarget(open && selectedItem ? { key: projectLibrary.key, id: selectedItem.id } : null);
     const isUnfinishedTab = activeTab === "unfinished";
     const isCollectionTab = activeTab === "my-collection";
     const isProfileTab = activeTab === "profile";
@@ -119,19 +79,6 @@ export const useUnfinishedSurface = ({ isOverlay, onClose, initialTab }: UseUnfi
         { id: "profile", src: "/profile_bg.webp", active: isProfileTab },
     ];
     const pageLabel = activeTab === "unfinished" ? "Черновики конструктора" : activeTab === "profile" ? "Профиль" : "Моя коллекция";
-
-    useEffect(() => {
-        const loadTimer = window.setTimeout(() => {
-            const nextDrafts = loadSavedProfileItems(CONSTRUCTOR_DRAFTS_STORAGE_KEY);
-            const nextCollectionItems = loadSavedProfileItems(MY_COLLECTION_STORAGE_KEY);
-            setSavedDrafts(nextDrafts);
-            setCollectionItems(nextCollectionItems);
-            setSelectedDraftId(nextDrafts[0]?.id ?? draftFixtures[0]?.id ?? null);
-            setSelectedCollectionId(nextCollectionItems[0]?.id ?? collectionFixtures[0]?.id ?? null);
-            setBottomPanelState("collapsed");
-        }, 0);
-        return () => window.clearTimeout(loadTimer);
-    }, [collectionFixtures, draftFixtures, initialTab]);
 
     useEffect(() => () => {
         if (tabTransitionTimerRef.current !== null) window.clearTimeout(tabTransitionTimerRef.current);
@@ -169,43 +116,32 @@ export const useUnfinishedSurface = ({ isOverlay, onClose, initialTab }: UseUnfi
     };
 
     const handleContentAction = () => {
-        if (activeTab !== "unfinished") return;
-        if (!selectedDraft) {
+        if (activeTab === "profile") return;
+        if (!selectedItem) {
             if (isClosing) return;
             setBottomPanelState("collapsed");
             setIsClosing(true);
             closeTimerRef.current = window.setTimeout(() => {
                 closeTimerRef.current = null;
-                window.location.replace("/?selectForConstructor=1");
+                window.location.replace("/catalog");
             }, UNFINISHED_SHEET_EXIT_MS);
             return;
         }
-        router.push(`/constructor?productId=${selectedDraft.productId}&draftId=${encodeURIComponent(selectedDraft.id)}`);
+        router.push(`/constructor?projectId=${selectedItem.id}`);
     };
 
     const handleDeleteSelectedItem = () => {
-        if (selectedItem) setIsDeleteConfirmOpen(true);
+        if (selectedItem) {
+            projectLibrary.clearDeleteError();
+            setIsDeleteConfirmOpen(true);
+        }
     };
 
-    const confirmDeleteSelectedItem = () => {
-        setIsDeleteConfirmOpen(false);
-        if (activeTab === "unfinished") {
-            if (!selectedDraft || !isPersistedDraft(selectedDraft)) {
-                setSelectedDraftId(null);
-                setBottomPanelState("collapsed");
-                return;
-            }
-            const nextDrafts = removeSavedProfileItem(CONSTRUCTOR_DRAFTS_STORAGE_KEY, selectedDraft.id);
-            setSavedDrafts(nextDrafts);
-            setSelectedDraftId(nextDrafts[0]?.id ?? null);
-            setBottomPanelState(nextDrafts.length === 0 ? "collapsed" : "normal");
-            return;
-        }
-        if (activeTab === "my-collection" && selectedCollectionItem) {
-            const nextCollectionItems = removeSavedProfileItem(MY_COLLECTION_STORAGE_KEY, selectedCollectionItem.id);
-            setCollectionItems(nextCollectionItems);
-            setSelectedCollectionId(nextCollectionItems[0]?.id ?? null);
-            setBottomPanelState("collapsed");
+    const confirmDeleteSelectedItem = async () => {
+        if (!isDeleteConfirmOpen) return;
+        if (await projectLibrary.removeSelected()) {
+            setIsDeleteConfirmOpen(false);
+            setBottomPanelState("normal");
         }
     };
 
@@ -303,12 +239,9 @@ export const useUnfinishedSurface = ({ isOverlay, onClose, initialTab }: UseUnfi
         panelStepTouchStartRef.current = null;
     };
 
-    const handleSelectGridItem = (item: SavedProfileItem) => {
-        if (activeTab === "my-collection") {
-            setSelectedCollectionId(item.id);
-            return;
-        }
-        setSelectedDraftId(item.id);
+    const handleSelectGridItem = (item: ProjectSummary) => {
+        projectLibrary.select(item.id);
+        if (activeTab === "my-collection") return;
         setBottomPanelState("normal");
     };
 
@@ -342,25 +275,6 @@ export const useUnfinishedSurface = ({ isOverlay, onClose, initialTab }: UseUnfi
         setBottomPanelState(isExpandedOnlyProfileTab(nextProfileTab) ? "expanded" : "normal");
     };
 
-    const handleProfileLoginAction = () => {
-        if (!isCodeRequested) {
-            setIsCodeRequested(true);
-            window.requestAnimationFrame(() => profileCodeInputRefs.current[0]?.focus());
-            return;
-        }
-        setIsProfileSignedIn(true);
-    };
-
-    const handleProfileCodeChange = (index: number, value: string) => {
-        const nextValue = value.replace(/\D/g, "").slice(-1);
-        setProfileCode(currentCode => currentCode.map((character, characterIndex) => characterIndex === index ? nextValue : character));
-        if (nextValue && index < profileCodeInputRefs.current.length - 1) profileCodeInputRefs.current[index + 1]?.focus();
-    };
-
-    const handleProfileCodeKeyDown = (index: number, event: KeyboardEvent<HTMLInputElement>) => {
-        if (event.key === "Backspace" && !profileCode[index] && index > 0) profileCodeInputRefs.current[index - 1]?.focus();
-    };
-
     const handleCollapseOrder = () => {
         setExpandedOrderId(null);
         setBottomPanelState("normal");
@@ -373,16 +287,7 @@ export const useUnfinishedSurface = ({ isOverlay, onClose, initialTab }: UseUnfi
     };
 
     return {
-        activeTab, activeProfileTab, expandedOrderId,
-        profileOrderFixtures, orderStatusFixtures, discountCardFixtures,
-        isGenderOpen, setIsGenderOpen,
-        isCodeRequested, isProfileSignedIn,
-        loginEmail, setLoginEmail,
-        profileCode, profileCodeInputRefs,
-        profileName, setProfileName,
-        profileGender, setProfileGender,
-        profilePhone, setProfilePhone,
-        profileEmail, setProfileEmail,
+        activeTab, activeProfileTab, expandedOrderId, projectLibrary,
         scrollProgress, gridItems,
         selectedDraft, selectedCollectionItem, selectedItem,
         bottomPanelState, setBottomPanelState,
@@ -396,7 +301,6 @@ export const useUnfinishedSurface = ({ isOverlay, onClose, initialTab }: UseUnfi
         handleCollapsedPanelTouchStart, handleCollapsedPanelTouchEnd, handleCollapsedPanelTouchCancel,
         handlePanelStepTouchStart, handlePanelStepTouchEnd, handlePanelStepTouchCancel,
         handleSelectGridItem, handleSelectTab, handleSelectProfileTab,
-        handleProfileLoginAction, handleProfileCodeChange, handleProfileCodeKeyDown,
         handleCollapseOrder, handleToggleOrder,
     };
 };

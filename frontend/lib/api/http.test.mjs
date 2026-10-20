@@ -87,3 +87,34 @@ test('requestJson explains validation errors instead of returning a generic 422'
         globalThis.fetch = originalFetch;
     }
 });
+
+test('API failures retain the backend request ID for diagnostics', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => Response.json(
+        { detail: 'Internal server error' },
+        { status: 500, headers: { 'X-Request-ID': 'backend-failure-42' } },
+    );
+    try {
+        await assert.rejects(requestJson('/orders'), error => error instanceof ApiError
+            && error.requestId === 'backend-failure-42'
+            && error.status === 500
+            && error.message === 'Internal server error');
+        assert.equal(new ApiError('Network failure', 503).requestId, null);
+    } finally {
+        globalThis.fetch = originalFetch;
+    }
+});
+
+test('non-JSON API failures preserve correlation and fallback error messages', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => new Response('upstream unavailable', {
+        status: 502, headers: { 'X-Request-ID': 'proxy-failure-1' },
+    });
+    try {
+        await assert.rejects(requestJson('/products'), error => error instanceof ApiError
+            && error.requestId === 'proxy-failure-1'
+            && error.message === 'API request failed with status 502');
+    } finally {
+        globalThis.fetch = originalFetch;
+    }
+});

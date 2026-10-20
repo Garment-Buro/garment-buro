@@ -1,4 +1,5 @@
 import Image from 'next/image';
+import { CustomerMediaImage } from '@/components/shared/CustomerMediaImage';
 import React from 'react';
 
 import type { CartItem } from '@/lib/cart/types';
@@ -29,7 +30,7 @@ export const CartItemDetailsPopup = ({ item, onClose, onEdit }: CartItemDetailsP
                         <div className="cart-action-bar-details-images flex h-full flex-col items-center gap-[0px] overflow-hidden">
                             {(['front', 'back'] as const).map(view => (
                                 <div key={view} className="cart-action-bar-details-image relative h-[170px] w-[205px] shrink-0">
-                                    <Image src={getCartItemDetailsImage(item, view)} alt="" fill className="object-contain object-center" />
+                                    <CustomerMediaImage src={getCartItemDetailsImage(item, view)} alt="" fill className="object-contain object-center" />
                                 </div>
                             ))}
                         </div>

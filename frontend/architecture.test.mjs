@@ -46,10 +46,10 @@ test('architecture keeps domain and state layers independent from UI and routes'
             violations.push(`${relativeFile}: feature code imports route implementation`);
         }
 
-        const canCallFetch = relativeFile.startsWith('lib/api/')
-            || relativeFile.startsWith('lib/server/');
+        const canCallFetch = relativeFile === 'lib/api/http.ts'
+            || relativeFile === 'lib/server/backend/http.ts';
         if (!canCallFetch && /\bfetch\s*\(/.test(source)) {
-            violations.push(`${relativeFile}: fetch must live in lib/api or lib/server`);
+            violations.push(`${relativeFile}: fetch must live in the browser or internal backend HTTP client`);
         }
 
         if (!relativeFile.startsWith('lib/server/')
@@ -71,12 +71,6 @@ test('architecture keeps domain and state layers independent from UI and routes'
         if (relativeFile !== 'lib/browser/config/vendorScripts.ts'
             && /dd86a252-8ccc-4407-a540-be0d5228a3a7/.test(source)) {
             violations.push(`${relativeFile}: browser SDK keys must be centralized in vendorScripts.ts`);
-        }
-
-        if (relativeFile.startsWith('lib/api/')
-            && relativeFile !== 'lib/api/http.ts'
-            && /\bfetch\s*\(/.test(source)) {
-            violations.push(`${relativeFile}: browser fetch must be centralized in lib/api/http.ts`);
         }
 
         if (relativeFile.startsWith('components/shared/')

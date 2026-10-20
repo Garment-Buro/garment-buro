@@ -1,13 +1,11 @@
 "use client";
 
 import { useEmailAuthentication } from '@/hooks/auth/useEmailAuthentication';
-import { useAuthStore } from '@/store/authStore';
 
 import styles from './PartnerLogin.module.css';
 
 export const PartnerLogin = () => {
-    const setAuth = useAuthStore(state => state.setAuth);
-    const auth = useEmailAuthentication(setAuth);
+    const auth = useEmailAuthentication();
 
     return (
         <main className={styles.page}>

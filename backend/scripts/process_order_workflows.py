@@ -8,6 +8,7 @@ from app.db.session import DatabaseManager
 from app.modules.delivery.provider import AiohttpCdekTransport, CdekProviderClient
 from app.modules.orders.workflow_worker import OrderWorkflowProcessor
 from app.modules.payments.provider import AiohttpYooKassaTransport, YooKassaProviderClient
+from app.observability.logging import configure_logging
 
 logger = logging.getLogger(__name__)
 
@@ -61,5 +62,5 @@ if __name__ == "__main__":
     parser.add_argument("--once", action="store_true")
     parser.add_argument("--max-items", type=int, default=100)
     args = parser.parse_args()
-    logging.basicConfig(level=logging.INFO)
+    configure_logging(get_settings())
     asyncio.run(run(args.once, args.max_items))

@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { publicImageLocalPatterns } from './lib/media/imagePolicy.ts';
 
 const INTERNAL_API_URL = process.env.INTERNAL_API_URL || 'http://backend:8000';
 const IDENTITY_SESSION_V2_ENABLED = process.env.NEXT_PUBLIC_IDENTITY_SESSION_V2_ENABLED === 'true';
@@ -19,14 +20,9 @@ if (CRM_CABINET_ENABLED && !IDENTITY_SESSION_V2_ENABLED) {
 
 const nextConfig: NextConfig = {
   output: 'standalone',
+  images: { localPatterns: publicImageLocalPatterns },
   async rewrites() {
     return {
-      beforeFiles: [
-        {
-          source: '/service.php',
-          destination: '/api/cdek-service',
-        },
-      ],
       afterFiles: [
         {
           source: '/api/:path*',

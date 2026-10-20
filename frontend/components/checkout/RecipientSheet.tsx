@@ -41,7 +41,7 @@ export function RecipientSheet({ onClose }: { onClose: () => void }) {
     };
     return <CheckoutSheet title="Получатель" onClose={onClose} onSave={save}>
         <ContactFields value={buyer} onChange={setBuyer} section="Ваши данные" />
-        <p className={styles.note}>По этой почте создадим личный кабинет. Для входа и просмотра заказов нужно подтвердить почту кодом. Телефон нужен для связи по доставке.</p>
+        <p className={styles.note}>На почту покупателя отправим чек. Контакты получателя передадим службе доставки. Для входа в личный кабинет нужно подтвердить почту кодом; гостевой заказ доступен по сохранённому ключу в этой вкладке.</p>
         <label className={`${styles.inlineCheck} my-6`}><input type="checkbox" checked={same} onChange={event => setSame(event.target.checked)} />Получатель — я</label>
         {!same && <ContactFields value={recipient} onChange={setRecipient} section="Данные получателя" />}
         {error && <p role="alert" className={styles.error}>{error}</p>}

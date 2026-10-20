@@ -1,17 +1,38 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload, selectinload
 
 from app.modules.carts.models import Cart, CartItem, CartMigrationRun
+from app.modules.catalog.models import Product
+from app.modules.catalog.public_policy import public_product_ids
 
 
 class CartRepository:
+    async def product_prices(
+        self,
+        session: AsyncSession,
+        product_ids: set[int],
+    ) -> dict[int, Decimal]:
+        if not product_ids:
+            return {}
+        return dict(
+            (
+                await session.execute(
+                    select(Product.id, Product.price).where(
+                        Product.id.in_(product_ids),
+                        Product.id.in_(public_product_ids()),
+                    )
+                )
+            ).all()
+        )
+
     async def get_for_update(
         self,
         session: AsyncSession,
@@ -23,6 +44,7 @@ class CartRepository:
             .where(Cart.token_digest_sha256 == token_digest_sha256)
             .options(selectinload(Cart.items))
             .with_for_update()
+            .execution_options(populate_existing=True)
         )
 
     async def get_active(
@@ -32,14 +54,13 @@ class CartRepository:
         token_digest_sha256: str,
         now: datetime,
     ) -> Cart | None:
-        return await session.scalar(
+        # One SQL statement gives the revision and all items the same MVCC snapshot.
+        result = await session.execute(
             select(Cart)
-            .where(
-                Cart.token_digest_sha256 == token_digest_sha256,
-                Cart.expires_at > now,
-            )
-            .options(selectinload(Cart.items))
+            .where(Cart.token_digest_sha256 == token_digest_sha256, Cart.expires_at > now)
+            .options(joinedload(Cart.items))
         )
+        return result.unique().scalar_one_or_none()
 
     async def acquire(
         self,
@@ -50,8 +71,7 @@ class CartRepository:
     ) -> Cart:
         values = {
             "token_digest_sha256": token_digest_sha256,
-            "client_updated_at_ms": 0,
-            "version": 1,
+            "updated_at_ms": 0,
             "expires_at": expires_at,
         }
         dialect_name = session.get_bind().dialect.name
@@ -101,11 +121,6 @@ class CartRepository:
         cart.items.clear()
         await session.flush()
         cart.items.extend(items)
-        await session.flush()
-
-    @staticmethod
-    async def delete(session: AsyncSession, cart: Cart) -> None:
-        await session.delete(cart)
         await session.flush()
 
     @staticmethod

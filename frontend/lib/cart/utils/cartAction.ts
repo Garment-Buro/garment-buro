@@ -1,33 +1,15 @@
 import {
     CART_ACTION_CONTENT_REVEAL_RANGE,
     CART_ACTION_CONTENT_REVEAL_START,
-    CART_ACTION_COUPON_DISCOUNT,
-    CART_ACTION_COURIER_DELIVERY_PRICE,
     CART_ACTION_SURFACE_REVEAL_RANGE,
     CART_ACTION_SURFACE_REVEAL_START,
 } from '../constants.ts';
 import type {
-    CartActionCoupon,
-    CartCollapsedVariant,
-    CartDeliveryMethod,
     CartPanelPresentation,
 } from '../actionTypes.ts';
 import type { CartItem } from '../types.ts';
 
 export const formatCartPrice = (value: number) => `${value.toLocaleString('ru-RU')} ₽`;
-
-export const getCartActionTotals = (
-    items: CartItem[],
-    deliveryMethod: CartDeliveryMethod,
-    appliedCoupon: CartActionCoupon | null,
-) => {
-    const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
-    const productsTotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-    const deliveryPrice = deliveryMethod === 'courier' ? CART_ACTION_COURIER_DELIVERY_PRICE : 0;
-    const discount = appliedCoupon && items.length > 0 ? CART_ACTION_COUPON_DISCOUNT : 0;
-    const grandTotal = Math.max(0, productsTotal + deliveryPrice - discount);
-    return { totalQuantity, productsTotal, deliveryPrice, discount, grandTotal };
-};
 
 export const getPreferredCartItem = (
     items: CartItem[],
@@ -65,14 +47,12 @@ export const getCartPanelPresentation = ({
     dragOffset,
     dragStartedExpanded,
     isExpanded,
-    collapsedVariant,
 }: {
     collapsedPanelHeight: number;
     expandedPanelHeight: number;
     dragOffset: number;
     dragStartedExpanded: boolean;
     isExpanded: boolean;
-    collapsedVariant: CartCollapsedVariant;
 }): CartPanelPresentation => {
     const panelDragHeight = dragOffset === 0
         ? undefined
@@ -97,22 +77,14 @@ export const getCartPanelPresentation = ({
         contentSwapProgress,
         collapsedContentProgress: 1 - contentSwapProgress,
         expandedContentProgress: contentSwapProgress,
-        expandedSurfaceRevealProgress: collapsedVariant === 'legacy'
-            ? 1
-            : Math.max(0, Math.min(
-                1,
-                (expansionProgress - CART_ACTION_SURFACE_REVEAL_START) / CART_ACTION_SURFACE_REVEAL_RANGE,
-            )),
-        footerRevealProgress: collapsedVariant === 'legacy'
-            ? 1
-            : Math.max(0, Math.min(1, (expansionProgress - 0.28) / 0.42)),
+        expandedSurfaceRevealProgress: Math.max(0, Math.min(
+            1,
+            (expansionProgress - CART_ACTION_SURFACE_REVEAL_START) / CART_ACTION_SURFACE_REVEAL_RANGE,
+        )),
+        footerRevealProgress: Math.max(0, Math.min(1, (expansionProgress - 0.28) / 0.42)),
         guestAuthRevealProgress: Math.max(0, Math.min(1, (expansionProgress - 0.42) / 0.58)),
         overlayRevealProgress: Math.max(0, Math.min(1, expansionProgress / 0.7)),
         isPanelExpandedPresentation: expansionProgress > 0.001,
-        isCompactCollapsedPresentation: (
-            collapsedVariant === 'glass-compact' && expansionProgress <= 0.001
-        ) || (
-            collapsedVariant === 'liquid-v2' && expansionProgress <= 0.001
-        ),
+        isCompactCollapsedPresentation: expansionProgress <= 0.001,
     };
 };

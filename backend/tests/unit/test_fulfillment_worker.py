@@ -45,6 +45,7 @@ from app.modules.notifications.service import (
     NotificationOutboxService,
     NotificationPolicy,
 )
+from app.modules.notifications.transport import NotificationTransportRegistry
 from app.modules.orders.models import Order, OrderItem
 from app.modules.payments.models import Payment, PaymentAttempt
 
@@ -176,6 +177,8 @@ def _processor(settings: Settings, codec: NotificationPayloadCodec) -> Fulfillme
 
 @dataclass
 class CapturingTransport:
+    channel = "email"
+
     messages: list[RenderedEmail] = field(default_factory=list)
 
     async def send(self, message: RenderedEmail) -> str:
@@ -259,7 +262,7 @@ def test_email_handoff_is_encrypted_atomic_and_does_not_claim_other_kinds(
                 assert "phone" not in payload
 
             transport = CapturingTransport()
-            dispatcher = NotificationDispatcher(codec, transport)
+            dispatcher = NotificationDispatcher(codec, NotificationTransportRegistry([transport]))
             async with database.session() as session:
                 dispatched = await dispatcher.dispatch_once(
                     session,

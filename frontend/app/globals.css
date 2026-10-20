@@ -143,6 +143,56 @@ html[data-browser-surface="safari18"] {
   }
 }
 
+/* The rendered service shell determines layout before hydration. Override
+   min-h-screen (100vh), which exceeds 100dvh with mobile browser bars visible. */
+html:has([data-service-view]),
+html:has([data-service-view]) body {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+html:has([data-service-view]) {
+  --cart-action-bar-bottom: max(5px, env(safe-area-inset-bottom));
+  background: transparent url('/service-home/background.webp') center top / 140% max(100lvh, 836px) no-repeat;
+}
+
+html:has([data-service-view]) body {
+  background: transparent;
+}
+
+/* iOS may move the root viewport even with overflow:hidden. Pin only the
+   catalog shell; its product list keeps its own touch scrolling. */
+html:has([data-service-view="catalog"]) body {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+}
+
+
+html:has([data-service-view]) .appPageShell {
+  isolation: isolate;
+  flex: none;
+  height: 100%;
+  min-height: 0;
+  padding-bottom: 0;
+  background: transparent;
+}
+
+html:has([data-service-view])[data-browser-surface="pwa"],
+html:has([data-service-view])[data-browser-surface="safari26"],
+html:has([data-service-view])[data-browser-surface="safari18"] {
+  --cart-action-bar-bottom: max(20px, env(safe-area-inset-bottom));
+}
+
+@media (display-mode: standalone) {
+  html:has([data-service-view]),
+  html:has([data-service-view]) body {
+    --cart-action-bar-bottom: max(20px, env(safe-area-inset-bottom));
+  }
+}
+
 .viewportOverlayRoot {
   position: fixed;
   inset: 0;
@@ -257,13 +307,7 @@ body::-webkit-scrollbar,
   }
 }
 
-/* ── Success checkmark animation (SweetAlert style) ── */
-@keyframes rotate-circle {
-  0%   { transform: rotate(-45deg); }
-  5%   { transform: rotate(-45deg); }
-  12%  { transform: rotate(-405deg); }
-  100% { transform: rotate(-405deg); }
-}
+/* Success checkmark strokes used by OrderStatusMark. */
 @keyframes icon-line-tip {
   0%   { width: 0;    left: 1px;  top: 19px; }
   54%  { width: 0;    left: 1px;  top: 19px; }
@@ -283,21 +327,6 @@ body::-webkit-scrollbar,
 }
 .animate-popup-in {
   animation: popup-in 0.25s cubic-bezier(0.34, 1.26, 0.64, 1) both;
-}
-
-/* Swiper Pagination Overrides */
-.swiper-pagination-bullet {
-  background: #D9D9D9 !important;
-  opacity: 1 !important;
-  width: 5px !important;
-  height: 5px !important;
-  margin: 0 2px !important;
-}
-.swiper-pagination-bullet-active {
-  background: #717171 !important;
-}
-.swiper-pagination {
-  bottom: 8px !important;
 }
 
 .size-fit-swiper .swiper-button-disabled {

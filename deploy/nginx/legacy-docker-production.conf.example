@@ -13,6 +13,7 @@ map "$request_method:$uri" $gb_release_blocked {
 }
 
 server {
+    include /etc/nginx/garment-buro/server-logging.conf;
     listen 80;
     server_name garment-buro.ru www.garment-buro.ru dev.garment-buro.ru
         partner.garment-buro.ru widget.garment-buro.ru;
@@ -29,6 +30,9 @@ server {
 }
 
 server {
+    include /etc/nginx/garment-buro/server-logging.conf;
+    set $garment_deployment_environment production;
+    include /etc/nginx/garment-buro/maintenance.conf;
     listen 443 ssl;
     server_name garment-buro.ru www.garment-buro.ru;
     if ($gb_release_blocked) { return 503; }
@@ -218,6 +222,9 @@ server {
 }
 
 server {
+    include /etc/nginx/garment-buro/server-logging.conf;
+    set $garment_deployment_environment development;
+    include /etc/nginx/garment-buro/maintenance.conf;
     listen 443 ssl;
     server_name dev.garment-buro.ru;
 
@@ -239,6 +246,9 @@ server {
 }
 
 server {
+    include /etc/nginx/garment-buro/server-logging.conf;
+    set $garment_deployment_environment production;
+    include /etc/nginx/garment-buro/maintenance.conf;
     listen 443 ssl;
     server_name partner.garment-buro.ru;
     if ($gb_release_blocked) { return 503; }
@@ -269,6 +279,7 @@ server {
 }
 
 server {
+    include /etc/nginx/garment-buro/server-logging.conf;
     listen 443 ssl;
     server_name widget.garment-buro.ru;
 
@@ -297,6 +308,7 @@ server {
 
 # Production terminal uses the same production database as the main site.
 server {
+    include /etc/nginx/garment-buro/server-logging.conf;
     listen 80;
     server_name production.garment-buro.ru;
     location /.well-known/acme-challenge/ { root /var/www/certbot; }
@@ -304,6 +316,9 @@ server {
 }
 
 server {
+    include /etc/nginx/garment-buro/server-logging.conf;
+    set $garment_deployment_environment production;
+    include /etc/nginx/garment-buro/maintenance.conf;
     listen 443 ssl;
     server_name production.garment-buro.ru;
     ssl_certificate /etc/nginx/ssl/live/production.garment-buro.ru/fullchain.pem;

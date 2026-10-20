@@ -5,6 +5,8 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.modules.catalog.pricing import validate_customization
+
 MAX_CART_ITEMS = 100
 MAX_CART_PAYLOAD_BYTES = 512 * 1024
 MAX_CUSTOMIZATION_BYTES = 64 * 1024
@@ -39,6 +41,7 @@ class CartItemWrite(BaseModel):
     ) -> dict[str, object] | None:
         if value is None:
             return None
+        validate_customization(value)
         try:
             encoded = json.dumps(
                 value,
@@ -53,14 +56,13 @@ class CartItemWrite(BaseModel):
         return value
 
 
-class CartUpdateRequest(BaseModel):
+class CartContents(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     items: list[CartItemWrite] = Field(default_factory=list, max_length=MAX_CART_ITEMS)
-    updated_at_ms: int | None = Field(default=None, ge=0, le=9_999_999_999_999)
 
     @model_validator(mode="after")
-    def validate_cart_payload(self) -> CartUpdateRequest:
+    def validate_cart_payload(self) -> CartContents:
         item_ids = [item.id for item in self.items]
         if len(item_ids) != len(set(item_ids)):
             raise ValueError("Cart item IDs must be unique")
@@ -73,6 +75,19 @@ class CartUpdateRequest(BaseModel):
         if len(encoded) > MAX_CART_PAYLOAD_BYTES:
             raise ValueError("Cart payload is too large")
         return self
+
+
+class CartUpdateRequest(CartContents):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_revision: str | None = Field(pattern=r"^[a-f0-9]{32}$")
+    operation_id: str = Field(pattern=r"^[a-f0-9]{32}$")
+
+
+class LegacyCartUpdateRequest(CartContents):
+    """Offline import only; never accepted by the live HTTP router."""
+
+    updated_at_ms: int | None = Field(default=None, ge=0, le=9_999_999_999_999)
 
 
 class CartItemResponse(BaseModel):
@@ -90,18 +105,6 @@ class CartItemResponse(BaseModel):
 class CartSnapshotResponse(BaseModel):
     cart_id: str
     items: list[CartItemResponse]
+    revision: str | None
     updated_at_ms: int
     ttl_seconds: int
-
-
-class CartUpdatedResponse(BaseModel):
-    status: str = "ok"
-    cart_id: str
-    items_count: int
-    updated_at_ms: int
-    ttl_seconds: int
-
-
-class CartDeletedResponse(BaseModel):
-    status: str = "deleted"
-    cart_id: str

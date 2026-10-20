@@ -1,13 +1,13 @@
 'use client';
 
-import { useMemo, useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
+import { PiLink, PiPencilSimple, PiPlus, PiUploadSimple } from 'react-icons/pi';
 import {
-    PiLink,
-    PiPencilSimple,
-    PiPlus,
-    PiUploadSimple,
-} from 'react-icons/pi';
-import { useAssortmentResource } from '@/hooks/production/useAssortmentResource';
+    useAccessoryDirectory,
+    useAccessoryCategories,
+    useAccessoryRequirements,
+} from '@/hooks/production/useReferenceDirectory';
+import { ReferencePicker } from './ReferencePicker';
 import {
     saveAssortment,
     uploadAssortmentMedia,
@@ -17,8 +17,6 @@ import type {
     Accessory,
     AccessoryCategory,
     AccessoryRequirement,
-    GarmentModel,
-    ReferencePage,
 } from '@/lib/production/assortmentTypes';
 import { AdminFilters } from '../AdminFilters';
 import {
@@ -55,64 +53,46 @@ type RequirementForm = Partial<AccessoryRequirement> & {
 };
 
 export function AdminAccessories() {
-    const accessories = useAssortmentResource<Accessory[]>('accessories');
-    const categories =
-        useAssortmentResource<AccessoryCategory[]>('accessory-categories');
-    const requirements = useAssortmentResource<AccessoryRequirement[]>(
-        'accessory-requirements',
-    );
-    const models = useAssortmentResource<ReferencePage<GarmentModel>>('models');
     const [search, setSearch] = useState('');
     const [categoryFilter, setCategoryFilter] = useState('');
     const [activityFilter, setActivityFilter] = useState('');
     const [stockFilter, setStockFilter] = useState('');
     const [sorting, setSorting] = useState('name:asc');
-    const [categoryEditor, setCategoryEditor] = useState<CategoryForm | null>(null);
+    const [categoryEditor, setCategoryEditor] = useState<CategoryForm | null>(
+        null,
+    );
     const [editor, setEditor] = useState<AccessoryForm | null>(null);
     const [requirementEditor, setRequirementEditor] =
         useState<RequirementForm | null>(null);
     const [saving, setSaving] = useState(false);
+    const writeLocked = useRef(false);
     const [uploading, setUploading] = useState(false);
     const [uploadStatus, setUploadStatus] =
         useState<FileUploadStatusValue>(idleFileUploadStatus);
     const [formError, setFormError] = useState('');
-    const categoryName = (id: number) =>
-        categories.data?.find((item) => item.id === id)?.name ?? `№${id}`;
-    const accessoryName = (id: number) =>
-        accessories.data?.find((item) => item.id === id)?.name ?? `№${id}`;
-    const modelName = (id: number) =>
-        models.data?.items.find((item) => item.id === id)?.name ?? `№${id}`;
-    const visibleAccessories = useMemo(() => {
-        const needle = search.trim().toLocaleLowerCase('ru');
-        const filtered = (accessories.data ?? []).filter((item) =>
-            (!needle ||
-                `${item.name} ${item.code}`
-                    .toLocaleLowerCase('ru')
-                    .includes(needle)) &&
-            (!categoryFilter || item.category_id === Number(categoryFilter)) &&
-            (!activityFilter ||
-                item.is_active === (activityFilter === 'active')) &&
-            (!stockFilter ||
-                (stockFilter === 'low'
-                    ? item.stock_quantity <= item.minimum_stock_quantity
-                    : item.stock_quantity > item.minimum_stock_quantity)),
-        );
-        const [field, direction] = sorting.split(':');
-        return [...filtered].sort((left, right) => {
-            const values: Record<string, [string | number, string | number]> = {
-                name: [left.name, right.name],
-                code: [left.code, right.code],
-                stock: [left.stock_quantity, right.stock_quantity],
-                price: [Number(left.unit_cost), Number(right.unit_cost)],
-            };
-            const [a, b] = values[field] ?? values.name;
-            const result =
-                typeof a === 'number' && typeof b === 'number'
-                    ? a - b
-                    : String(a).localeCompare(String(b), 'ru');
-            return direction === 'desc' ? -result : result;
-        });
-    }, [accessories.data, activityFilter, categoryFilter, search, sorting, stockFilter]);
+    const [categorySearch, setCategorySearch] = useState('');
+    const [requirementSearch, setRequirementSearch] = useState('');
+    const [categorySelection, setCategorySelection] = useState<{
+        id: string;
+        name: string;
+    } | null>(null);
+    const accessories = useAccessoryDirectory({
+        query: search,
+        category_id: Number(categoryFilter) || null,
+        active: activityFilter ? activityFilter === 'active' : undefined,
+        stock: stockFilter || 'all',
+        sort: sorting,
+        limit: 24,
+    });
+    const categories = useAccessoryCategories({
+        query: categorySearch,
+        limit: 24,
+    });
+    const requirements = useAccessoryRequirements({
+        query: requirementSearch,
+        limit: 24,
+    });
+    const visibleAccessories = accessories.items;
 
     const runSave = async (
         path: string,
@@ -120,6 +100,8 @@ export function AdminAccessories() {
         payload: unknown,
         done: () => void,
     ) => {
+        if (writeLocked.current) return;
+        writeLocked.current = true;
         setSaving(true);
         setFormError('');
         try {
@@ -132,6 +114,7 @@ export function AdminAccessories() {
                     : 'Не удалось сохранить запись',
             );
         } finally {
+            writeLocked.current = false;
             setSaving(false);
         }
     };
@@ -153,8 +136,13 @@ export function AdminAccessories() {
                     : {}),
             },
             () => {
+                setCategorySelection((current) =>
+                    current?.id === String(categoryEditor.id)
+                        ? { ...current, name: categoryEditor.name.trim() }
+                        : current,
+                );
                 setCategoryEditor(null);
-                categories.reload();
+                categories.retry();
             },
         );
     };
@@ -171,16 +159,14 @@ export function AdminAccessories() {
                 unit_cost: Number(editor.unit_cost || 0),
                 currency: 'RUB',
                 stock_quantity: Number(editor.stock_quantity),
-                minimum_stock_quantity: Number(
-                    editor.minimum_stock_quantity,
-                ),
+                minimum_stock_quantity: Number(editor.minimum_stock_quantity),
                 photo_media_object_id: editor.photo_media_object_id,
                 is_active: editor.is_active,
                 ...(editor.id ? { expected_version: editor.version } : {}),
             },
             () => {
                 setEditor(null);
-                accessories.reload();
+                accessories.retry();
             },
         );
     };
@@ -195,9 +181,7 @@ export function AdminAccessories() {
             {
                 garment_model_id: requirementEditor.garment_model_id,
                 accessory_id: requirementEditor.accessory_id,
-                quantity_per_unit: Number(
-                    requirementEditor.quantity_per_unit,
-                ),
+                quantity_per_unit: Number(requirementEditor.quantity_per_unit),
                 is_optional: requirementEditor.is_optional,
                 notes: requirementEditor.notes,
                 ...(requirementEditor.id
@@ -206,222 +190,332 @@ export function AdminAccessories() {
             },
             () => {
                 setRequirementEditor(null);
-                requirements.reload();
-                accessories.reload();
+                requirements.retry();
+                accessories.retry();
             },
         );
     };
 
     return (
-        <section aria-busy={accessories.loading || categories.loading}>
-            <div className={styles.assortmentHeading}>
-                <div>
-                    <h3>Фурнитура</h3>
-                    <p className={styles.muted}>
-                        Категории, остатки и применимость фурнитуры к моделям.
-                    </p>
-                </div>
-                <div className={styles.headingActions}>
-                    <button
-                        onClick={() =>
-                            setCategoryEditor({
-                                code: '',
-                                name: '',
-                                description: null,
-                                is_active: true,
-                            })
-                        }
-                    >
-                        <PiPlus aria-hidden /> Категория
-                    </button>
-                    <button
-                        disabled={!categories.data?.length}
-                        onClick={() => {
-                            setUploadStatus(idleFileUploadStatus);
-                            setEditor({
-                                category_id: categories.data?.[0]?.id ?? 0,
-                                code: '',
-                                name: '',
-                                unit_cost: '0',
-                                stock_quantity: 0,
-                                minimum_stock_quantity: 0,
-                                photo_media_object_id: null,
-                                is_active: true,
-                            });
-                        }}
-                    >
-                        <PiPlus aria-hidden /> Добавить фурнитуру
-                    </button>
-                </div>
-            </div>
-            <div className={styles.chipList} aria-label="Категории фурнитуры">
-                {(categories.data ?? []).map((category) => (
-                    <button
-                        key={category.id}
-                        onClick={() => setCategoryEditor({ ...category })}
-                    >
-                        {category.name}
-                    </button>
-                ))}
-            </div>
-            <div className={styles.assortmentFilters}>
-                <label className={styles.assortmentSearch}>
-                    Поиск фурнитуры
-                    <input
-                        type="search"
-                        value={search}
-                        placeholder="Название или код"
-                        onChange={(event) => setSearch(event.target.value)}
-                    />
-                </label>
-                <AdminFilters
-                    groups={[
-                        {
-                            key: 'category',
-                            label: 'Категория',
-                            options: [
-                                ['', 'Все категории'],
-                                ...(categories.data ?? []).map(
-                                    (category) =>
-                                        [String(category.id), category.name] as const,
-                                ),
-                            ],
-                        },
-                        {
-                            key: 'activity',
-                            label: 'Видимость',
-                            options: [
-                                ['', 'Все позиции'],
-                                ['active', 'Активные'],
-                                ['hidden', 'Скрытые'],
-                            ],
-                        },
-                        {
-                            key: 'stock',
-                            label: 'Остаток',
-                            options: [
-                                ['', 'Любой остаток'],
-                                ['available', 'Выше минимума'],
-                                ['low', 'Заканчивается'],
-                            ],
-                        },
-                        {
-                            key: 'sorting',
-                            label: 'Сортировка',
-                            options: [
-                                ['name:asc', 'Название: А–Я'],
-                                ['code:asc', 'По коду'],
-                                ['stock:asc', 'Сначала заканчивающиеся'],
-                                ['stock:desc', 'Сначала большие остатки'],
-                                ['price:asc', 'Сначала дешевле'],
-                                ['price:desc', 'Сначала дороже'],
-                            ],
-                        },
-                    ]}
-                    values={{
-                        category: categoryFilter,
-                        activity: activityFilter,
-                        stock: stockFilter,
-                        sorting,
-                    }}
-                    defaults={{
-                        category: '',
-                        activity: '',
-                        stock: '',
-                        sorting: 'name:asc',
-                    }}
-                    onApply={(values) => {
-                        setCategoryFilter(values.category);
-                        setActivityFilter(values.activity);
-                        setStockFilter(values.stock);
-                        setSorting(values.sorting);
-                    }}
-                />
-            </div>
-            <AssortmentFeedback
-                loading={accessories.loading || categories.loading}
-                error={accessories.error || categories.error}
-                empty={
-                    !accessories.loading &&
-                    !categories.loading &&
-                    visibleAccessories.length === 0
-                }
-            />
-            <div className={styles.assortmentCards}>
-                {visibleAccessories.map((item) => (
-                    <article className={styles.assortmentCard} key={item.id}>
-                        <div className={styles.assortmentCardTop}>
-                            <div>
-                                <span className={styles.badge}>
-                                    {categoryName(item.category_id)}
-                                </span>
-                                <h4>{item.name}</h4>
-                                <small>{item.code}</small>
-                            </div>
-                            <button
-                                className={styles.iconButton}
-                                onClick={() => {
-                                    setUploadStatus(
-                                        item.photo_media_object_id
-                                            ? {
-                                                  state: 'success',
-                                                  message:
-                                                      'Фото уже загружено',
-                                              }
-                                            : idleFileUploadStatus,
-                                    );
-                                    setEditor({
-                                        ...item,
-                                        unit_cost: compactDecimal(item.unit_cost),
-                                    });
-                                }}
-                                aria-label={`Изменить ${item.name}`}
-                            >
-                                <PiPencilSimple aria-hidden />
-                            </button>
-                        </div>
-                        <dl className={styles.compactFacts}>
-                            <div>
-                                <dt>Остаток</dt>
-                                <dd>{item.stock_quantity}</dd>
-                            </div>
-                            <div>
-                                <dt>Минимум</dt>
-                                <dd>{item.minimum_stock_quantity}</dd>
-                            </div>
-                            <div>
-                                <dt>Цена</dt>
-                                <dd>{compactDecimal(item.unit_cost)} ₽</dd>
-                            </div>
-                        </dl>
+        <section aria-busy={accessories.loading}>
+            <fieldset
+                className={styles.adminFields}
+                disabled={saving || uploading}
+            >
+                <div className={styles.assortmentHeading}>
+                    <div>
+                        <h3>Фурнитура</h3>
                         <p className={styles.muted}>
-                            {item.model_ids.length
-                                ? `Подходит для ${item.model_ids.length} моделей`
-                                : 'Модели пока не назначены'}
+                            Категории, остатки и применимость фурнитуры к
+                            моделям.
                         </p>
+                    </div>
+                    <div className={styles.headingActions}>
                         <button
-                            disabled={!models.data?.items.length}
                             onClick={() =>
-                                setRequirementEditor({
-                                    garment_model_id:
-                                        models.data?.items[0]?.id ?? 0,
-                                    accessory_id: item.id,
-                                    quantity_per_unit: '1',
-                                    is_optional: false,
-                                    notes: null,
+                                setCategoryEditor({
+                                    code: '',
+                                    name: '',
+                                    description: null,
+                                    is_active: true,
                                 })
                             }
                         >
-                            <PiLink aria-hidden /> Назначить модели
+                            <PiPlus aria-hidden /> Категория
                         </button>
-                    </article>
-                ))}
-            </div>
-            {(requirements.data ?? []).length > 0 && (
+                        <button
+                            onClick={() => {
+                                setUploadStatus(idleFileUploadStatus);
+                                setEditor({
+                                    category_id: 0,
+                                    code: '',
+                                    name: '',
+                                    unit_cost: '0',
+                                    stock_quantity: 0,
+                                    minimum_stock_quantity: 0,
+                                    photo_media_object_id: null,
+                                    is_active: true,
+                                });
+                            }}
+                        >
+                            <PiPlus aria-hidden /> Добавить фурнитуру
+                        </button>
+                    </div>
+                </div>
+                <label>
+                    Найти категорию фурнитуры
+                    <input
+                        type="search"
+                        value={categorySearch}
+                        onChange={(event) =>
+                            setCategorySearch(event.target.value)
+                        }
+                    />
+                </label>
+                {categories.message && (
+                    <p role="alert">
+                        {categories.message}
+                        <button
+                            type="button"
+                            onClick={() => void categories.retry()}
+                        >
+                            Обновить категории фурнитуры
+                        </button>
+                    </p>
+                )}
+                <div
+                    className={styles.chipList}
+                    aria-label="Категории фурнитуры"
+                >
+                    {categories.items.map((category) => (
+                        <button
+                            key={category.id}
+                            onClick={() => setCategoryEditor({ ...category })}
+                        >
+                            {category.name}
+                        </button>
+                    ))}
+                </div>
+                {categories.hasMore && (
+                    <button
+                        type="button"
+                        disabled={categories.loadingMore}
+                        onClick={() => void categories.loadMore()}
+                    >
+                        Ещё категории
+                    </button>
+                )}
+                <div className={styles.assortmentFilters}>
+                    <label className={styles.assortmentSearch}>
+                        Поиск фурнитуры
+                        <input
+                            type="search"
+                            value={search}
+                            placeholder="Название или код"
+                            onChange={(event) => setSearch(event.target.value)}
+                        />
+                    </label>
+                    <AdminFilters
+                        groups={[
+                            {
+                                key: 'category',
+                                label: 'Категория',
+                                options: [
+                                    ['', 'Все категории'],
+                                    ...(categorySelection &&
+                                    !categories.items.some(
+                                        (row) =>
+                                            String(row.id) ===
+                                            categorySelection.id,
+                                    )
+                                        ? [
+                                              [
+                                                  categorySelection.id,
+                                                  categorySelection.name,
+                                              ] as const,
+                                          ]
+                                        : []),
+                                    ...categories.items.map(
+                                        (category) =>
+                                            [
+                                                String(category.id),
+                                                category.name,
+                                            ] as const,
+                                    ),
+                                ],
+                            },
+                            {
+                                key: 'activity',
+                                label: 'Видимость',
+                                options: [
+                                    ['', 'Все позиции'],
+                                    ['active', 'Активные'],
+                                    ['hidden', 'Скрытые'],
+                                ],
+                            },
+                            {
+                                key: 'stock',
+                                label: 'Остаток',
+                                options: [
+                                    ['', 'Любой остаток'],
+                                    ['available', 'Выше минимума'],
+                                    ['low', 'Заканчивается'],
+                                ],
+                            },
+                            {
+                                key: 'sorting',
+                                label: 'Сортировка',
+                                options: [
+                                    ['name:asc', 'Название: А–Я'],
+                                    ['code:asc', 'По коду'],
+                                    ['stock:asc', 'Сначала заканчивающиеся'],
+                                    ['stock:desc', 'Сначала большие остатки'],
+                                    ['price:asc', 'Сначала дешевле'],
+                                    ['price:desc', 'Сначала дороже'],
+                                ],
+                            },
+                        ]}
+                        values={{
+                            category: categoryFilter,
+                            activity: activityFilter,
+                            stock: stockFilter,
+                            sorting,
+                        }}
+                        defaults={{
+                            category: '',
+                            activity: '',
+                            stock: '',
+                            sorting: 'name:asc',
+                        }}
+                        onApply={(values) => {
+                            setCategoryFilter(values.category);
+                            setCategorySelection(
+                                values.category
+                                    ? {
+                                          id: values.category,
+                                          name:
+                                              categories.items.find(
+                                                  (row) =>
+                                                      String(row.id) ===
+                                                      values.category,
+                                              )?.name ??
+                                              categorySelection?.name ??
+                                              `№${values.category}`,
+                                      }
+                                    : null,
+                            );
+                            setActivityFilter(values.activity);
+                            setStockFilter(values.stock);
+                            setSorting(values.sorting);
+                        }}
+                    />
+                </div>
+                <AssortmentFeedback
+                    loading={accessories.loading}
+                    error={accessories.message}
+                    empty={
+                        !accessories.loading && visibleAccessories.length === 0
+                    }
+                />
+                <div className={styles.assortmentCards}>
+                    {visibleAccessories.map((item) => (
+                        <article
+                            className={styles.assortmentCard}
+                            key={item.id}
+                        >
+                            <div className={styles.assortmentCardTop}>
+                                <div>
+                                    <span className={styles.badge}>
+                                        {item.category_name}
+                                    </span>
+                                    <h4>{item.name}</h4>
+                                    <small>{item.code}</small>
+                                </div>
+                                <button
+                                    className={styles.iconButton}
+                                    onClick={() => {
+                                        setUploadStatus(
+                                            item.photo_media_object_id
+                                                ? {
+                                                      state: 'success',
+                                                      message:
+                                                          'Фото уже загружено',
+                                                  }
+                                                : idleFileUploadStatus,
+                                        );
+                                        setEditor({
+                                            ...item,
+                                            unit_cost: compactDecimal(
+                                                item.unit_cost,
+                                            ),
+                                        });
+                                    }}
+                                    aria-label={`Изменить ${item.name}`}
+                                >
+                                    <PiPencilSimple aria-hidden />
+                                </button>
+                            </div>
+                            <dl className={styles.compactFacts}>
+                                <div>
+                                    <dt>Остаток</dt>
+                                    <dd>{item.stock_quantity}</dd>
+                                </div>
+                                <div>
+                                    <dt>Минимум</dt>
+                                    <dd>{item.minimum_stock_quantity}</dd>
+                                </div>
+                                <div>
+                                    <dt>Цена</dt>
+                                    <dd>{compactDecimal(item.unit_cost)} ₽</dd>
+                                </div>
+                            </dl>
+                            <p className={styles.muted}>
+                                {item.model_count
+                                    ? `Подходит для ${item.model_count} моделей`
+                                    : 'Модели пока не назначены'}
+                            </p>
+                            <button
+                                onClick={() =>
+                                    setRequirementEditor({
+                                        garment_model_id: 0,
+                                        accessory_id: item.id,
+                                        quantity_per_unit: '1',
+                                        is_optional: false,
+                                        notes: null,
+                                    })
+                                }
+                            >
+                                <PiLink aria-hidden /> Назначить модели
+                            </button>
+                        </article>
+                    ))}
+                </div>
+                {accessories.message && (
+                    <button
+                        type="button"
+                        onClick={() => void accessories.retry()}
+                    >
+                        Обновить фурнитуру
+                    </button>
+                )}
+                {accessories.hasMore && (
+                    <button
+                        type="button"
+                        disabled={accessories.loadingMore}
+                        onClick={() => void accessories.loadMore()}
+                    >
+                        Ещё фурнитура
+                    </button>
+                )}
                 <section className={styles.relatedSection}>
                     <h4>Применимость и расход</h4>
+                    <label>
+                        Поиск расхода фурнитуры
+                        <input
+                            type="search"
+                            value={requirementSearch}
+                            onChange={(event) =>
+                                setRequirementSearch(event.target.value)
+                            }
+                        />
+                    </label>
+                    <AssortmentFeedback
+                        loading={requirements.loading}
+                        error={requirements.message}
+                        empty={
+                            !requirements.loading && !requirements.items.length
+                        }
+                    />
+                    {requirements.message && (
+                        <button
+                            type="button"
+                            onClick={() => void requirements.retry()}
+                        >
+                            Обновить расход фурнитуры
+                        </button>
+                    )}
                     <div className={styles.relationshipList}>
-                        {(requirements.data ?? []).map((item) => (
+                        {requirements.items.map((item) => (
                             <button
                                 key={item.id}
                                 className={styles.relationshipCard}
@@ -435,8 +529,8 @@ export function AdminAccessories() {
                                 }
                             >
                                 <span>
-                                    <strong>{accessoryName(item.accessory_id)}</strong>
-                                    <small>{modelName(item.garment_model_id)}</small>
+                                    <strong>{item.accessory_name}</strong>
+                                    <small>{item.garment_model_name}</small>
                                 </span>
                                 <span>
                                     {compactDecimal(item.quantity_per_unit)} шт.
@@ -444,364 +538,377 @@ export function AdminAccessories() {
                             </button>
                         ))}
                     </div>
+                    {requirements.hasMore && (
+                        <button
+                            type="button"
+                            disabled={requirements.loadingMore}
+                            onClick={() => void requirements.loadMore()}
+                        >
+                            Ещё расход фурнитуры
+                        </button>
+                    )}
                 </section>
-            )}
-            {categoryEditor && (
-                <AssortmentDialog
-                    title={categoryEditor.id ? 'Изменить категорию' : 'Новая категория'}
-                    onClose={() => setCategoryEditor(null)}
-                >
-                    <form onSubmit={submitCategory}>
-                        <div className={styles.formGrid}>
-                            <label>
-                                Название
-                                <input
-                                    required
-                                    value={categoryEditor.name}
-                                    onChange={(event) =>
-                                        setCategoryEditor({
-                                            ...categoryEditor,
-                                            name: event.target.value,
-                                        })
-                                    }
-                                />
-                            </label>
-                            <label>
-                                Код
-                                <input
-                                    required
-                                    value={categoryEditor.code}
-                                    onChange={(event) =>
-                                        setCategoryEditor({
-                                            ...categoryEditor,
-                                            code: event.target.value.toUpperCase(),
-                                        })
-                                    }
-                                />
-                            </label>
-                            <label className={styles.fullField}>
-                                Описание
-                                <textarea
-                                    value={categoryEditor.description ?? ''}
-                                    onChange={(event) =>
-                                        setCategoryEditor({
-                                            ...categoryEditor,
-                                            description: event.target.value || null,
-                                        })
-                                    }
-                                />
-                            </label>
-                            <label className={styles.checkField}>
-                                <input
-                                    type="checkbox"
-                                    checked={categoryEditor.is_active}
-                                    onChange={(event) =>
-                                        setCategoryEditor({
-                                            ...categoryEditor,
-                                            is_active: event.target.checked,
-                                        })
-                                    }
-                                />
-                                Категория активна
-                            </label>
-                        </div>
-                        {formError && <p className={styles.error}>{formError}</p>}
-                        <div className={styles.editorActions}>
-                            <button type="button" onClick={() => setCategoryEditor(null)}>
-                                Отмена
-                            </button>
-                            <button className={styles.primaryButton} disabled={saving}>
-                                Сохранить
-                            </button>
-                        </div>
-                    </form>
-                </AssortmentDialog>
-            )}
-            {editor && (
-                <AssortmentDialog
-                    title={editor.id ? 'Изменить фурнитуру' : 'Новая фурнитура'}
-                    onClose={() => setEditor(null)}
-                >
-                    <form onSubmit={submitAccessory}>
-                        <div className={styles.formGrid}>
-                            <label>
-                                Категория
-                                <select
-                                    required
-                                    value={editor.category_id || ''}
-                                    onChange={(event) =>
-                                        setEditor({
-                                            ...editor,
-                                            category_id: Number(event.target.value),
-                                        })
-                                    }
-                                >
-                                    <option value="">Выберите категорию</option>
-                                    {(categories.data ?? []).map((category) => (
-                                        <option key={category.id} value={category.id}>
-                                            {category.name}
-                                        </option>
-                                    ))}
-                                </select>
-                            </label>
-                            <label>
-                                Название
-                                <input
-                                    required
-                                    value={editor.name}
-                                    onChange={(event) =>
-                                        setEditor({ ...editor, name: event.target.value })
-                                    }
-                                />
-                            </label>
-                            <label>
-                                Код
-                                <input
-                                    required
-                                    value={editor.code}
-                                    onChange={(event) =>
-                                        setEditor({
-                                            ...editor,
-                                            code: event.target.value.toUpperCase(),
-                                        })
-                                    }
-                                />
-                            </label>
-                            <label>
-                                Цена за единицу
-                                <input
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    value={editor.unit_cost}
-                                    onChange={(event) =>
-                                        setEditor({
-                                            ...editor,
-                                            unit_cost: event.target.value,
-                                        })
-                                    }
-                                />
-                            </label>
-                            <label>
-                                Остаток
-                                <input
-                                    type="number"
-                                    min="0"
-                                    value={editor.stock_quantity}
-                                    onChange={(event) =>
-                                        setEditor({
-                                            ...editor,
-                                            stock_quantity: Number(event.target.value),
-                                        })
-                                    }
-                                />
-                            </label>
-                            <label>
-                                Минимальный остаток
-                                <input
-                                    type="number"
-                                    min="0"
-                                    value={editor.minimum_stock_quantity}
-                                    onChange={(event) =>
-                                        setEditor({
-                                            ...editor,
-                                            minimum_stock_quantity: Number(
-                                                event.target.value,
-                                            ),
-                                        })
-                                    }
-                                />
-                            </label>
-                            <div
-                                className={`${styles.fullField} ${styles.patternFileField}`}
-                            >
-                                <span>Фото</span>
-                                <label className={styles.patternFilePicker}>
+                {categoryEditor && (
+                    <AssortmentDialog
+                        title={
+                            categoryEditor.id
+                                ? 'Изменить категорию'
+                                : 'Новая категория'
+                        }
+                        onClose={() => setCategoryEditor(null)}
+                    >
+                        <form onSubmit={submitCategory}>
+                            <div className={styles.formGrid}>
+                                <label>
+                                    Название
                                     <input
-                                    type="file"
-                                    accept="image/jpeg,image/png,image/webp"
-                                    disabled={uploading}
-                                    onChange={async (event) => {
-                                        const file = event.target.files?.[0];
-                                        if (!file) return;
-                                        setUploading(true);
-                                        setFormError('');
-                                        setUploadStatus({
-                                            state: 'uploading',
-                                            fileName: file.name,
-                                        });
-                                        try {
-                                            const media = await uploadAssortmentMedia(
-                                                file,
-                                                'public',
-                                            );
-                                            setEditor((current) =>
-                                                current
-                                                    ? {
-                                                          ...current,
-                                                          photo_media_object_id:
-                                                              media.id,
-                                                      }
-                                                    : current,
-                                            );
-                                            setUploadStatus({
-                                                state: 'success',
-                                                fileName: file.name,
-                                            });
-                                        } catch (reason) {
-                                            const message =
-                                                reason instanceof Error
-                                                    ? reason.message
-                                                    : 'Не удалось загрузить фото';
-                                            setFormError(message);
-                                            setUploadStatus({
-                                                state: 'error',
-                                                fileName: file.name,
-                                                message,
-                                            });
-                                        } finally {
-                                            setUploading(false);
+                                        required
+                                        value={categoryEditor.name}
+                                        onChange={(event) =>
+                                            setCategoryEditor({
+                                                ...categoryEditor,
+                                                name: event.target.value,
+                                            })
                                         }
-                                    }}
                                     />
-                                    <PiUploadSimple aria-hidden />
-                                    <span>JPEG, PNG или WebP</span>
                                 </label>
-                                <FileUploadStatus value={uploadStatus} />
+                                <label>
+                                    Код
+                                    <input
+                                        required
+                                        value={categoryEditor.code}
+                                        onChange={(event) =>
+                                            setCategoryEditor({
+                                                ...categoryEditor,
+                                                code: event.target.value.toUpperCase(),
+                                            })
+                                        }
+                                    />
+                                </label>
+                                <label className={styles.fullField}>
+                                    Описание
+                                    <textarea
+                                        value={categoryEditor.description ?? ''}
+                                        onChange={(event) =>
+                                            setCategoryEditor({
+                                                ...categoryEditor,
+                                                description:
+                                                    event.target.value || null,
+                                            })
+                                        }
+                                    />
+                                </label>
+                                <label className={styles.checkField}>
+                                    <input
+                                        type="checkbox"
+                                        checked={categoryEditor.is_active}
+                                        onChange={(event) =>
+                                            setCategoryEditor({
+                                                ...categoryEditor,
+                                                is_active: event.target.checked,
+                                            })
+                                        }
+                                    />
+                                    Категория активна
+                                </label>
                             </div>
-                            <label className={styles.checkField}>
-                                <input
-                                    type="checkbox"
-                                    checked={editor.is_active}
-                                    onChange={(event) =>
-                                        setEditor({
-                                            ...editor,
-                                            is_active: event.target.checked,
-                                        })
-                                    }
-                                />
-                                Доступна
-                            </label>
-                        </div>
-                        {formError && <p className={styles.error}>{formError}</p>}
-                        <div className={styles.editorActions}>
-                            <button type="button" onClick={() => setEditor(null)}>
-                                Отмена
-                            </button>
-                            <button
-                                className={styles.primaryButton}
-                                disabled={saving || uploading}
-                            >
-                                Сохранить
-                            </button>
-                        </div>
-                    </form>
-                </AssortmentDialog>
-            )}
-            {requirementEditor && (
-                <AssortmentDialog
-                    title="Применимость фурнитуры"
-                    onClose={() => setRequirementEditor(null)}
-                >
-                    <form onSubmit={submitRequirement}>
-                        <div className={styles.formGrid}>
-                            <label>
-                                Модель
-                                <select
-                                    required
-                                    value={requirementEditor.garment_model_id || ''}
-                                    onChange={(event) =>
-                                        setRequirementEditor({
-                                            ...requirementEditor,
-                                            garment_model_id: Number(event.target.value),
-                                        })
-                                    }
+                            {formError && (
+                                <p className={styles.error}>{formError}</p>
+                            )}
+                            <div className={styles.editorActions}>
+                                <button
+                                    type="button"
+                                    onClick={() => setCategoryEditor(null)}
                                 >
-                                    <option value="">Выберите модель</option>
-                                    {(models.data?.items ?? []).map((model) => (
-                                        <option key={model.id} value={model.id}>
-                                            {model.name}
-                                        </option>
-                                    ))}
-                                </select>
-                            </label>
-                            <label>
-                                Фурнитура
-                                <select
-                                    required
-                                    value={requirementEditor.accessory_id || ''}
-                                    onChange={(event) =>
-                                        setRequirementEditor({
-                                            ...requirementEditor,
-                                            accessory_id: Number(event.target.value),
-                                        })
-                                    }
+                                    Отмена
+                                </button>
+                                <button
+                                    className={styles.primaryButton}
+                                    disabled={saving}
                                 >
-                                    <option value="">Выберите фурнитуру</option>
-                                    {(accessories.data ?? []).map((item) => (
-                                        <option key={item.id} value={item.id}>
-                                            {item.name}
-                                        </option>
-                                    ))}
-                                </select>
-                            </label>
-                            <label>
-                                Количество на изделие
-                                <input
-                                    required
-                                    type="number"
-                                    min="0.1"
-                                    step="0.1"
-                                    value={requirementEditor.quantity_per_unit}
-                                    onChange={(event) =>
+                                    Сохранить
+                                </button>
+                            </div>
+                        </form>
+                    </AssortmentDialog>
+                )}
+                {editor && (
+                    <AssortmentDialog
+                        title={
+                            editor.id ? 'Изменить фурнитуру' : 'Новая фурнитура'
+                        }
+                        onClose={() => setEditor(null)}
+                    >
+                        <form onSubmit={submitAccessory}>
+                            <div className={styles.formGrid}>
+                                <ReferencePicker
+                                    kind="accessory-categories"
+                                    value={editor.category_id}
+                                    onChange={(category_id) =>
+                                        setEditor({ ...editor, category_id })
+                                    }
+                                />
+                                <label>
+                                    Название
+                                    <input
+                                        required
+                                        value={editor.name}
+                                        onChange={(event) =>
+                                            setEditor({
+                                                ...editor,
+                                                name: event.target.value,
+                                            })
+                                        }
+                                    />
+                                </label>
+                                <label>
+                                    Код
+                                    <input
+                                        required
+                                        value={editor.code}
+                                        onChange={(event) =>
+                                            setEditor({
+                                                ...editor,
+                                                code: event.target.value.toUpperCase(),
+                                            })
+                                        }
+                                    />
+                                </label>
+                                <label>
+                                    Цена за единицу
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        value={editor.unit_cost}
+                                        onChange={(event) =>
+                                            setEditor({
+                                                ...editor,
+                                                unit_cost: event.target.value,
+                                            })
+                                        }
+                                    />
+                                </label>
+                                <label>
+                                    Остаток
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        value={editor.stock_quantity}
+                                        onChange={(event) =>
+                                            setEditor({
+                                                ...editor,
+                                                stock_quantity: Number(
+                                                    event.target.value,
+                                                ),
+                                            })
+                                        }
+                                    />
+                                </label>
+                                <label>
+                                    Минимальный остаток
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        value={editor.minimum_stock_quantity}
+                                        onChange={(event) =>
+                                            setEditor({
+                                                ...editor,
+                                                minimum_stock_quantity: Number(
+                                                    event.target.value,
+                                                ),
+                                            })
+                                        }
+                                    />
+                                </label>
+                                <div
+                                    className={`${styles.fullField} ${styles.patternFileField}`}
+                                >
+                                    <span>Фото</span>
+                                    <label className={styles.patternFilePicker}>
+                                        <input
+                                            type="file"
+                                            accept="image/jpeg,image/png,image/webp"
+                                            disabled={uploading}
+                                            onChange={async (event) => {
+                                                const file =
+                                                    event.target.files?.[0];
+                                                if (!file) return;
+                                                setUploading(true);
+                                                setFormError('');
+                                                setUploadStatus({
+                                                    state: 'uploading',
+                                                    fileName: file.name,
+                                                });
+                                                try {
+                                                    const media =
+                                                        await uploadAssortmentMedia(
+                                                            file,
+                                                            'public',
+                                                        );
+                                                    setEditor((current) =>
+                                                        current
+                                                            ? {
+                                                                  ...current,
+                                                                  photo_media_object_id:
+                                                                      media.id,
+                                                              }
+                                                            : current,
+                                                    );
+                                                    setUploadStatus({
+                                                        state: 'success',
+                                                        fileName: file.name,
+                                                    });
+                                                } catch (reason) {
+                                                    const message =
+                                                        reason instanceof Error
+                                                            ? reason.message
+                                                            : 'Не удалось загрузить фото';
+                                                    setFormError(message);
+                                                    setUploadStatus({
+                                                        state: 'error',
+                                                        fileName: file.name,
+                                                        message,
+                                                    });
+                                                } finally {
+                                                    setUploading(false);
+                                                }
+                                            }}
+                                        />
+                                        <PiUploadSimple aria-hidden />
+                                        <span>JPEG, PNG или WebP</span>
+                                    </label>
+                                    <FileUploadStatus value={uploadStatus} />
+                                </div>
+                                <label className={styles.checkField}>
+                                    <input
+                                        type="checkbox"
+                                        checked={editor.is_active}
+                                        onChange={(event) =>
+                                            setEditor({
+                                                ...editor,
+                                                is_active: event.target.checked,
+                                            })
+                                        }
+                                    />
+                                    Доступна
+                                </label>
+                            </div>
+                            {formError && (
+                                <p className={styles.error}>{formError}</p>
+                            )}
+                            <div className={styles.editorActions}>
+                                <button
+                                    type="button"
+                                    onClick={() => setEditor(null)}
+                                >
+                                    Отмена
+                                </button>
+                                <button
+                                    className={styles.primaryButton}
+                                    disabled={saving || uploading}
+                                >
+                                    Сохранить
+                                </button>
+                            </div>
+                        </form>
+                    </AssortmentDialog>
+                )}
+                {requirementEditor && (
+                    <AssortmentDialog
+                        title="Применимость фурнитуры"
+                        onClose={() => setRequirementEditor(null)}
+                    >
+                        <form onSubmit={submitRequirement}>
+                            <div className={styles.formGrid}>
+                                <ReferencePicker
+                                    kind="models"
+                                    value={requirementEditor.garment_model_id}
+                                    onChange={(garment_model_id) =>
                                         setRequirementEditor({
                                             ...requirementEditor,
-                                            quantity_per_unit: event.target.value,
+                                            garment_model_id,
                                         })
                                     }
                                 />
-                            </label>
-                            <label className={styles.checkField}>
-                                <input
-                                    type="checkbox"
-                                    checked={requirementEditor.is_optional}
-                                    onChange={(event) =>
+                                <ReferencePicker
+                                    kind="accessories"
+                                    value={requirementEditor.accessory_id}
+                                    onChange={(accessory_id) =>
                                         setRequirementEditor({
                                             ...requirementEditor,
-                                            is_optional: event.target.checked,
+                                            accessory_id,
                                         })
                                     }
                                 />
-                                Необязательная фурнитура
-                            </label>
-                            <label className={styles.fullField}>
-                                Комментарий
-                                <textarea
-                                    value={requirementEditor.notes ?? ''}
-                                    onChange={(event) =>
-                                        setRequirementEditor({
-                                            ...requirementEditor,
-                                            notes: event.target.value || null,
-                                        })
-                                    }
-                                />
-                            </label>
-                        </div>
-                        {formError && <p className={styles.error}>{formError}</p>}
-                        <div className={styles.editorActions}>
-                            <button
-                                type="button"
-                                onClick={() => setRequirementEditor(null)}
-                            >
-                                Отмена
-                            </button>
-                            <button className={styles.primaryButton} disabled={saving}>
-                                Сохранить
-                            </button>
-                        </div>
-                    </form>
-                </AssortmentDialog>
-            )}
+                                <label>
+                                    Количество на изделие
+                                    <input
+                                        required
+                                        type="number"
+                                        min="0.001"
+                                        step="0.001"
+                                        value={
+                                            requirementEditor.quantity_per_unit
+                                        }
+                                        onChange={(event) =>
+                                            setRequirementEditor({
+                                                ...requirementEditor,
+                                                quantity_per_unit:
+                                                    event.target.value,
+                                            })
+                                        }
+                                    />
+                                </label>
+                                <label className={styles.checkField}>
+                                    <input
+                                        type="checkbox"
+                                        checked={requirementEditor.is_optional}
+                                        onChange={(event) =>
+                                            setRequirementEditor({
+                                                ...requirementEditor,
+                                                is_optional:
+                                                    event.target.checked,
+                                            })
+                                        }
+                                    />
+                                    Необязательная фурнитура
+                                </label>
+                                <label className={styles.fullField}>
+                                    Комментарий
+                                    <textarea
+                                        value={requirementEditor.notes ?? ''}
+                                        onChange={(event) =>
+                                            setRequirementEditor({
+                                                ...requirementEditor,
+                                                notes:
+                                                    event.target.value || null,
+                                            })
+                                        }
+                                    />
+                                </label>
+                            </div>
+                            {formError && (
+                                <p className={styles.error}>{formError}</p>
+                            )}
+                            <div className={styles.editorActions}>
+                                <button
+                                    type="button"
+                                    onClick={() => setRequirementEditor(null)}
+                                >
+                                    Отмена
+                                </button>
+                                <button
+                                    className={styles.primaryButton}
+                                    disabled={saving}
+                                >
+                                    Сохранить
+                                </button>
+                            </div>
+                        </form>
+                    </AssortmentDialog>
+                )}
+            </fieldset>
         </section>
     );
 }

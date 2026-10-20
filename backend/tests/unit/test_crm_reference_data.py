@@ -275,6 +275,7 @@ def test_garment_model_updates_preserve_size_identity_and_link_catalog(
                     now=NOW,
                 )
                 assert replay.id == link.id
+                assert replay.version == link.version == 2
                 second_payload = _model_payload().model_copy(
                     update={"code": "DRESS_BASE_02", "name": "Second base dress"}
                 )
@@ -304,8 +305,10 @@ def test_garment_model_updates_preserve_size_identity_and_link_catalog(
                     now=NOW,
                 )
                 sizes = {size.code: size for size in updated.sizes}
-                assert sizes["S"].id == original_ids["S"]
-                assert not sizes["S"].is_active
+                assert set(sizes) == {"M"}
+                archived = await session.get(CrmGarmentSize, original_ids["S"])
+                assert archived is not None and not archived.is_active
+                assert archived.version == 2
                 assert sizes["M"].id == original_ids["M"]
                 assert sizes["M"].is_active
                 assert sizes["M"].version == 2

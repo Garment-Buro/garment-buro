@@ -7,15 +7,46 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.modules.catalog.pricing import validate_customization
 from app.modules.delivery.constants import (
     CDEK_DELIVERY_METHODS,
     CDEK_PICKUP_DELIVERY_METHOD,
 )
 from app.modules.delivery.validation import normalize_cdek_phone
+from app.modules.identity.security import normalize_email
 
 MAX_ORDER_ITEMS = 100
 MAX_ORDER_PAYLOAD_BYTES = 512 * 1024
 MAX_ORDER_CUSTOMIZATION_BYTES = 64 * 1024
+
+
+class OrderContactResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    phone: str
+    email: str
+
+
+class OrderHistoryItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: int
+    total_price: Decimal
+    created_at: datetime
+    status: str
+    payment_status: str
+    customer_stage: str | None
+    customer_stage_label: str | None
+    cdek_number: str | None
+    cdek_status: str | None
+
+
+class OrderHistoryPage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[OrderHistoryItem]
+    next_cursor: int | None
 
 
 class LegacyOrderResponse(BaseModel):
@@ -27,6 +58,8 @@ class LegacyOrderResponse(BaseModel):
     first_name: str | None = None
     last_name: str | None = None
     patronymic: str | None = None
+    buyer: OrderContactResponse | None = None
+    recipient: OrderContactResponse | None = None
     delivery_city: str | None = None
     delivery_method: str | None = None
     delivery_address: str | None = None
@@ -76,6 +109,7 @@ class OrderLineCreate(BaseModel):
     ) -> dict[str, object] | None:
         if value is None:
             return None
+        validate_customization(value)
         try:
             encoded = json.dumps(
                 value,
@@ -90,6 +124,16 @@ class OrderLineCreate(BaseModel):
         return value
 
 
+class OrderItemPrice(BaseModel):
+    """Authoritative price of one submitted line, without customer data."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    id: str
+    product_id: int
+    price: Decimal
+
+
 class OrderCreationCommand(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -98,6 +142,9 @@ class OrderCreationCommand(BaseModel):
     first_name: str = Field(min_length=1, max_length=255)
     last_name: str | None = Field(default=None, max_length=255)
     patronymic: str | None = Field(default=None, max_length=255)
+    buyer_name: str | None = Field(default=None, min_length=1, max_length=255)
+    buyer_phone: str | None = Field(default=None, min_length=7, max_length=64)
+    recipient_email: str | None = Field(default=None, min_length=3, max_length=320)
     delivery_city: str = Field(min_length=1, max_length=255)
     delivery_method: str = Field(min_length=1, max_length=64)
     delivery_address: str = Field(min_length=1, max_length=4096)
@@ -107,6 +154,7 @@ class OrderCreationCommand(BaseModel):
     items: list[OrderLineCreate] = Field(min_length=1, max_length=MAX_ORDER_ITEMS)
     claimed_total_price: Decimal = Field(ge=0, max_digits=12, decimal_places=2)
     delivery_price: Decimal = Field(ge=0, max_digits=12, decimal_places=2)
+    delivery_quote_token: str | None = Field(default=None, min_length=1, max_length=4096)
     currency: Literal["RUB"] = "RUB"
 
     @field_validator(
@@ -134,6 +182,15 @@ class OrderCreationCommand(BaseModel):
 
     @model_validator(mode="after")
     def validate_command(self) -> OrderCreationCommand:
+        contacts = (self.buyer_name, self.buyer_phone, self.recipient_email)
+        if any(value is not None for value in contacts):
+            if not all(value is not None for value in contacts):
+                raise ValueError("Buyer and recipient snapshots must be complete")
+            self.buyer_name = " ".join(self.buyer_name.split())
+            if not self.buyer_name:
+                raise ValueError("Buyer name must not be blank")
+            self.buyer_phone = normalize_cdek_phone(self.buyer_phone)
+            self.recipient_email = normalize_email(self.recipient_email)[1]
         item_ids = [item.id for item in self.items]
         if len(item_ids) != len(set(item_ids)):
             raise ValueError("Order item IDs must be unique")

@@ -15,6 +15,7 @@ from app.modules.payments.provider import (
     YooKassaProviderClient,
 )
 from app.modules.payments.reconciliation import PaymentReconciliationProcessor
+from app.observability.logging import configure_logging
 
 logger = logging.getLogger(__name__)
 
@@ -119,7 +120,7 @@ def _utc_now() -> datetime:
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO)
+    configure_logging(get_settings())
     asyncio.run(run(parse_args()))
 
 

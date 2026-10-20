@@ -118,8 +118,9 @@ class CdekCanonicalRequestBuilder:
             "name": name,
             "phones": [{"number": phone}],
         }
-        if order.email_normalized:
-            recipient["email"] = order.email_normalized
+        email = order.recipient_email or order.email_normalized
+        if email:
+            recipient["email"] = email
         return recipient
 
     @staticmethod

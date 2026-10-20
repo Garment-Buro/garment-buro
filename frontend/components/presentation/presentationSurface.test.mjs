@@ -21,10 +21,6 @@ const roadmapStylesSource = fs.readFileSync(
     "utf8",
 );
 const footerSource = fs.readFileSync(path.join(root, "components", "layout", "Footer.tsx"), "utf8");
-const catalogOverlaySource = fs.readFileSync(
-    path.join(root, "components", "presentation", "CatalogPresentationOverlay.tsx"),
-    "utf8",
-);
 const homeSource = fs.readFileSync(path.join(root, "app", "page.tsx"), "utf8");
 const presentationPageSource = fs.readFileSync(path.join(root, "app", "presentation", "page.tsx"), "utf8");
 
@@ -32,11 +28,8 @@ test("presentation implementation is retained while the catalog surface is pause
     assert.equal(fs.existsSync(path.join(root, "app", "presentation", "page.tsx")), true);
     assert.equal(fs.existsSync(path.join(root, "app", "@modal", "(.)presentation", "page.tsx")), true);
     assert.doesNotMatch(footerSource, /href:\s*'\/presentation'/);
-    assert.match(catalogOverlaySource, /useSearchParams/);
-    assert.match(catalogOverlaySource, /searchParams\.get\("presentation"\) !== "open"/);
-    assert.match(catalogOverlaySource, /<PresentationSurface isOverlay \/>/);
-    assert.match(presentationPageSource, /PUBLIC_CATALOG_ENABLED/);
-    assert.match(presentationPageSource, /notFound\(\)/);
+    assert.match(presentationPageSource, /<PresentationSurface \/>/);
+    assert.doesNotMatch(presentationPageSource, /notFound\(\)/);
     assert.doesNotMatch(homeSource, /CatalogPresentationOverlay|LandingPage/);
 });
 

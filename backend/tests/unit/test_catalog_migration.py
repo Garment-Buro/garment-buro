@@ -244,6 +244,7 @@ def test_catalog_migration_applies_once_and_preserves_response_values(
         }
         assert detail is not None
         payload = detail.model_dump()
+        assert payload["version"] == 1
         assert payload["id"] == 7
         assert payload["price"] == 12000.0
         assert payload["sizes"] == "XS,S"
@@ -270,6 +271,17 @@ def test_catalog_migration_applies_once_and_preserves_response_values(
             async with database.session() as session:
                 await CatalogMigrationService(storage).apply(session, plan)
         assert len(client.uploads) == uploads_before_retry
+
+        async with database.session() as session:
+            product = await session.get(Product, 7)
+            assert product is not None
+            product.title = "Changed after migration"
+            await session.commit()
+            changed_comparison = await CatalogContractComparator(catalog_service).compare(
+                session, plan
+            )
+        assert not changed_comparison.matches
+        assert any("details.7.title:" in item for item in changed_comparison.mismatches)
         await database.shutdown()
 
     asyncio.run(scenario())

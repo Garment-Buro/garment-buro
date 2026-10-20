@@ -444,3 +444,40 @@ def test_profile_email_change_access_resolution_and_soft_delete() -> None:
         await database.shutdown()
 
     asyncio.run(scenario())
+
+
+def test_otp_retry_after_does_not_reject_a_client_that_waited_as_instructed() -> None:
+    async def scenario() -> None:
+        settings = Settings(
+            _env_file=None,
+            app_env=AppEnvironment.TEST,
+            database_enabled=True,
+            database_url="sqlite+aiosqlite:///:memory:",
+        )
+        database = DatabaseManager(settings)
+        service = IdentityService(DeterministicOtpSecurity("p" * 32), TokenSecurity("j" * 32))
+        now = datetime.now(timezone.utc).replace(microsecond=0)
+        await database.startup()
+        try:
+            async with database.engine.begin() as connection:
+                await connection.run_sync(Base.metadata.create_all)
+            async with database.session() as session:
+                await service.repository.ensure_system_authorization(session)
+                await service.request_login_otp(session, email="retry@example.test", now=now)
+                await session.commit()
+            attempted = now + timedelta(seconds=30, milliseconds=200)
+            with pytest.raises(OtpRateLimitError) as limited:
+                async with database.session() as session:
+                    await service.request_login_otp(
+                        session, email="retry@example.test", now=attempted
+                    )
+            retry_at = attempted + timedelta(seconds=limited.value.retry_after_seconds)
+            async with database.session() as session:
+                issued = await service.request_login_otp(
+                    session, email="retry@example.test", now=retry_at
+                )
+                assert issued.code == "1234"
+        finally:
+            await database.shutdown()
+
+    asyncio.run(scenario())

@@ -1,0 +1,9 @@
+.people { display: grid; gap: 12px; }
+.people > article { width: 100%; height: clamp(96px, 26vw, 150px); }
+.sortSelect { max-width: 42%; padding: 8px 4px; border: 1px solid rgb(255 255 255 / 40%); border-radius: 8px; font-size: 12px; }
+.sortSelect option { background: #444; color: #fff; }
+.status { padding: 24px 12px; text-align: center; font-size: 14px; }
+.status button { text-decoration: underline; }
+@media (min-width: 600px) {
+    .people { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

@@ -12,7 +12,10 @@ import {
 } from "./constructor.ts";
 
 test("constructor media selects the first populated source and versions uploads", () => {
-    const product = { id: 1, title: "Test", price: 100, mobile_slider_images: "/a.webp, /b.webp" };
+    const product = { id: 1, title: "Test", price: 100,
+        media_assets: [{id:1,url:'/a.webp'},{id:2,url:'/b.webp'}],
+        images: [{media_id:2,role:'mobile_slider_images',sort_order:1},{media_id:1,role:'mobile_slider_images',sort_order:0}],
+    };
     assert.deepEqual(getProductImageList(product), ["/a.webp", "/b.webp"]);
     assert.match(versionConstructorMedia("/uploads/model.webp"), /^\/uploads\/model\.webp\?v=/);
     assert.equal(versionConstructorMedia("/mock/model.webp"), "/mock/model.webp");
@@ -46,7 +49,8 @@ test("constructor customization is built in the domain layer", () => {
         },
         frontImage: "/model-front.webp",
         backImage: "/model-back.webp",
-        totalPrice: 5300,
+        totalPrice: 5145,
+        decorationPrices: {item_1:145},
         comment: "test",
     });
 
@@ -54,7 +58,8 @@ test("constructor customization is built in the domain layer", () => {
     assert.equal(customization?.modelImages.back, "/model-back.webp");
     assert.equal(customization?.decorations[0].variantId, "print_1");
     assert.equal(customization?.decorations[0].rotation, 12);
-    assert.equal(customization?.totalPrice, 5300);
+    assert.equal(customization?.totalPrice, 5145);
+    assert.equal(customization?.decorations[0].price, 145);
 });
 
 test("constructor fit and bounds stay normalized", () => {

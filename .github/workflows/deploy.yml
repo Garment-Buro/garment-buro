@@ -63,8 +63,8 @@ jobs:
             ${{ env.FRONTEND_IMAGE }}
             ghcr.io/garment-buro/garment-buro-frontend:${{ env.DEPLOY_ENV }}
           build-args: |
-            NEXT_PUBLIC_IDENTITY_SESSION_V2_ENABLED=${{ vars.NEXT_PUBLIC_IDENTITY_SESSION_V2_ENABLED || 'false' }}
-            NEXT_PUBLIC_CATALOG_WRITES_ENABLED=${{ vars.NEXT_PUBLIC_CATALOG_WRITES_ENABLED || 'false' }}
+            NEXT_PUBLIC_IDENTITY_SESSION_V2_ENABLED=${{ vars.NEXT_PUBLIC_IDENTITY_SESSION_V2_ENABLED || 'true' }}
+            NEXT_PUBLIC_CATALOG_WRITES_ENABLED=${{ vars.NEXT_PUBLIC_CATALOG_WRITES_ENABLED || 'true' }}
             NEXT_PUBLIC_CRM_CABINET_ENABLED=${{ vars.NEXT_PUBLIC_CRM_CABINET_ENABLED || 'false' }}
             NEXT_PUBLIC_YANDEX_MAPS_API_KEY=${{ vars.NEXT_PUBLIC_YANDEX_MAPS_API_KEY }}
           cache-from: type=gha,scope=release-frontend-${{ env.DEPLOY_ENV }}
@@ -115,6 +115,12 @@ jobs:
           scp -P "$DEPLOY_PORT" -i ~/.ssh/garment_buro_ci -o IdentitiesOnly=yes \
             deploy/scripts/backup-server.sh \
             "$DEPLOY_USER@$DEPLOY_HOST:$target/backup-server.next.sh"
+          scp -P "$DEPLOY_PORT" -i ~/.ssh/garment_buro_ci -o IdentitiesOnly=yes \
+            deploy/scripts/verify-backup.py \
+            "$DEPLOY_USER@$DEPLOY_HOST:$target/verify-backup.next.py"
+          scp -P "$DEPLOY_PORT" -i ~/.ssh/garment_buro_ci -o IdentitiesOnly=yes \
+            deploy/scripts/public-maintenance.py \
+            "$DEPLOY_USER@$DEPLOY_HOST:$target/public-maintenance.next.py"
       - name: Pull and deploy release
         shell: bash
         run: |

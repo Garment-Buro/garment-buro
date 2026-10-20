@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import set_committed_value
 
 from app.core.config import Settings, get_settings
 from app.modules.identity.repository import IdentityRepository
@@ -69,6 +70,14 @@ class PartnerConflictError(ValueError):
     pass
 
 
+class PartnerLandingVersionConflictError(PartnerConflictError):
+    pass
+
+
+class PartnerLandingEmptyCollectionError(ValueError):
+    pass
+
+
 class PartnerPayoutBalanceError(ValueError):
     pass
 
@@ -78,6 +87,10 @@ class PartnerPayoutStateError(ValueError):
 
 
 class PartnerPayoutRequisitesError(ValueError):
+    pass
+
+
+class PartnerRequisitesVersionConflictError(PartnerConflictError):
     pass
 
 
@@ -296,6 +309,7 @@ class PartnerProgramService:
         )
         return PartnerDashboardResponse(
             partner=PartnerProfileResponse.model_validate(profile),
+            has_requisites=bool(totals["has_requisites"]),
             visits=visits,
             orders=orders,
             conversion_percent=conversion,
@@ -320,6 +334,7 @@ class PartnerProgramService:
         payload = self._decrypt_requisites(stored)
         return PartnerRequisitesResponse(
             **payload,
+            version=stored.version,
             updated_at=stored.updated_at,
         )
 
@@ -328,21 +343,36 @@ class PartnerProgramService:
         session: AsyncSession,
         *,
         user_id: int,
+        expected_version: int,
         payload: PartnerRequisitesRequest,
     ) -> PartnerRequisitesResponse:
-        profile = await self.get_partner_for_user(session, user_id=user_id)
+        self.require_enabled()
+        # Lock the stable parent even when no bank row exists yet. This uses the
+        # same parent-first order as payout requests and serializes first creates.
+        profile = await self.repository.get_profile_by_user(
+            session, user_id=user_id, for_update=True
+        )
+        if profile is None or profile.status == PartnerStatus.SUSPENDED.value:
+            raise PartnerNotFoundError("Active partner profile was not found")
+        stored = await self.repository.get_partner_requisites(
+            session, partner_id=profile.id, for_update=True
+        )
+        current_version = stored.version if stored is not None else 0
+        if expected_version != current_version or current_version >= 2_147_483_647:
+            raise PartnerRequisitesVersionConflictError(
+                "Partner requisites changed after opening the form"
+            )
         if self.requisites_codec is None:
             raise PartnerProgramDisabledError("Partner requisites encryption is unavailable")
-        clear_payload = payload.model_dump(mode="json")
-        encrypted = self.requisites_codec.encrypt(clear_payload, partner_id=profile.id)
-        stored = await self.repository.get_partner_requisites(
-            session,
-            partner_id=profile.id,
-            for_update=True,
+        # The encrypted document contains bank fields only, never CAS metadata.
+        clear_payload = payload.model_dump(
+            mode="json", include=set(PartnerRequisitesRequest.model_fields)
         )
+        encrypted = self.requisites_codec.encrypt(clear_payload, partner_id=profile.id)
         if stored is None:
             stored = PartnerRequisites(
                 partner_id=profile.id,
+                version=1,
                 ciphertext=encrypted.ciphertext,
                 nonce=encrypted.nonce,
                 tag=encrypted.tag,
@@ -352,6 +382,7 @@ class PartnerProgramService:
             )
             await self.repository.add_partner_requisites(session, stored)
         else:
+            stored.version += 1
             stored.ciphertext = encrypted.ciphertext
             stored.nonce = encrypted.nonce
             stored.tag = encrypted.tag
@@ -359,9 +390,9 @@ class PartnerProgramService:
             stored.schema_version = encrypted.schema_version
             stored.payload_sha256 = self.requisites_codec.digest(clear_payload)
             await session.flush()
+            await session.refresh(stored, attribute_names=["updated_at"])
         return PartnerRequisitesResponse(
-            **clear_payload,
-            updated_at=stored.updated_at,
+            **clear_payload, version=stored.version, updated_at=stored.updated_at
         )
 
     def _decrypt_requisites(self, stored: PartnerRequisites) -> dict[str, object]:
@@ -447,24 +478,36 @@ class PartnerProgramService:
         self,
         session: AsyncSession,
         *,
-        partner_id: int,
         payload: PartnerLandingCreateRequest,
+        partner_id: int | None = None,
+        owner_user_id: int | None = None,
         now: datetime | None = None,
     ) -> PartnerLanding:
         self.require_enabled()
-        profile = await self.repository.get_profile(session, partner_id=partner_id)
-        if profile is None:
-            raise PartnerNotFoundError("Partner profile was not found")
+        profile = await self.lock_landing_partner(
+            session, partner_id=partner_id, owner_user_id=owner_user_id
+        )
         if await self.repository.get_landing_by_slug(session, slug=payload.slug):
             raise PartnerConflictError("Landing slug is already used")
-        await self._require_landing_products(session, product_ids=payload.product_ids)
+        if (
+            owner_user_id is not None
+            and payload.status == PartnerLandingStatus.PUBLISHED.value
+            and not payload.product_ids
+        ):
+            raise PartnerLandingEmptyCollectionError("Select at least one collection product")
+        await self._require_landing_products(
+            session,
+            product_ids=payload.product_ids,
+            selectable=owner_user_id is not None
+            or payload.status == PartnerLandingStatus.PUBLISHED.value,
+        )
         published_at = (
             ensure_utc(now or datetime.now(timezone.utc))
             if payload.status == PartnerLandingStatus.PUBLISHED.value
             else None
         )
         landing = PartnerLanding(
-            partner_id=partner_id,
+            partner_id=profile.id,
             **payload.model_dump(exclude={"product_ids"}),
             published_at=published_at,
         )
@@ -481,17 +524,52 @@ class PartnerProgramService:
         *,
         landing_id: int,
         payload: PartnerLandingUpdateRequest,
+        owner_user_id: int | None = None,
         now: datetime | None = None,
     ) -> PartnerLanding:
         self.require_enabled()
-        landing = await self.repository.get_landing(session, landing_id=landing_id)
+        partner_id = None
+        if owner_user_id is None:
+            partner_id = await self.repository.landing_partner_id(session, landing_id=landing_id)
+            if partner_id is None:
+                raise PartnerLandingNotFoundError("Partner landing was not found")
+        profile = await self.lock_landing_partner(
+            session, partner_id=partner_id, owner_user_id=owner_user_id
+        )
+        landing = await self.repository.get_landing(
+            session, landing_id=landing_id, partner_id=profile.id
+        )
         if landing is None:
             raise PartnerLandingNotFoundError("Partner landing was not found")
+        version = await self.repository.claim_landing_version(
+            session, landing_id=landing_id, expected_version=payload.expected_version
+        )
+        if version is None:
+            raise PartnerLandingVersionConflictError("Landing was changed by another editor")
+        set_committed_value(landing, "version", version)
         previous_status = landing.status
-        if "product_ids" in payload.model_fields_set and payload.product_ids is not None:
-            await self._require_landing_products(session, product_ids=payload.product_ids)
+        selected_ids = (
+            payload.product_ids if payload.product_ids is not None else landing.product_ids
+        )
+        resulting_status = payload.status or landing.status
+        if (
+            owner_user_id is not None
+            and resulting_status == PartnerLandingStatus.PUBLISHED.value
+            and not selected_ids
+        ):
+            raise PartnerLandingEmptyCollectionError("Select at least one collection product")
+        if (
+            resulting_status == PartnerLandingStatus.PUBLISHED.value
+            or payload.product_ids is not None
+        ):
+            await self._require_landing_products(
+                session,
+                product_ids=selected_ids,
+                selectable=owner_user_id is not None
+                or resulting_status == PartnerLandingStatus.PUBLISHED.value,
+            )
         for field in payload.model_fields_set:
-            if field == "product_ids":
+            if field in {"product_ids", "expected_version"}:
                 continue
             value = getattr(payload, field)
             if value is None and field not in {"eyebrow", "image_url"}:
@@ -511,16 +589,56 @@ class PartnerProgramService:
             landing.published_at = ensure_utc(now or datetime.now(timezone.utc))
         elif landing.status != PartnerLandingStatus.PUBLISHED.value:
             landing.published_at = None
+        # Set this after product replacement's intermediate flush as well as
+        # published_at: no server-side onupdate attribute may expire in the DTO.
+        landing.updated_at = ensure_utc(now or datetime.now(timezone.utc))
         await session.flush()
         return landing
+
+    async def lock_landing_partner(
+        self,
+        session: AsyncSession,
+        *,
+        partner_id: int | None = None,
+        owner_user_id: int | None = None,
+    ) -> PartnerProfile:
+        """Fresh lock order shared by owner/admin edits: User → Partner → landing."""
+        self.require_enabled()
+        if (partner_id is None) == (owner_user_id is None):
+            raise ValueError("Specify exactly one landing owner")
+        user_id = owner_user_id
+        if user_id is None:
+            user_id = await self.repository.profile_user_id(session, partner_id=partner_id)
+        if user_id is None:
+            raise PartnerNotFoundError("Partner profile was not found")
+        user_status = await self.repository.lock_landing_user(session, user_id=user_id)
+        profile = await self.repository.get_profile_by_user(
+            session, user_id=user_id, for_update=True
+        )
+        if (
+            profile is None
+            or user_status is None
+            or (
+                owner_user_id is not None
+                and (user_status != "active" or profile.status != PartnerStatus.ACTIVE.value)
+            )
+        ):
+            raise PartnerNotFoundError("Active partner profile was not found")
+        return profile
 
     async def _require_landing_products(
         self,
         session: AsyncSession,
         *,
         product_ids: list[int],
+        selectable: bool = False,
     ) -> None:
-        existing_ids = await self.repository.existing_product_ids(
+        lookup = (
+            self.repository.selectable_product_ids
+            if selectable
+            else self.repository.existing_product_ids
+        )
+        existing_ids = await lookup(
             session,
             product_ids=product_ids,
         )

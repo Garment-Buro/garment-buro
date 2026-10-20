@@ -10,11 +10,9 @@ from app.core.config import AppEnvironment, Settings
 from app.core.exceptions import ConfigurationError
 from app.db.base import Base
 from app.db.session import DatabaseManager
-from app.modules.catalog.content import (
+from app.modules.catalog.migration.content import (
     CatalogContentError,
     CatalogContentMigrationService,
-    CatalogContentService,
-    LandingSettings,
     LegacyCatalogContentPlanner,
     verify_catalog_content_cutover,
 )
@@ -82,18 +80,6 @@ def test_catalog_content_migration_is_idempotent_and_cutover_is_guarded(tmp_path
                 repeated = await CatalogContentMigrationService().apply(session, plan)
                 await session.commit()
                 assert repeated.documents == 2
-
-            async with database.session() as session:
-                await CatalogContentService().update_settings(
-                    session,
-                    payload=LandingSettings(logo_video_url="/updated.mp4"),
-                    actor_user_id=1,
-                )
-                await session.commit()
-            async with database.session() as session:
-                repeated_after_update = await CatalogContentMigrationService().apply(session, plan)
-                await session.commit()
-                assert repeated_after_update.documents == 2
 
             await verify_catalog_content_cutover(database, plan.fingerprint)
             with pytest.raises(ConfigurationError, match="not present"):

@@ -1,14 +1,13 @@
 'use client';
 
-import { useMemo, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { PiLink, PiPencilSimple, PiPlus } from 'react-icons/pi';
-import { useAssortmentResource } from '@/hooks/production/useAssortmentResource';
+import { useFabricDirectory, useFabricRequirements } from '@/hooks/production/useReferenceDirectory';
+import { ReferencePicker } from './ReferencePicker';
 import { saveAssortment } from '@/lib/api/productionAssortment';
 import type {
     Fabric,
     FabricRequirement,
-    GarmentModel,
-    ReferencePage,
 } from '@/lib/production/assortmentTypes';
 import { compactDecimal } from '@/lib/production/numbers';
 import { AdminFilters } from '../AdminFilters';
@@ -29,6 +28,7 @@ const emptyFabric = (): FabricForm => ({
     density_gsm: null,
     width_cm: '150',
     cost_per_kg: null,
+    cost_per_meter: null,
     minimum_stock_meters: '0',
     currency: 'RUB',
     is_active: true,
@@ -43,12 +43,6 @@ type RequirementForm = Partial<FabricRequirement> & {
 };
 
 export function AdminFabrics() {
-    const fabricsResource =
-        useAssortmentResource<ReferencePage<Fabric>>('fabrics');
-    const modelsResource =
-        useAssortmentResource<ReferencePage<GarmentModel>>('models');
-    const requirementsResource =
-        useAssortmentResource<FabricRequirement[]>('fabric-requirements');
     const [search, setSearch] = useState('');
     const [activityFilter, setActivityFilter] = useState('');
     const [stockFilter, setStockFilter] = useState('');
@@ -58,50 +52,9 @@ export function AdminFabrics() {
         useState<RequirementForm | null>(null);
     const [saving, setSaving] = useState(false);
     const [formError, setFormError] = useState('');
-    const fabrics = useMemo(() => {
-        const query = search.trim().toLocaleLowerCase('ru');
-        const rows = fabricsResource.data?.items ?? [];
-        const filtered = (query
-            ? rows.filter((fabric) =>
-                  `${fabric.name} ${fabric.code} ${fabric.color_name}`
-                      .toLocaleLowerCase('ru')
-                      .includes(query),
-              )
-            : rows
-        ).filter((fabric) => {
-            const available = Number(fabric.balance?.available_quantity ?? 0);
-            const minimum = Number(fabric.minimum_stock_meters);
-            return (
-                (!activityFilter ||
-                    fabric.is_active === (activityFilter === 'active')) &&
-                (!stockFilter ||
-                    (stockFilter === 'low'
-                        ? available <= minimum
-                        : available > minimum))
-            );
-        });
-        const [field, direction] = sorting.split(':');
-        return [...filtered].sort((left, right) => {
-            const values: Record<string, [string | number, string | number]> = {
-                name: [left.name, right.name],
-                code: [left.code, right.code],
-                stock: [
-                    Number(left.balance?.available_quantity ?? 0),
-                    Number(right.balance?.available_quantity ?? 0),
-                ],
-                price: [
-                    Number(left.cost_per_kg ?? 0),
-                    Number(right.cost_per_kg ?? 0),
-                ],
-            };
-            const [a, b] = values[field] ?? values.name;
-            const result =
-                typeof a === 'number' && typeof b === 'number'
-                    ? a - b
-                    : String(a).localeCompare(String(b), 'ru');
-            return direction === 'desc' ? -result : result;
-        });
-    }, [activityFilter, fabricsResource.data, search, sorting, stockFilter]);
+    const fabricsResource = useFabricDirectory({query:search,active:activityFilter?activityFilter==='active':undefined,stock:stockFilter||'all',sort:sorting,limit:24});
+    const requirementsResource = useFabricRequirements();
+    const fabrics = fabricsResource.items;
 
     const submitFabric = async (event: FormEvent) => {
         event.preventDefault();
@@ -113,7 +66,9 @@ export function AdminFabrics() {
                 editor.id ? `fabrics/${editor.id}` : 'fabrics',
                 editor.id ? 'PUT' : 'POST',
                 {
-                    ...editor,
+                    code:editor.code,name:editor.name,material_type:editor.material_type,
+                    color_name:editor.color_name,color_hex:editor.color_hex,currency:editor.currency,is_active:editor.is_active,
+                    cost_per_meter:editor.cost_per_meter===null?null:Number(editor.cost_per_meter),
                     width_cm: Number(editor.width_cm),
                     density_gsm: editor.density_gsm
                         ? Number(editor.density_gsm)
@@ -130,7 +85,7 @@ export function AdminFabrics() {
                 },
             );
             setEditor(null);
-            fabricsResource.reload();
+            fabricsResource.retry();
         } catch (reason) {
             setFormError(
                 reason instanceof Error
@@ -169,7 +124,7 @@ export function AdminFabrics() {
                 },
             );
             setRequirementEditor(null);
-            requirementsResource.reload();
+            requirementsResource.retry();
         } catch (reason) {
             setFormError(
                 reason instanceof Error
@@ -180,13 +135,6 @@ export function AdminFabrics() {
             setSaving(false);
         }
     };
-
-    const modelName = (id: number) =>
-        modelsResource.data?.items.find((item) => item.id === id)?.name ??
-        `Модель №${id}`;
-    const fabricName = (id: number) =>
-        fabricsResource.data?.items.find((item) => item.id === id)?.name ??
-        `Ткань №${id}`;
 
     return (
         <section aria-busy={fabricsResource.loading}>
@@ -199,8 +147,8 @@ export function AdminFabrics() {
                 </div>
                 <div className={styles.headingActions}>
                     <button onClick={() => setRequirementEditor({
-                        garment_model_id: modelsResource.data?.items[0]?.id ?? 0,
-                        fabric_id: fabricsResource.data?.items[0]?.id ?? 0,
+                        garment_model_id: 0,
+                        fabric_id: 0,
                         meters_per_unit: '1',
                         waste_percent: '0',
                         is_primary: false,
@@ -274,7 +222,7 @@ export function AdminFabrics() {
             </div>
             <AssortmentFeedback
                 loading={fabricsResource.loading}
-                error={fabricsResource.error}
+                error={fabricsResource.message}
                 empty={!fabricsResource.loading && fabrics.length === 0}
             />
             {fabrics.length > 0 && (
@@ -305,7 +253,7 @@ export function AdminFabrics() {
                                     </td>
                                     <td data-label="Остаток">
                                         {compactDecimal(
-                                            fabric.balance?.available_quantity ?? '0',
+                                            fabric.balance?.available_meters ?? '0',
                                         )}{' '}
                                         м
                                         <small>
@@ -356,13 +304,15 @@ export function AdminFabrics() {
                     </table>
                 </div>
             )}
+            {fabricsResource.message&&<button type="button" onClick={()=>void fabricsResource.retry()}>Обновить список тканей</button>}
+            {fabricsResource.hasMore&&<button type="button" className={styles.secondaryButton} disabled={fabricsResource.loadingMore} onClick={()=>void fabricsResource.loadMore()}>Ещё ткани</button>}
             <section className={styles.relatedSection}>
                 <h4>Расход ткани по моделям</h4>
-                {requirementsResource.error && (
-                    <p className={styles.error}>{requirementsResource.error}</p>
+                {requirementsResource.message && (
+                    <p className={styles.error}>{requirementsResource.message}</p>
                 )}
                 <div className={styles.relationshipList}>
-                    {(requirementsResource.data ?? []).map((item) => (
+                    {requirementsResource.items.map((item) => (
                         <button
                             key={item.id}
                             className={styles.relationshipCard}
@@ -379,8 +329,8 @@ export function AdminFabrics() {
                             }
                         >
                             <span>
-                                <strong>{modelName(item.garment_model_id)}</strong>
-                                <small>{fabricName(item.fabric_id)}</small>
+                                <strong>{item.garment_model_name}</strong>
+                                <small>{item.fabric_name}</small>
                             </span>
                             <span>
                                 {compactDecimal(item.meters_per_unit)} м +{' '}
@@ -389,6 +339,8 @@ export function AdminFabrics() {
                         </button>
                     ))}
                 </div>
+                {requirementsResource.message&&<button type="button" onClick={()=>void requirementsResource.retry()}>Обновить расходы ткани</button>}
+                {requirementsResource.hasMore&&<button type="button" disabled={requirementsResource.loadingMore} onClick={()=>void requirementsResource.loadMore()}>Ещё расходы ткани</button>}
             </section>
             {editor && (
                 <AssortmentDialog
@@ -420,7 +372,7 @@ export function AdminFabrics() {
                                         required={['name', 'code', 'color_name', 'width_cm'].includes(field)}
                                         type={type}
                                         min={type === 'number' ? '0' : undefined}
-                                        step={type === 'number' ? '0.01' : undefined}
+                                        step={type === 'number' ? field === 'minimum_stock_meters' ? '0.001' : '0.01' : undefined}
                                         value={editor[field] ?? ''}
                                         onChange={(event) =>
                                             setEditor({
@@ -465,53 +417,15 @@ export function AdminFabrics() {
                 >
                     <form onSubmit={submitRequirement}>
                         <div className={styles.formGrid}>
-                            <label>
-                                Модель
-                                <select
-                                    required
-                                    value={requirementEditor.garment_model_id || ''}
-                                    onChange={(event) =>
-                                        setRequirementEditor({
-                                            ...requirementEditor,
-                                            garment_model_id: Number(event.target.value),
-                                        })
-                                    }
-                                >
-                                    <option value="">Выберите модель</option>
-                                    {(modelsResource.data?.items ?? []).map((model) => (
-                                        <option key={model.id} value={model.id}>
-                                            {model.name}
-                                        </option>
-                                    ))}
-                                </select>
-                            </label>
-                            <label>
-                                Ткань
-                                <select
-                                    required
-                                    value={requirementEditor.fabric_id || ''}
-                                    onChange={(event) =>
-                                        setRequirementEditor({
-                                            ...requirementEditor,
-                                            fabric_id: Number(event.target.value),
-                                        })
-                                    }
-                                >
-                                    <option value="">Выберите ткань</option>
-                                    {(fabricsResource.data?.items ?? []).map((fabric) => (
-                                        <option key={fabric.id} value={fabric.id}>
-                                            {fabric.name}
-                                        </option>
-                                    ))}
-                                </select>
-                            </label>
+                            <ReferencePicker kind="models" value={requirementEditor.garment_model_id} onChange={garment_model_id=>setRequirementEditor({...requirementEditor,garment_model_id})}/>
+                            <ReferencePicker kind="fabrics" value={requirementEditor.fabric_id} onChange={fabric_id=>setRequirementEditor({...requirementEditor,fabric_id})}/>
                             <label>
                                 Метров на изделие
                                 <input
                                     required
                                     type="number"
-                                min="0.1"
-                                step="0.1"
+                                min="0.001"
+                                step="0.001"
                                     value={requirementEditor.meters_per_unit}
                                     onChange={(event) =>
                                         setRequirementEditor({

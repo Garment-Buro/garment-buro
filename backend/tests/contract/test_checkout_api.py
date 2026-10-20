@@ -28,12 +28,14 @@ from app.modules.notifications.crypto import (
     NotificationPayloadCodec,
 )
 from app.modules.orders.models import Order, OrderCreationRequest, OrderMigrationRun
+from app.modules.orders.schemas import OrderCreationCommand
 from app.modules.orders.security import generate_order_guest_access_token
 from app.modules.payments.creation import PaymentCreationService
 from app.modules.payments.models import PaymentAttempt
 from app.modules.payments.provider import AiohttpYooKassaTransport, YooKassaProviderError
 from app.modules.payments.schemas import ProviderPaymentSnapshot
 from app.modules.payments.service import PaymentService
+from tests.checkout_quotes import quote_checkout_command, seed_checkout_point
 from tests.fakes.minio import FakeMinioClient
 
 CATALOG_FINGERPRINT = "a" * 64
@@ -50,7 +52,6 @@ def _settings(path: Path, *, checkout_enabled: bool = True) -> Settings:
         _env_file=None,
         app_env=AppEnvironment.TEST,
         public_base_url="https://shop.example.test",
-        legacy_database_url="sqlite:///missing-legacy.db",
         database_enabled=True,
         database_url=f"sqlite+aiosqlite:///{path}",
         minio_enabled=True,
@@ -58,14 +59,11 @@ def _settings(path: Path, *, checkout_enabled: bool = True) -> Settings:
         minio_secret_key="test-secret",
         minio_public_base_url="https://cdn.example.test",
         catalog_reads_enabled=True,
-        catalog_migration_fingerprint=CATALOG_FINGERPRINT,
         identity_api_enabled=True,
-        identity_migration_fingerprint=IDENTITY_FINGERPRINT,
         jwt_secret=JWT_SECRET,
         identity_otp_pepper=OTP_PEPPER,
         notification_encryption_key=NOTIFICATION_KEY,
         order_reads_enabled=True,
-        order_migration_fingerprint=ORDER_FINGERPRINT,
         yookassa_shop_id="shop-id",
         yookassa_api_key="payment-secret",
         payment_creation_enabled=True,
@@ -80,11 +78,14 @@ def _settings(path: Path, *, checkout_enabled: bool = True) -> Settings:
     )
 
 
-def _command(product_id: int, **updates: object) -> dict[str, object]:
+def _command(product_id: int, *, quote: str | None = None, **updates: object) -> dict[str, object]:
     command: dict[str, object] = {
-        "email": "customer@example.test",
-        "phone": "+7 900 000-00-00",
-        "first_name": "Customer",
+        "buyer": {"name": "Customer", "phone": "+79000000000", "email": "customer@example.test"},
+        "recipient": {
+            "name": "Customer",
+            "phone": "+79000000000",
+            "email": "customer@example.test",
+        },
         "delivery_city": "Moscow",
         "delivery_method": "cdek_pickup",
         "delivery_address": "Moscow pickup point",
@@ -105,6 +106,7 @@ def _command(product_id: int, **updates: object) -> dict[str, object]:
         "claimed_total_price": "250.50",
         "delivery_price": "50.00",
         "currency": "RUB",
+        "delivery_quote_token": quote,
     }
     command.update(updates)
     return command
@@ -164,8 +166,8 @@ class CheckoutProvider:
         raise AssertionError(f"Unexpected provider GET for {provider_payment_id}")
 
 
-def _seed_target(database: DatabaseManager) -> int:
-    async def seed() -> int:
+def _seed_target(database: DatabaseManager) -> tuple[int, str]:
+    async def seed() -> tuple[int, str]:
         await database.startup()
         try:
             async with database.engine.begin() as connection:
@@ -215,8 +217,21 @@ def _seed_target(database: DatabaseManager) -> int:
                         ),
                     ]
                 )
+                await seed_checkout_point(session)
                 await session.commit()
-                return product.id
+                quoted = await quote_checkout_command(
+                    database.settings,
+                    session,
+                    OrderCreationCommand.model_validate(
+                        {
+                            **_command(product.id),
+                            "email": "customer@example.test",
+                            "phone": "+79000000000",
+                            "first_name": "Customer",
+                        }
+                    ),
+                )
+                return product.id, quoted.delivery_quote_token
         finally:
             await database.shutdown()
 
@@ -227,12 +242,26 @@ def _application(
     tmp_path: Path,
     provider: CheckoutProvider,
     *,
-    legacy_app: FastAPI | None = None,
-) -> tuple[FastAPI, DatabaseManager, int]:
+    moderated: bool = False,
+    settings: Settings | None = None,
+    storage: MinioStorage | None = None,
+) -> tuple[FastAPI, DatabaseManager, int, str]:
     tmp_path.mkdir(parents=True, exist_ok=True)
-    settings = _settings(tmp_path / "target.db")
+    settings = settings or _settings(tmp_path / "target.db")
+    if moderated:
+        settings = Settings(
+            _env_file=None,
+            **{
+                **settings.model_dump(),
+                "order_moderation_enabled": True,
+                "payment_management_enabled": True,
+                "payment_reconciliation_enabled": True,
+                "fulfillment_outbox_enabled": True,
+                "fulfillment_crm_enabled": True,
+            },
+        )
     database = DatabaseManager(settings)
-    product_id = _seed_target(database)
+    product_id, quote = _seed_target(database)
     provider_key_sequence = count(1)
     payment_service = PaymentService(
         settings,
@@ -248,17 +277,17 @@ def _application(
         payment_creation,
         payment_service=payment_service,
     )
-    storage = MinioStorage(settings, client=FakeMinioClient())
+    storage = storage or MinioStorage(settings, client=FakeMinioClient())
     return (
         create_app(
             settings=settings,
             database=database,
             storage=storage,
-            legacy_app=legacy_app,
             checkout_service=checkout,
         ),
         database,
         product_id,
+        quote,
     )
 
 
@@ -271,20 +300,13 @@ def _headers(
     return headers
 
 
-def test_target_checkout_overrides_legacy_and_replays_compatibility_response(
+def test_checkout_persists_order_and_replays_idempotent_response(
     tmp_path: Path,
 ) -> None:
-    legacy = FastAPI()
-
-    @legacy.post("/api/orders")
-    async def legacy_checkout() -> dict[str, str]:
-        return {"source": "legacy"}
-
     provider = CheckoutProvider()
-    application, database, product_id = _application(
+    application, database, product_id, quote = _application(
         tmp_path,
         provider,
-        legacy_app=legacy,
     )
     guest_token = generate_order_guest_access_token()
     headers = _headers(guest_token=guest_token)
@@ -292,14 +314,26 @@ def test_target_checkout_overrides_legacy_and_replays_compatibility_response(
     with TestClient(application) as client:
         missing_capability = client.post(
             "/api/orders",
-            json=_command(product_id),
+            json=_command(product_id, quote=quote),
             headers=_headers(key="checkout_http_missing_capability"),
         )
-        created = client.post("/api/orders", json=_command(product_id), headers=headers)
-        replayed = client.post("/api/orders", json=_command(product_id), headers=headers)
+        created = client.post(
+            "/api/orders", json=_command(product_id, quote=quote), headers=headers
+        )
+        replayed = client.post(
+            "/api/orders", json=_command(product_id, quote=quote), headers=headers
+        )
         changed = client.post(
             "/api/orders",
-            json=_command(product_id, phone="+7 900 000-00-01"),
+            json=_command(
+                product_id,
+                quote=quote,
+                recipient={
+                    "name": "Customer",
+                    "phone": "+79000000001",
+                    "email": "customer@example.test",
+                },
+            ),
             headers=headers,
         )
         schema = client.get("/openapi.json").json()
@@ -346,16 +380,46 @@ def test_target_checkout_overrides_legacy_and_replays_compatibility_response(
     assert asyncio.run(counts()) == (1, 1, 1)
 
 
+def test_checkout_cannot_create_free_shipping_from_unsigned_browser_amount(tmp_path: Path) -> None:
+    provider = CheckoutProvider()
+    application, database, product_id, quote = _application(tmp_path, provider)
+    with TestClient(application) as client:
+        response = client.post(
+            "/api/orders",
+            json=_command(product_id, delivery_price="0.00", claimed_total_price="200.50"),
+            headers=_headers(guest_token=generate_order_guest_access_token()),
+        )
+    assert response.status_code == 422
+    assert response.headers["cache-control"] == "no-store"
+    assert provider.calls == []
+
+    async def counts():
+        await database.startup()
+        try:
+            async with database.session() as session:
+                return [
+                    int(await session.scalar(select(func.count()).select_from(model)) or 0)
+                    for model in (Order, OrderCreationRequest, InventoryReservation, PaymentAttempt)
+                ]
+        finally:
+            await database.shutdown()
+
+    assert asyncio.run(counts()) == [0, 0, 0, 0]
+
+
 def test_checkout_rejects_untrusted_auth_body_and_business_inputs(tmp_path: Path) -> None:
     provider = CheckoutProvider()
-    application, _, product_id = _application(tmp_path, provider)
+    application, _, product_id, quote = _application(tmp_path, provider)
     guest_token = generate_order_guest_access_token()
     headers = _headers(guest_token=guest_token)
+    with sqlite3.connect(tmp_path / "target.db") as connection:
+        connection.execute("UPDATE products SET stock_quantity=1")
+        connection.execute("UPDATE product_variants SET stock_quantity=1")
 
     with TestClient(application) as client:
         invalid_auth = client.post(
             "/api/orders",
-            json=_command(product_id),
+            json=_command(product_id, quote=quote),
             headers={**headers, "Authorization": "Basic untrusted"},
         )
         invalid_json = client.post(
@@ -375,40 +439,31 @@ def test_checkout_rejects_untrusted_auth_body_and_business_inputs(tmp_path: Path
         )
         bad_key = client.post(
             "/api/orders",
-            json=_command(product_id),
+            json=_command(product_id, quote=quote),
             headers=_headers(guest_token=guest_token, key="short"),
         )
         bad_method = client.post(
             "/api/orders",
-            json=_command(product_id, payment_method="cash"),
+            json=_command(product_id, quote=quote, payment_method="cash"),
             headers=_headers(guest_token=guest_token, key="checkout_http_bad_method"),
         )
         bad_total = client.post(
             "/api/orders",
-            json=_command(product_id, claimed_total_price="1.00"),
+            json=_command(product_id, quote=quote, claimed_total_price="1.00"),
             headers=_headers(guest_token=guest_token, key="checkout_http_bad_total"),
         )
         bad_email = client.post(
             "/api/orders",
-            json=_command(product_id, email="not-an-email"),
+            json=_command(
+                product_id,
+                quote=quote,
+                buyer={"name": "Customer", "phone": "+79000000000", "email": "not-an-email"},
+            ),
             headers=_headers(guest_token=guest_token, key="checkout_http_bad_email"),
         )
         out_of_stock = client.post(
             "/api/orders",
-            json=_command(
-                product_id,
-                items=[
-                    {
-                        "id": "checkout-line-stock",
-                        "product_id": product_id,
-                        "price": "1.00",
-                        "size": "M",
-                        "color": "black",
-                        "quantity": 21,
-                    }
-                ],
-                claimed_total_price="2155.25",
-            ),
+            json=_command(product_id, quote=quote),
             headers=_headers(guest_token=guest_token, key="checkout_http_no_stock"),
         )
 
@@ -420,9 +475,11 @@ def test_checkout_rejects_untrusted_auth_body_and_business_inputs(tmp_path: Path
     assert oversized.status_code == 413
     assert bad_key.status_code == 400
     assert bad_method.status_code == 400
-    assert bad_total.status_code == 422
+    assert bad_total.status_code == 409
+    assert bad_total.json()["detail"]["code"] == "checkout_price_changed"
     assert bad_email.status_code == 422
     assert out_of_stock.status_code == 409
+    assert out_of_stock.json()["detail"] == {"code": "checkout_stock_unavailable"}
     assert all(
         response.headers["cache-control"] == "no-store"
         for response in (
@@ -441,15 +498,19 @@ def test_checkout_rejects_untrusted_auth_body_and_business_inputs(tmp_path: Path
 
 def test_unknown_payment_outcome_is_safe_and_recovers_exactly_once(tmp_path: Path) -> None:
     provider = CheckoutProvider(outcomes=["timeout", "success"])
-    application, _, product_id = _application(tmp_path, provider)
+    application, _, product_id, quote = _application(tmp_path, provider)
     headers = _headers(
         guest_token=generate_order_guest_access_token(),
         key="checkout_http_unknown_outcome",
     )
 
     with TestClient(application) as client:
-        unknown = client.post("/api/orders", json=_command(product_id), headers=headers)
-        recovered = client.post("/api/orders", json=_command(product_id), headers=headers)
+        unknown = client.post(
+            "/api/orders", json=_command(product_id, quote=quote), headers=headers
+        )
+        recovered = client.post(
+            "/api/orders", json=_command(product_id, quote=quote), headers=headers
+        )
 
     assert unknown.status_code == 503
     assert unknown.json()["detail"] == {
@@ -466,20 +527,46 @@ def test_unknown_payment_outcome_is_safe_and_recovers_exactly_once(tmp_path: Pat
 
 def test_known_payment_rejection_is_terminal_and_does_not_post_twice(tmp_path: Path) -> None:
     provider = CheckoutProvider(outcomes=["rejected"])
-    application, _, product_id = _application(tmp_path, provider)
+    application, _, product_id, quote = _application(tmp_path, provider)
     headers = _headers(
         guest_token=generate_order_guest_access_token(),
         key="checkout_http_known_rejection",
     )
 
     with TestClient(application) as client:
-        rejected = client.post("/api/orders", json=_command(product_id), headers=headers)
-        replayed = client.post("/api/orders", json=_command(product_id), headers=headers)
+        rejected = client.post(
+            "/api/orders", json=_command(product_id, quote=quote), headers=headers
+        )
+        replayed = client.post(
+            "/api/orders", json=_command(product_id, quote=quote), headers=headers
+        )
 
     assert rejected.status_code == replayed.status_code == 502
     assert rejected.json() == replayed.json()
     assert rejected.json()["detail"]["code"] == "payment_rejected"
     assert rejected.headers["cache-control"] == "no-store"
+    assert len(provider.calls) == 1
+
+
+def test_managed_checkout_reports_review_instead_of_advertising_a_new_charge(
+    tmp_path: Path,
+) -> None:
+    provider = CheckoutProvider(outcomes=["rejected"])
+    application, _, product_id, quote = _application(tmp_path, provider, moderated=True)
+    headers = _headers(guest_token=generate_order_guest_access_token())
+    with TestClient(application) as client:
+        options = client.get("/api/orders/checkout/options")
+        rejected = client.post(
+            "/api/orders", json=_command(product_id, quote=quote), headers=headers
+        )
+        replayed = client.post(
+            "/api/orders", json=_command(product_id, quote=quote), headers=headers
+        )
+    assert options.json() == {"hold_required": True, "payment_methods": ["card"]}
+    assert rejected.status_code == replayed.status_code == 502
+    assert rejected.json() == replayed.json()
+    assert rejected.json()["detail"]["code"] == "payment_requires_review"
+    assert rejected.json()["detail"]["order_id"] > 0
     assert len(provider.calls) == 1
 
 
@@ -510,7 +597,7 @@ def test_authenticated_checkout_uses_resolved_identity_without_guest_capability(
     tmp_path: Path,
 ) -> None:
     provider = CheckoutProvider()
-    application, _, product_id = _application(tmp_path, provider)
+    application, _, product_id, quote = _application(tmp_path, provider)
     database_path = tmp_path / "target.db"
 
     with TestClient(application) as client:
@@ -527,7 +614,7 @@ def test_authenticated_checkout_uses_resolved_identity_without_guest_capability(
         authorization = {"Authorization": f"Bearer {verified.json()['token']}"}
         created = client.post(
             "/api/orders",
-            json=_command(product_id),
+            json=_command(product_id, quote=quote),
             headers={
                 **authorization,
                 **_headers(key="checkout_http_authenticated"),
@@ -535,7 +622,7 @@ def test_authenticated_checkout_uses_resolved_identity_without_guest_capability(
         )
         mixed_actor = client.post(
             "/api/orders",
-            json=_command(product_id),
+            json=_command(product_id, quote=quote),
             headers={
                 **authorization,
                 **_headers(
@@ -552,30 +639,23 @@ def test_authenticated_checkout_uses_resolved_identity_without_guest_capability(
     assert len(provider.calls) == 1
 
 
-def test_disabled_checkout_preserves_legacy_order_write(tmp_path: Path) -> None:
-    legacy = FastAPI()
-
-    @legacy.post("/api/orders")
-    async def legacy_checkout() -> dict[str, str]:
-        return {"source": "legacy"}
-
+def test_disabled_checkout_has_no_order_write_fallback() -> None:
     settings = Settings(
         _env_file=None,
         app_env=AppEnvironment.TEST,
         database_enabled=False,
         checkout_v2_enabled=False,
     )
-    application = create_app(settings=settings, legacy_app=legacy)
+    application = create_app(settings=settings)
 
     with TestClient(application) as client:
-        response = client.post("/api/orders", json={"legacy": True})
+        response = client.post("/api/orders", json={})
         retry = client.post(
             "/api/orders/1/payment-attempts",
             headers={"Idempotency-Key": "disabled_payment_retry"},
         )
 
-    assert response.status_code == 200
-    assert response.json() == {"source": "legacy"}
+    assert response.status_code == 404
     assert retry.status_code == 404
 
 
@@ -602,13 +682,13 @@ def test_factory_owns_target_checkout_provider_transport_lifecycle(tmp_path: Pat
 
 def test_guest_payment_retry_creates_one_later_attempt_and_replays(tmp_path: Path) -> None:
     provider = CheckoutProvider(outcomes=["rejected", "success"])
-    application, database, product_id = _application(tmp_path, provider)
+    application, database, product_id, quote = _application(tmp_path, provider)
     guest_token = generate_order_guest_access_token()
 
     with TestClient(application) as client:
         checkout = client.post(
             "/api/orders",
-            json=_command(product_id),
+            json=_command(product_id, quote=quote),
             headers=_headers(
                 guest_token=guest_token,
                 key="checkout_before_payment_retry",
@@ -686,13 +766,13 @@ def test_guest_payment_retry_creates_one_later_attempt_and_replays(tmp_path: Pat
 
 def test_payment_retry_authorization_and_empty_body_fail_closed(tmp_path: Path) -> None:
     provider = CheckoutProvider(outcomes=["rejected", "success"])
-    application, _, product_id = _application(tmp_path, provider)
+    application, _, product_id, quote = _application(tmp_path, provider)
     guest_token = generate_order_guest_access_token()
 
     with TestClient(application) as client:
         checkout = client.post(
             "/api/orders",
-            json=_command(product_id),
+            json=_command(product_id, quote=quote),
             headers=_headers(
                 guest_token=guest_token,
                 key="checkout_before_guarded_retry",
@@ -783,13 +863,13 @@ def test_payment_retry_authorization_and_empty_body_fail_closed(tmp_path: Path) 
 
 def test_payment_retry_unknown_outcome_recovers_same_attempt(tmp_path: Path) -> None:
     provider = CheckoutProvider(outcomes=["rejected", "timeout", "success"])
-    application, _, product_id = _application(tmp_path, provider)
+    application, _, product_id, quote = _application(tmp_path, provider)
     guest_token = generate_order_guest_access_token()
 
     with TestClient(application) as client:
         checkout = client.post(
             "/api/orders",
-            json=_command(product_id),
+            json=_command(product_id, quote=quote),
             headers=_headers(
                 guest_token=guest_token,
                 key="checkout_before_unknown_retry",
@@ -819,13 +899,13 @@ def test_payment_retry_known_rejection_is_terminal_and_not_posted_twice(
     tmp_path: Path,
 ) -> None:
     provider = CheckoutProvider(outcomes=["rejected", "rejected"])
-    application, _, product_id = _application(tmp_path, provider)
+    application, _, product_id, quote = _application(tmp_path, provider)
     guest_token = generate_order_guest_access_token()
 
     with TestClient(application) as client:
         checkout = client.post(
             "/api/orders",
-            json=_command(product_id),
+            json=_command(product_id, quote=quote),
             headers=_headers(
                 guest_token=guest_token,
                 key="checkout_before_rejected_retry",
@@ -853,13 +933,13 @@ def test_canceled_payment_can_retry_but_succeeded_checkout_only_replays(
     tmp_path: Path,
 ) -> None:
     canceled_provider = CheckoutProvider(outcomes=["canceled", "success"])
-    canceled_app, _, product_id = _application(tmp_path / "canceled", canceled_provider)
+    canceled_app, _, product_id, quote = _application(tmp_path / "canceled", canceled_provider)
     canceled_guest_token = generate_order_guest_access_token()
 
     with TestClient(canceled_app) as client:
         canceled = client.post(
             "/api/orders",
-            json=_command(product_id),
+            json=_command(product_id, quote=quote),
             headers=_headers(
                 guest_token=canceled_guest_token,
                 key="checkout_canceled_before_retry",
@@ -878,7 +958,7 @@ def test_canceled_payment_can_retry_but_succeeded_checkout_only_replays(
     assert len(canceled_provider.calls) == 2
 
     succeeded_provider = CheckoutProvider(outcomes=["succeeded"])
-    succeeded_app, _, succeeded_product_id = _application(
+    succeeded_app, _, succeeded_product_id, succeeded_quote = _application(
         tmp_path / "succeeded",
         succeeded_provider,
     )
@@ -891,12 +971,12 @@ def test_canceled_payment_can_retry_but_succeeded_checkout_only_replays(
     with TestClient(succeeded_app) as client:
         succeeded = client.post(
             "/api/orders",
-            json=_command(succeeded_product_id),
+            json=_command(succeeded_product_id, quote=succeeded_quote),
             headers=checkout_headers,
         )
         replayed = client.post(
             "/api/orders",
-            json=_command(succeeded_product_id),
+            json=_command(succeeded_product_id, quote=succeeded_quote),
             headers=checkout_headers,
         )
         new_retry = client.post(
@@ -916,13 +996,13 @@ def test_canceled_payment_can_retry_but_succeeded_checkout_only_replays(
 
 def test_expired_reservation_cannot_start_later_payment_attempt(tmp_path: Path) -> None:
     provider = CheckoutProvider(outcomes=["rejected"])
-    application, _, product_id = _application(tmp_path, provider)
+    application, _, product_id, quote = _application(tmp_path, provider)
     guest_token = generate_order_guest_access_token()
 
     with TestClient(application) as client:
         checkout = client.post(
             "/api/orders",
-            json=_command(product_id),
+            json=_command(product_id, quote=quote),
             headers=_headers(
                 guest_token=guest_token,
                 key="checkout_before_expired_retry",
@@ -950,7 +1030,7 @@ def test_expired_reservation_cannot_start_later_payment_attempt(tmp_path: Path) 
 
 def test_authenticated_payment_retry_requires_direct_order_owner(tmp_path: Path) -> None:
     provider = CheckoutProvider(outcomes=["rejected", "success"])
-    application, _, product_id = _application(tmp_path, provider)
+    application, _, product_id, quote = _application(tmp_path, provider)
     database_path = tmp_path / "target.db"
 
     with TestClient(application) as client:
@@ -968,7 +1048,7 @@ def test_authenticated_payment_retry_requires_direct_order_owner(tmp_path: Path)
         owner_auth = {"Authorization": f"Bearer {owner_session.json()['token']}"}
         checkout = client.post(
             "/api/orders",
-            json=_command(product_id),
+            json=_command(product_id, quote=quote),
             headers={
                 **owner_auth,
                 **_headers(key="checkout_owner_before_payment_retry"),
@@ -1026,13 +1106,13 @@ def test_authenticated_payment_retry_requires_direct_order_owner(tmp_path: Path)
 
 def test_revoked_guest_capability_cannot_authorize_payment_retry(tmp_path: Path) -> None:
     provider = CheckoutProvider(outcomes=["rejected"])
-    application, _, product_id = _application(tmp_path, provider)
+    application, _, product_id, quote = _application(tmp_path, provider)
     guest_token = generate_order_guest_access_token()
 
     with TestClient(application) as client:
         checkout = client.post(
             "/api/orders",
-            json=_command(product_id),
+            json=_command(product_id, quote=quote),
             headers=_headers(
                 guest_token=guest_token,
                 key="checkout_before_revoked_retry",
@@ -1060,13 +1140,13 @@ def test_revoked_guest_capability_cannot_authorize_payment_retry(tmp_path: Path)
 
 def test_payment_retry_attempt_count_is_bounded_per_order(tmp_path: Path) -> None:
     provider = CheckoutProvider(outcomes=["rejected", "rejected", "rejected"])
-    application, _, product_id = _application(tmp_path, provider)
+    application, _, product_id, quote = _application(tmp_path, provider)
     guest_token = generate_order_guest_access_token()
 
     with TestClient(application) as client:
         checkout = client.post(
             "/api/orders",
-            json=_command(product_id),
+            json=_command(product_id, quote=quote),
             headers=_headers(
                 guest_token=guest_token,
                 key="checkout_before_bounded_retries",

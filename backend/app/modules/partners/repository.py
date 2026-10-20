@@ -3,32 +3,47 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, true, update
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.modules.catalog.models import Product
-from app.modules.identity.models import Role, RoleName, UserRole
+from app.modules.catalog.public_policy import public_product_ids
+from app.modules.identity.models import Role, RoleName, User, UserRole, UserStatus
 from app.modules.orders.models import Order
 from app.modules.partners.models import (
     PartnerCommission,
     PartnerCommissionStatus,
     PartnerLanding,
     PartnerLandingProduct,
-    PartnerLandingStatus,
     PartnerOrderAttribution,
     PartnerPayoutRequest,
-    PartnerPayoutStatus,
     PartnerProfile,
     PartnerRequisites,
     PartnerStatus,
     PartnerVisit,
 )
+from app.modules.partners.public_policy import public_landing_conditions
 
 
 class PartnerRepository:
+    @staticmethod
+    async def get_active_profile_by_user(
+        session: AsyncSession, *, user_id: int
+    ) -> PartnerProfile | None:
+        return await session.scalar(
+            select(PartnerProfile)
+            .join(User, User.id == PartnerProfile.user_id)
+            .where(
+                PartnerProfile.user_id == user_id,
+                PartnerProfile.status == PartnerStatus.ACTIVE.value,
+                User.status == UserStatus.ACTIVE.value,
+            )
+            .execution_options(populate_existing=True)
+        )
+
     async def get_profile_by_user(
         self,
         session: AsyncSession,
@@ -39,7 +54,7 @@ class PartnerRepository:
         statement = select(PartnerProfile).where(PartnerProfile.user_id == user_id)
         if for_update:
             statement = statement.with_for_update()
-        return await session.scalar(statement)
+        return await session.scalar(statement.execution_options(populate_existing=True))
 
     async def get_profile(
         self,
@@ -51,7 +66,23 @@ class PartnerRepository:
         statement = select(PartnerProfile).where(PartnerProfile.id == partner_id)
         if for_update:
             statement = statement.with_for_update()
-        return await session.scalar(statement)
+        return await session.scalar(statement.execution_options(populate_existing=True))
+
+    @staticmethod
+    async def profile_user_id(session: AsyncSession, *, partner_id: int) -> int | None:
+        return await session.scalar(
+            select(PartnerProfile.user_id).where(PartnerProfile.id == partner_id)
+        )
+
+    @staticmethod
+    async def lock_landing_user(session: AsyncSession, *, user_id: int) -> str | None:
+        return await session.scalar(select(User.status).where(User.id == user_id).with_for_update())
+
+    @staticmethod
+    async def landing_partner_id(session: AsyncSession, *, landing_id: int) -> int | None:
+        return await session.scalar(
+            select(PartnerLanding.partner_id).where(PartnerLanding.id == landing_id)
+        )
 
     async def get_profile_by_code(
         self,
@@ -60,11 +91,6 @@ class PartnerRepository:
         code: str,
     ) -> PartnerProfile | None:
         return await session.scalar(select(PartnerProfile).where(PartnerProfile.code == code))
-
-    async def list_profiles(self, session: AsyncSession) -> list[PartnerProfile]:
-        return list(
-            await session.scalars(select(PartnerProfile).order_by(PartnerProfile.created_at.desc()))
-        )
 
     @staticmethod
     async def add_profile(session: AsyncSession, profile: PartnerProfile) -> None:
@@ -106,10 +132,10 @@ class PartnerRepository:
         return await session.scalar(
             select(PartnerLanding)
             .join(PartnerProfile, PartnerProfile.id == PartnerLanding.partner_id)
+            .join(User, User.id == PartnerProfile.user_id)
             .where(
                 PartnerLanding.slug == slug,
-                PartnerLanding.status == PartnerLandingStatus.PUBLISHED.value,
-                PartnerProfile.status == PartnerStatus.ACTIVE.value,
+                *public_landing_conditions(),
             )
             .options(
                 selectinload(PartnerLanding.partner),
@@ -122,14 +148,64 @@ class PartnerRepository:
         session: AsyncSession,
         *,
         landing_id: int,
+        partner_id: int | None = None,
     ) -> PartnerLanding | None:
         return await session.scalar(
             select(PartnerLanding)
-            .where(PartnerLanding.id == landing_id)
+            .where(
+                PartnerLanding.id == landing_id,
+                *([PartnerLanding.partner_id == partner_id] if partner_id is not None else []),
+            )
+            .execution_options(populate_existing=True)
             .options(
                 selectinload(PartnerLanding.partner),
                 selectinload(PartnerLanding.product_links),
             )
+        )
+
+    @staticmethod
+    async def claim_landing_version(
+        session: AsyncSession, *, landing_id: int, expected_version: int
+    ) -> int | None:
+        return await session.scalar(
+            update(PartnerLanding)
+            .where(PartnerLanding.id == landing_id, PartnerLanding.version == expected_version)
+            .values(version=PartnerLanding.version + 1)
+            .returning(PartnerLanding.version)
+            .execution_options(synchronize_session=False)
+        )
+
+    @staticmethod
+    async def selectable_product_ids(session: AsyncSession, *, product_ids: list[int]) -> set[int]:
+        if not product_ids:
+            return set()
+        return set(await session.scalars(public_product_ids().where(Product.id.in_(product_ids))))
+
+    @staticmethod
+    async def list_owned_landing_page(
+        session: AsyncSession, *, partner_id: int, limit: int, after_id: int | None
+    ):
+        product_count = (
+            select(func.count())
+            .where(PartnerLandingProduct.landing_id == PartnerLanding.id)
+            .correlate(PartnerLanding)
+            .scalar_subquery()
+        )
+        statement = select(
+            PartnerLanding.id,
+            PartnerLanding.version,
+            PartnerLanding.slug,
+            PartnerLanding.title,
+            PartnerLanding.image_url,
+            PartnerLanding.status,
+            product_count.label("product_count"),
+        ).where(PartnerLanding.partner_id == partner_id)
+        if after_id is not None:
+            statement = statement.where(PartnerLanding.id < after_id)
+        return (
+            (await session.execute(statement.order_by(PartnerLanding.id.desc()).limit(limit + 1)))
+            .mappings()
+            .all()
         )
 
     async def get_landing_by_slug(
@@ -173,33 +249,6 @@ class PartnerRepository:
             for position, product_id in enumerate(product_ids)
         )
         await session.flush()
-
-    async def list_landings(
-        self,
-        session: AsyncSession,
-        *,
-        partner_id: int,
-    ) -> list[PartnerLanding]:
-        return list(
-            await session.scalars(
-                select(PartnerLanding)
-                .where(PartnerLanding.partner_id == partner_id)
-                .options(selectinload(PartnerLanding.product_links))
-                .order_by(PartnerLanding.created_at.desc())
-            )
-        )
-
-    async def list_all_landings(self, session: AsyncSession) -> list[PartnerLanding]:
-        return list(
-            await session.scalars(
-                select(PartnerLanding)
-                .options(
-                    selectinload(PartnerLanding.partner),
-                    selectinload(PartnerLanding.product_links),
-                )
-                .order_by(PartnerLanding.created_at.desc())
-            )
-        )
 
     async def add_visit_once_per_day(
         self,
@@ -273,38 +322,6 @@ class PartnerRepository:
         session.add(commission)
         await session.flush()
 
-    async def list_partner_commissions(
-        self,
-        session: AsyncSession,
-        *,
-        partner_id: int,
-        limit: int = 100,
-    ) -> list[PartnerCommission]:
-        return list(
-            await session.scalars(
-                select(PartnerCommission)
-                .where(PartnerCommission.partner_id == partner_id)
-                .order_by(PartnerCommission.created_at.desc())
-                .limit(limit)
-            )
-        )
-
-    async def list_partner_payouts(
-        self,
-        session: AsyncSession,
-        *,
-        partner_id: int,
-        limit: int = 100,
-    ) -> list[PartnerPayoutRequest]:
-        return list(
-            await session.scalars(
-                select(PartnerPayoutRequest)
-                .where(PartnerPayoutRequest.partner_id == partner_id)
-                .order_by(PartnerPayoutRequest.created_at.desc())
-                .limit(limit)
-            )
-        )
-
     async def get_partner_requisites(
         self,
         session: AsyncSession,
@@ -315,7 +332,7 @@ class PartnerRepository:
         statement = select(PartnerRequisites).where(PartnerRequisites.partner_id == partner_id)
         if for_update:
             statement = statement.with_for_update()
-        return await session.scalar(statement)
+        return await session.scalar(statement.execution_options(populate_existing=True))
 
     @staticmethod
     async def add_partner_requisites(
@@ -352,73 +369,77 @@ class PartnerRepository:
         *,
         partner_id: int,
         now: datetime,
-    ) -> dict[str, Decimal | int]:
-        visits = int(
-            await session.scalar(
-                select(func.count())
-                .select_from(PartnerVisit)
-                .join(PartnerLanding, PartnerLanding.id == PartnerVisit.landing_id)
-                .where(PartnerLanding.partner_id == partner_id)
-            )
-            or 0
+    ) -> dict[str, Decimal | int | bool]:
+        # Independent aggregate subqueries avoid visit/order/commission fan-out.
+        # One SQL statement supplies one database snapshot for the entire balance.
+        visits = (
+            select(func.count())
+            .select_from(PartnerVisit)
+            .join(PartnerLanding, PartnerLanding.id == PartnerVisit.landing_id)
+            .where(PartnerLanding.partner_id == partner_id)
+            .scalar_subquery()
         )
-        orders = int(
-            await session.scalar(
-                select(func.count())
-                .select_from(PartnerOrderAttribution)
-                .where(PartnerOrderAttribution.partner_id == partner_id)
-            )
-            or 0
+        orders = (
+            select(func.count())
+            .select_from(PartnerOrderAttribution)
+            .where(PartnerOrderAttribution.partner_id == partner_id)
+            .scalar_subquery()
         )
-        earned = await self._sum_commissions(session, partner_id=partner_id)
-        matured = await self._sum_commissions(
-            session,
-            partner_id=partner_id,
-            available_before=now,
-        )
-        reserved = Decimal(
-            await session.scalar(
-                select(func.coalesce(func.sum(PartnerPayoutRequest.amount), 0)).where(
-                    PartnerPayoutRequest.partner_id == partner_id,
-                    PartnerPayoutRequest.status.in_(
-                        (
-                            PartnerPayoutStatus.REQUESTED.value,
-                            PartnerPayoutStatus.APPROVED.value,
-                            PartnerPayoutStatus.PAID.value,
-                        )
+        commissions = (
+            select(
+                func.coalesce(func.sum(PartnerCommission.amount), 0).label("earned"),
+                func.coalesce(
+                    func.sum(PartnerCommission.amount).filter(
+                        PartnerCommission.available_at <= now
                     ),
-                )
+                    0,
+                ).label("matured"),
             )
-            or 0
-        )
-        paid = Decimal(
-            await session.scalar(
-                select(func.coalesce(func.sum(PartnerPayoutRequest.amount), 0)).where(
-                    PartnerPayoutRequest.partner_id == partner_id,
-                    PartnerPayoutRequest.status == PartnerPayoutStatus.PAID.value,
-                )
+            .where(
+                PartnerCommission.partner_id == partner_id,
+                PartnerCommission.status == PartnerCommissionStatus.PENDING.value,
             )
-            or 0
+            .subquery()
         )
+        payouts = (
+            select(
+                func.coalesce(
+                    func.sum(PartnerPayoutRequest.amount).filter(
+                        PartnerPayoutRequest.status.in_(("requested", "approved", "paid"))
+                    ),
+                    0,
+                ).label("reserved"),
+                func.coalesce(
+                    func.sum(PartnerPayoutRequest.amount).filter(
+                        PartnerPayoutRequest.status == "paid"
+                    ),
+                    0,
+                ).label("paid"),
+            )
+            .where(PartnerPayoutRequest.partner_id == partner_id)
+            .subquery()
+        )
+        has_requisites = (
+            select(PartnerRequisites.id).where(PartnerRequisites.partner_id == partner_id).exists()
+        )
+        row = (
+            await session.execute(
+                select(
+                    has_requisites.label("has_requisites"),
+                    visits.label("visits"),
+                    orders.label("orders"),
+                    commissions.c.earned,
+                    commissions.c.matured,
+                    payouts.c.reserved,
+                    payouts.c.paid,
+                ).select_from(commissions.join(payouts, true()))
+            )
+        ).one()
         return {
-            "visits": visits,
-            "orders": orders,
-            "earned": earned,
-            "available": max(Decimal("0.00"), matured - reserved),
-            "paid": paid,
+            "has_requisites": bool(row.has_requisites),
+            "visits": int(row.visits),
+            "orders": int(row.orders),
+            "earned": Decimal(row.earned),
+            "available": max(Decimal("0.00"), Decimal(row.matured) - Decimal(row.reserved)),
+            "paid": Decimal(row.paid),
         }
-
-    async def _sum_commissions(
-        self,
-        session: AsyncSession,
-        *,
-        partner_id: int,
-        available_before: datetime | None = None,
-    ) -> Decimal:
-        statement = select(func.coalesce(func.sum(PartnerCommission.amount), 0)).where(
-            PartnerCommission.partner_id == partner_id,
-            PartnerCommission.status == PartnerCommissionStatus.PENDING.value,
-        )
-        if available_before is not None:
-            statement = statement.where(PartnerCommission.available_at <= available_before)
-        return Decimal(await session.scalar(statement) or 0)

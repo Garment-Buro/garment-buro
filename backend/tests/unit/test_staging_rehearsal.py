@@ -35,7 +35,6 @@ def rehearsal_settings(**overrides: object) -> Settings:
         "database_enabled": True,
         "database_url": "postgresql+asyncpg://user:password@db.test/app",
         "identity_api_enabled": True,
-        "identity_migration_fingerprint": "a" * 64,
         "jwt_secret": "j" * 32,
         "identity_otp_pepper": "p" * 32,
         "notification_encryption_key": base64.urlsafe_b64encode(b"n" * 32)

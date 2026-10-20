@@ -30,7 +30,6 @@ def _settings(path: Path) -> Settings:
         database_enabled=True,
         database_url=f"sqlite+aiosqlite:///{path}",
         identity_api_enabled=True,
-        identity_migration_fingerprint="a" * 64,
         jwt_secret="j" * 32,
         identity_otp_pepper="p" * 32,
         notification_encryption_key="bm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm4=",

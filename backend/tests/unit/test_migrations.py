@@ -9,12 +9,42 @@ from app.db import models as database_models  # noqa: F401
 from app.db.base import Base
 
 
-def test_alembic_has_one_linear_partner_cabinet_head() -> None:
+def test_alembic_merges_deployed_auth_and_release_into_one_head() -> None:
     backend_dir = Path(__file__).resolve().parents[2]
     config = Config(str(backend_dir / "alembic.ini"))
     scripts = ScriptDirectory.from_config(config)
 
-    assert scripts.get_heads() == ["20260925_0054"]
+    assert scripts.get_heads() == ["20261020_0081"]
+    assert set(scripts.get_revision("20261020_0081").down_revision) == {
+        "20261019_0080",
+        "20261012_0056",
+    }
+    assert scripts.get_revision("20261012_0056").down_revision == "20260929_0055"
+    assert scripts.get_revision("20261019_0080").down_revision == "20261019_0079"
+    assert scripts.get_revision("20261019_0079").down_revision == "20261019_0078"
+    assert scripts.get_revision("20261019_0078").down_revision == "20261019_0077"
+    assert scripts.get_revision("20261019_0077").down_revision == "20261019_0076"
+    assert scripts.get_revision("20261019_0076").down_revision == "20261019_0075"
+    assert scripts.get_revision("20261019_0075").down_revision == "20261019_0074"
+    assert scripts.get_revision("20261019_0074").down_revision == "20261019_0073"
+    assert scripts.get_revision("20261019_0073").down_revision == "20261018_0072"
+    assert scripts.get_revision("20261018_0072").down_revision == "20261018_0071"
+    assert scripts.get_revision("20261018_0071").down_revision == "20261018_0070"
+    assert scripts.get_revision("20261018_0070").down_revision == "20261017_0069"
+    assert scripts.get_revision("20261017_0069").down_revision == "20261017_0068"
+    assert scripts.get_revision("20261017_0068").down_revision == "20261017_0067"
+    assert scripts.get_revision("20261017_0067").down_revision == "20261017_0066"
+    assert scripts.get_revision("20261017_0066").down_revision == "20261016_0065"
+    assert scripts.get_revision("20261016_0065").down_revision == "20261015_0064"
+    assert scripts.get_revision("20261015_0064").down_revision == "20261015_0063"
+    assert scripts.get_revision("20261015_0063").down_revision == "20261015_0062"
+    assert scripts.get_revision("20261015_0062").down_revision == "20261014_0061"
+    assert scripts.get_revision("20261014_0061").down_revision == "20261014_0060"
+    assert scripts.get_revision("20261014_0060").down_revision == "20261013_0059"
+    assert scripts.get_revision("20261013_0059").down_revision == "20261013_0058"
+    assert scripts.get_revision("20261013_0058").down_revision == "20261013_0057"
+    assert scripts.get_revision("20261013_0056").down_revision == "20260929_0055"
+    assert scripts.get_revision("20260929_0055").down_revision == "20260925_0054"
     assert scripts.get_revision("20260925_0054").down_revision == "20260924_0053"
     assert scripts.get_revision("20260924_0053").down_revision == "20260924_0052"
     assert scripts.get_revision("20260924_0052").down_revision == "20260924_0051"
@@ -58,6 +88,8 @@ def test_catalog_and_media_tables_share_the_target_metadata() -> None:
 
 def test_identity_security_tables_share_the_target_metadata() -> None:
     assert {
+        "password_credentials",
+        "external_auth_identities",
         "users",
         "roles",
         "permissions",

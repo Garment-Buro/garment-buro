@@ -8,6 +8,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
@@ -61,6 +62,12 @@ class CrmMaterialBalance(Base):
 class CrmMaterialReservation(Base, IntegerIdMixin):
     __tablename__ = "crm_material_reservations"
     __table_args__ = (
+        Index(
+            "ix_crm_material_reservation_plan_first",
+            "production_plan_revision_id",
+            "id",
+            postgresql_include=["fabric_id"],
+        ),
         UniqueConstraint(
             "production_plan_revision_id",
             "fabric_id",
@@ -89,7 +96,6 @@ class CrmMaterialReservation(Base, IntegerIdMixin):
     production_plan_revision_id: Mapped[int] = mapped_column(
         ForeignKey("crm_production_plan_revisions.id", ondelete="RESTRICT"),
         nullable=False,
-        index=True,
     )
     fabric_id: Mapped[int] = mapped_column(
         ForeignKey("crm_fabrics.id", ondelete="RESTRICT"),

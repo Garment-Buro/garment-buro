@@ -26,7 +26,6 @@ def production_settings(**overrides) -> Settings:
 def test_local_settings_keep_current_runtime_defaults() -> None:
     settings = Settings(_env_file=None, app_env=AppEnvironment.LOCAL)
 
-    assert settings.legacy_database_url == "sqlite:///./ecommerce.db"
     assert settings.database_url is None
     assert not settings.database_enabled
     assert not settings.catalog_reads_enabled
@@ -35,8 +34,6 @@ def test_local_settings_keep_current_runtime_defaults() -> None:
     assert not settings.minio_enabled
     assert settings.minio_media_bucket == "garment-buro-local-media"
     assert settings.minio_crm_bucket == "garment-buro-local-crm-private"
-    assert settings.products_cache_ttl_seconds == 3_600
-    assert settings.product_cache_ttl_seconds == 3_600
     assert settings.cart_cache_ttl_seconds == 2_592_000
     assert settings.inventory_reservation_ttl_seconds == 1_800
     assert settings.order_guest_access_ttl_days == 30
@@ -97,7 +94,7 @@ def test_inventory_reservation_ttl_is_bounded() -> None:
         Settings(_env_file=None, inventory_reservation_ttl_seconds=86_401)
 
 
-def test_order_reads_require_identity_database_and_reviewed_fingerprint() -> None:
+def test_order_reads_require_identity_and_database() -> None:
     with pytest.raises(ValidationError, match="DATABASE_ENABLED"):
         Settings(_env_file=None, order_reads_enabled=True)
     with pytest.raises(ValidationError, match="IDENTITY_API_ENABLED"):
@@ -105,14 +102,6 @@ def test_order_reads_require_identity_database_and_reviewed_fingerprint() -> Non
             _env_file=None,
             database_enabled=True,
             database_url="sqlite+aiosqlite:///:memory:",
-            order_reads_enabled=True,
-        )
-    with pytest.raises(ValidationError, match="ORDER_MIGRATION_FINGERPRINT"):
-        Settings(
-            _env_file=None,
-            database_enabled=True,
-            database_url="sqlite+aiosqlite:///:memory:",
-            identity_api_enabled=True,
             order_reads_enabled=True,
         )
 
@@ -142,7 +131,6 @@ def test_payment_management_requires_provider_status_observations() -> None:
             database_enabled=True,
             database_url="sqlite+aiosqlite:///:memory:",
             identity_api_enabled=True,
-            identity_migration_fingerprint="a" * 64,
             jwt_secret="j" * 32,
             identity_otp_pepper="p" * 32,
             notification_encryption_key=("bm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm4="),
@@ -169,7 +157,6 @@ def test_payouts_require_database_identity_and_separate_gateway_credentials() ->
             database_enabled=True,
             database_url="sqlite+aiosqlite:///:memory:",
             identity_api_enabled=True,
-            identity_migration_fingerprint="a" * 64,
             jwt_secret="j" * 32,
             identity_otp_pepper="p" * 32,
             notification_encryption_key="bm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm4=",
@@ -266,19 +253,6 @@ def test_catalog_read_cutover_requires_async_database() -> None:
             minio_enabled=False,
         )
 
-    with pytest.raises(ValidationError, match="CATALOG_MIGRATION_FINGERPRINT"):
-        Settings(
-            _env_file=None,
-            database_enabled=True,
-            database_url="sqlite+aiosqlite:///:memory:",
-            catalog_reads_enabled=True,
-            minio_enabled=True,
-            minio_access_key="test-access",
-            minio_secret_key="test-secret",
-            minio_public_base_url="http://storage.test",
-            catalog_migration_fingerprint=None,
-        )
-
 
 def test_catalog_write_cutover_requires_reads_and_identity() -> None:
     with pytest.raises(ValidationError, match="CATALOG_READS_ENABLED"):
@@ -291,7 +265,6 @@ def test_catalog_write_cutover_requires_reads_and_identity() -> None:
             database_url="sqlite+aiosqlite:///:memory:",
             catalog_reads_enabled=True,
             catalog_writes_enabled=True,
-            catalog_migration_fingerprint="c" * 64,
             minio_enabled=True,
             minio_access_key="test-access",
             minio_secret_key="test-secret",
@@ -299,43 +272,16 @@ def test_catalog_write_cutover_requires_reads_and_identity() -> None:
         )
 
 
-def test_cart_cutover_requires_database_and_reviewed_migration() -> None:
+def test_persistent_cart_requires_database() -> None:
     with pytest.raises(ValidationError, match="DATABASE_ENABLED"):
         Settings(_env_file=None, carts_v2_enabled=True)
-    with pytest.raises(ValidationError, match="CARTS_MIGRATION_FINGERPRINT"):
-        Settings(
-            _env_file=None,
-            database_enabled=True,
-            database_url="sqlite+aiosqlite:///:memory:",
-            carts_v2_enabled=True,
-        )
     settings = Settings(
         _env_file=None,
         database_enabled=True,
         database_url="sqlite+aiosqlite:///:memory:",
         carts_v2_enabled=True,
-        carts_migration_fingerprint="a" * 64,
     )
     assert settings.carts_v2_enabled
-
-    with pytest.raises(ValidationError, match="CATALOG_CONTENT_MIGRATION_FINGERPRINT"):
-        Settings(
-            _env_file=None,
-            database_enabled=True,
-            database_url="sqlite+aiosqlite:///:memory:",
-            catalog_reads_enabled=True,
-            catalog_writes_enabled=True,
-            catalog_migration_fingerprint="c" * 64,
-            minio_enabled=True,
-            minio_access_key="test-access",
-            minio_secret_key="test-secret",
-            minio_public_base_url="http://storage.test",
-            identity_api_enabled=True,
-            identity_migration_fingerprint="d" * 64,
-            jwt_secret="j" * 32,
-            identity_otp_pepper="p" * 32,
-            notification_encryption_key="bm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm4=",
-        )
 
 
 def test_enabled_minio_requires_credentials_and_public_url() -> None:
@@ -476,7 +422,7 @@ def test_identity_policy_settings_reject_unsafe_ranges() -> None:
         Settings(_env_file=None, identity_access_expire_minutes=0)
 
 
-def test_identity_api_cutover_requires_reviewed_data_and_independent_secrets() -> None:
+def test_identity_api_requires_independent_secrets() -> None:
     assert (
         Settings(
             _env_file=None,
@@ -490,13 +436,11 @@ def test_identity_api_cutover_requires_reviewed_data_and_independent_secrets() -
         "identity_api_enabled": True,
         "database_enabled": True,
         "database_url": "sqlite+aiosqlite:///:memory:",
-        "identity_migration_fingerprint": "f" * 64,
         "jwt_secret": "j" * 32,
         "identity_otp_pepper": "p" * 32,
         "notification_encryption_key": "invalid-but-present",
     }
     for missing_field, expected_name in (
-        ("identity_migration_fingerprint", "IDENTITY_MIGRATION_FINGERPRINT"),
         ("jwt_secret", "JWT_SECRET"),
         ("identity_otp_pepper", "IDENTITY_OTP_PEPPER"),
         ("notification_encryption_key", "NOTIFICATION_ENCRYPTION_KEY"),
@@ -587,7 +531,6 @@ def test_cdek_foundation_settings_reject_unsafe_values() -> None:
             database_enabled=True,
             database_url="sqlite+aiosqlite:///:memory:",
             catalog_reads_enabled=True,
-            catalog_migration_fingerprint="a" * 64,
             minio_enabled=True,
             minio_access_key="access",
             minio_secret_key="secret",
@@ -615,7 +558,6 @@ def test_cdek_foundation_settings_reject_unsafe_values() -> None:
         database_enabled=True,
         database_url="sqlite+aiosqlite:///:memory:",
         catalog_reads_enabled=True,
-        catalog_migration_fingerprint="a" * 64,
         minio_enabled=True,
         minio_access_key="access",
         minio_secret_key="secret",
@@ -623,6 +565,7 @@ def test_cdek_foundation_settings_reject_unsafe_values() -> None:
         cdek_quote_enabled=True,
         cdek_client_id="cdek-client",
         cdek_client_secret="cdek-secret",
+        jwt_secret="j" * 32,
     )
     assert quote_enabled.cdek_quote_enabled
 

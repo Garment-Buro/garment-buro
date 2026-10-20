@@ -8,8 +8,10 @@ import { SavedItemsPanel } from "@/components/unfinished/SavedItemsPanel";
 import { ConstructorDraftPreview } from "@/components/unfinished/ConstructorDraftPreview";
 import { UnfinishedDeletePopup } from "@/components/shared/ConstructorFlowPopup";
 import { useUnfinishedSurface } from "@/hooks/unfinished/useUnfinishedSurface";
-import { COLLECTION_HERO_IMAGE, navigationItems } from "@/lib/unfinished/config/ui";
+import { navigationItems } from "@/lib/unfinished/config/ui";
+import { ApiError } from '@/lib/api/http';
 import type { ProfileTab } from "@/lib/unfinished/types";
+import { useAuthStore } from "@/store/authStore";
 import styles from "./UnfinishedSurface.module.css";
 
 type UnfinishedSurfaceProps = {
@@ -20,10 +22,10 @@ type UnfinishedSurfaceProps = {
 
 export function UnfinishedSurface({ isOverlay = false, onClose, initialTab = "unfinished" }: UnfinishedSurfaceProps) {
     const surface = useUnfinishedSurface({ isOverlay, onClose, initialTab });
+    const user = useAuthStore(state => state.isSessionReady && state.isAuthenticated ? state.user : null);
+    const profileTitle = user ? [user.first_name, user.last_name].filter(Boolean).join(' ') || user.email || 'Мой профиль' : 'Мой профиль';
     const {
         activeTab,
-        selectedDraft,
-        selectedCollectionItem,
         selectedItem,
         bottomPanelState,
         setBottomPanelState,
@@ -66,6 +68,10 @@ export function UnfinishedSurface({ isOverlay = false, onClose, initialTab = "un
                 isOpen={isDeleteConfirmOpen}
                 onClose={() => setIsDeleteConfirmOpen(false)}
                 onConfirm={confirmDeleteSelectedItem}
+                busy={surface.projectLibrary.deleting}
+                error={surface.projectLibrary.deleteError ? surface.projectLibrary.deleteError instanceof ApiError && surface.projectLibrary.deleteError.status === 409
+                    ? 'Проект изменился. Закройте окно и обновите список перед удалением.'
+                    : 'Не удалось удалить проект. Повторите попытку.' : null}
             />
             <main
                 className={`${styles.page} ${isOverlay ? styles.overlayPage : ""} ${isClosing ? styles.pageClosing : ""}`}
@@ -98,11 +104,11 @@ export function UnfinishedSurface({ isOverlay = false, onClose, initialTab = "un
                                 )}
                             </button>
 
-                            {isUnfinishedTab && selectedDraft && (
+                            {!isProfileTab && selectedItem && (
                                 <button
                                     className={`${styles.surfaceButton} ${styles.deleteButton}`}
                                     type="button"
-                                    aria-label="Удалить черновик"
+                                    aria-label="Удалить проект"
                                     onClick={handleDeleteSelectedItem}
                                 >
                                     <AppIcon name="delete" width={16} height={18} className="text-[#BE2222]" />
@@ -115,8 +121,8 @@ export function UnfinishedSurface({ isOverlay = false, onClose, initialTab = "un
                                 <h1 className={styles.pageTitle}>{activeTitle}</h1>
                                 {selectedItem && (
                                     <div className={styles.collectionHeaderMeta}>
-                                        <span>{selectedItem.number}</span>
-                                        <span>{selectedItem.name}</span>
+                                        <span>{String(selectedItem.id).padStart(3, '0')}</span>
+                                        <span>{selectedItem.title}</span>
                                     </div>
                                 )}
                             </div>
@@ -130,26 +136,38 @@ export function UnfinishedSurface({ isOverlay = false, onClose, initialTab = "un
                                     className={styles.selectedProductFrame}
                                     key={`${activeTab}-${selectedItem?.id ?? "empty"}`}
                                 >
-                                    {selectedDraft && isUnfinishedTab && (
+                                    {!surface.projectLibrary.account.sessionReady ? <p role="status">Восстанавливаем сессию…</p>
+                                        : surface.projectLibrary.account.userId === null ? (
+                                            <div className={styles.projectLibraryMessage}>
+                                                <p>Войдите, чтобы открыть свои проекты на любом устройстве.</p>
+                                                <button type="button" className={styles.profilePrimaryButton}
+                                                    onClick={() => handleSelectTab({ id: 'profile' })}>ВОЙТИ</button>
+                                            </div>
+                                        ) : surface.projectLibrary.status === 'loading' ? <p role="status">Загружаем проекты…</p>
+                                            : surface.projectLibrary.status === 'error' ? (
+                                                <div role="alert" className={styles.projectLibraryMessage}>
+                                                    <p>Не удалось загрузить проекты.</p>
+                                                    <button type="button" className={styles.profilePrimaryButton}
+                                                        onClick={() => void surface.projectLibrary.retry()}>ПОВТОРИТЬ ЗАГРУЗКУ</button>
+                                                </div>
+                                            ) : null}
+                                    {selectedItem && surface.projectLibrary.restored && (
                                         <ConstructorDraftPreview
-                                            item={selectedDraft}
+                                            item={{ draftState: surface.projectLibrary.restored }}
                                             className={styles.selectedProductImage}
                                             priority
                                         />
                                     )}
-
-                                    {isCollectionTab && selectedCollectionItem && (
-                                        <Image
-                                            src={COLLECTION_HERO_IMAGE}
-                                            alt=""
-                                            width={288}
-                                            height={395}
-                                            className={styles.collectionProductImage}
-                                            priority
-                                        />
+                                    {selectedItem && surface.projectLibrary.previewLoading && <p role="status">Загружаем предпросмотр…</p>}
+                                    {selectedItem && Boolean(surface.projectLibrary.previewError) && (
+                                        <div className={styles.projectLibraryMessage} role="alert">
+                                            <p>Не удалось открыть предпросмотр проекта.</p>
+                                            <button type="button" className={styles.profilePrimaryButton}
+                                                onClick={() => void surface.projectLibrary.retryPreview()}>ПОВТОРИТЬ ПРЕДПРОСМОТР</button>
+                                        </div>
                                     )}
 
-                                    {selectedDraft && isUnfinishedTab && (
+                                    {selectedItem && (
                                         <button
                                             className={`${styles.surfaceButton} ${styles.contentAction} ${styles.selectedContentAction}`}
                                             type="button"
@@ -166,7 +184,7 @@ export function UnfinishedSurface({ isOverlay = false, onClose, initialTab = "un
                                         </button>
                                     )}
 
-                                    {!selectedItem && (
+                                    {!selectedItem && surface.projectLibrary.account.userId !== null && surface.projectLibrary.status === 'ready' && (
                                         <button
                                             className={`${styles.surfaceButton} ${styles.contentAction} ${styles.emptyContentAction} ${isCollectionTab ? styles.collectionEmptyContentAction : ""}`}
                                             type="button"
@@ -182,7 +200,7 @@ export function UnfinishedSurface({ isOverlay = false, onClose, initialTab = "un
                         )}
 
                         <div className={`${styles.bottomPanel} ${isProfileTab ? styles.profileBottomPanel : ""}`}>
-                            <div className={styles.bottomPanelTitle}>ВЕРА САМСОНОВА</div>
+                            <div className={styles.bottomPanelTitle}>{profileTitle}</div>
 
                             <div
                                 className={`${styles.bottomPanelFrame} ${isProfileTab ? styles.profileBottomPanelFrame : ""} ${isBottomBarCollapsed ? styles.collapsedBottomPanelFrame : ""}`}

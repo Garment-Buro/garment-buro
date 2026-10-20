@@ -96,9 +96,10 @@ class TicketService:
                     "id": order.id,
                     "user_id": order.user_id,
                     "status": order.status,
-                    "customer": " ".join(filter(None, [order.first_name, order.last_name])),
+                    "customer": order.buyer_name
+                    or " ".join(filter(None, [order.first_name, order.last_name])),
                     "email": order.email,
-                    "phone": order.phone,
+                    "phone": order.buyer_phone or order.phone,
                     "items": [
                         {
                             "title": x.title_snapshot,

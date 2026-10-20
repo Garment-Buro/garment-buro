@@ -44,7 +44,7 @@ export function queueItemMatchesStation(
     ) {
         if (station === 'dtf')
             return (
-                (item.state === 'inbox' && !item.dtf_approved) ||
+                (item.state === 'inbox' && Boolean(item.requires_dtf) && !item.dtf_approved) ||
                 (item.dtf_pending ?? 0) > 0
             );
         if (station === 'kit')

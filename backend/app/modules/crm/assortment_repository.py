@@ -1,13 +1,10 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
 from decimal import Decimal
 
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
-from app.modules.catalog.models import Product
 from app.modules.crm.assortment_models import (
     CrmAccessory,
     CrmAccessoryCategory,
@@ -18,30 +15,10 @@ from app.modules.crm.assortment_models import (
     CrmPackagingBox,
 )
 from app.modules.crm.reference_models import CrmFabric, CrmGarmentModel, CrmGarmentSize
-from app.modules.media.models import MediaObject, MediaStatus, ProductMedia
+from app.modules.media.models import MediaObject, MediaStatus
 
 
 class CrmAssortmentRepository:
-    @staticmethod
-    async def list_products(
-        session: AsyncSession,
-        *,
-        model_id: int | None,
-        category_id: int | None,
-        active: bool | None,
-    ) -> Sequence[Product]:
-        statement = select(Product).options(
-            selectinload(Product.variants),
-            selectinload(Product.media_links).selectinload(ProductMedia.media),
-        )
-        if model_id is not None:
-            statement = statement.where(Product.garment_model_id == model_id)
-        if category_id is not None:
-            statement = statement.where(Product.category_id == category_id)
-        if active is not None:
-            statement = statement.where(Product.is_active.is_(active))
-        return list(await session.scalars(statement.order_by(Product.id.desc())))
-
     @staticmethod
     async def add(session: AsyncSession, entity: object) -> None:
         session.add(entity)
@@ -49,11 +26,21 @@ class CrmAssortmentRepository:
 
     @staticmethod
     async def get_model(session: AsyncSession, model_id: int) -> CrmGarmentModel | None:
-        return await session.get(CrmGarmentModel, model_id)
+        return await session.scalar(
+            select(CrmGarmentModel)
+            .where(CrmGarmentModel.id == model_id)
+            .with_for_update(read=True)
+            .execution_options(populate_existing=True)
+        )
 
     @staticmethod
     async def get_size(session: AsyncSession, size_id: int) -> CrmGarmentSize | None:
-        return await session.get(CrmGarmentSize, size_id)
+        return await session.scalar(
+            select(CrmGarmentSize)
+            .where(CrmGarmentSize.id == size_id)
+            .with_for_update(read=True)
+            .execution_options(populate_existing=True)
+        )
 
     @staticmethod
     async def get_fabric(session: AsyncSession, fabric_id: int) -> CrmFabric | None:
@@ -62,42 +49,24 @@ class CrmAssortmentRepository:
     @staticmethod
     async def get_ready_media(session: AsyncSession, media_id: int) -> MediaObject | None:
         return await session.scalar(
-            select(MediaObject).where(
+            select(MediaObject)
+            .where(
                 MediaObject.id == media_id,
                 MediaObject.status == MediaStatus.READY.value,
             )
+            .with_for_update(read=True)
+            .execution_options(populate_existing=True)
         )
-
-    @staticmethod
-    async def list_patterns(
-        session: AsyncSession,
-        *,
-        model_id: int | None,
-        active: bool | None,
-        query: str | None = None,
-    ) -> Sequence[CrmGarmentPattern]:
-        statement = select(CrmGarmentPattern)
-        if model_id is not None:
-            statement = statement.where(CrmGarmentPattern.garment_model_id == model_id)
-        if active is not None:
-            statement = statement.where(CrmGarmentPattern.is_active.is_(active))
-        if query:
-            value = f"%{query.strip()}%"
-            statement = statement.where(
-                or_(
-                    CrmGarmentPattern.code.ilike(value),
-                    CrmGarmentPattern.name.ilike(value),
-                    CrmGarmentPattern.grid_key.ilike(value),
-                )
-            )
-        return list(await session.scalars(statement.order_by(CrmGarmentPattern.id.desc())))
 
     @staticmethod
     async def get_pattern_for_update(
         session: AsyncSession, pattern_id: int
     ) -> CrmGarmentPattern | None:
         return await session.scalar(
-            select(CrmGarmentPattern).where(CrmGarmentPattern.id == pattern_id).with_for_update()
+            select(CrmGarmentPattern)
+            .where(CrmGarmentPattern.id == pattern_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
         )
 
     @staticmethod
@@ -121,19 +90,6 @@ class CrmAssortmentRepository:
         if exclude_id is not None:
             statement = statement.where(CrmGarmentPattern.id != exclude_id)
         return await session.scalar(statement.limit(1))
-
-    @staticmethod
-    async def list_fabric_requirements(
-        session: AsyncSession,
-        *,
-        model_id: int | None,
-    ) -> Sequence[CrmGarmentFabricRequirement]:
-        statement = select(CrmGarmentFabricRequirement)
-        if model_id is not None:
-            statement = statement.where(CrmGarmentFabricRequirement.garment_model_id == model_id)
-        return list(
-            await session.scalars(statement.order_by(CrmGarmentFabricRequirement.id.desc()))
-        )
 
     @staticmethod
     async def get_fabric_requirement_for_update(
@@ -161,15 +117,6 @@ class CrmAssortmentRepository:
         return await session.scalar(statement)
 
     @staticmethod
-    async def list_categories(
-        session: AsyncSession, *, active: bool | None
-    ) -> Sequence[CrmAccessoryCategory]:
-        statement = select(CrmAccessoryCategory)
-        if active is not None:
-            statement = statement.where(CrmAccessoryCategory.is_active.is_(active))
-        return list(await session.scalars(statement.order_by(CrmAccessoryCategory.name)))
-
-    @staticmethod
     async def get_category(
         session: AsyncSession, category_id: int, *, lock: bool = False
     ) -> CrmAccessoryCategory | None:
@@ -177,47 +124,13 @@ class CrmAssortmentRepository:
         return await session.scalar(statement.with_for_update() if lock else statement)
 
     @staticmethod
-    async def list_accessories(
-        session: AsyncSession,
-        *,
-        category_id: int | None,
-        model_id: int | None,
-        active: bool | None,
-    ) -> Sequence[CrmAccessory]:
-        statement = select(CrmAccessory).options(selectinload(CrmAccessory.model_requirements))
-        if category_id is not None:
-            statement = statement.where(CrmAccessory.category_id == category_id)
-        if model_id is not None:
-            statement = statement.join(CrmGarmentAccessoryRequirement).where(
-                CrmGarmentAccessoryRequirement.garment_model_id == model_id
-            )
-        if active is not None:
-            statement = statement.where(CrmAccessory.is_active.is_(active))
-        return list(await session.scalars(statement.order_by(CrmAccessory.name)))
-
-    @staticmethod
     async def get_accessory(
         session: AsyncSession, accessory_id: int, *, lock: bool = False
     ) -> CrmAccessory | None:
-        statement = (
-            select(CrmAccessory)
-            .where(CrmAccessory.id == accessory_id)
-            .options(selectinload(CrmAccessory.model_requirements))
-        )
-        return await session.scalar(statement.with_for_update() if lock else statement)
-
-    @staticmethod
-    async def list_accessory_requirements(
-        session: AsyncSession,
-        *,
-        model_id: int | None,
-    ) -> Sequence[CrmGarmentAccessoryRequirement]:
-        statement = select(CrmGarmentAccessoryRequirement)
-        if model_id is not None:
-            statement = statement.where(CrmGarmentAccessoryRequirement.garment_model_id == model_id)
-        return list(
-            await session.scalars(statement.order_by(CrmGarmentAccessoryRequirement.id.desc()))
-        )
+        statement = select(CrmAccessory).where(CrmAccessory.id == accessory_id)
+        if lock:
+            statement = statement.with_for_update().execution_options(populate_existing=True)
+        return await session.scalar(statement)
 
     @staticmethod
     async def get_accessory_requirement_for_update(
@@ -230,38 +143,11 @@ class CrmAssortmentRepository:
         )
 
     @staticmethod
-    async def list_boxes(
-        session: AsyncSession, *, active: bool | None
-    ) -> Sequence[CrmPackagingBox]:
-        statement = select(CrmPackagingBox)
-        if active is not None:
-            statement = statement.where(CrmPackagingBox.is_active.is_(active))
-        return list(await session.scalars(statement.order_by(CrmPackagingBox.name)))
-
-    @staticmethod
     async def get_box(
         session: AsyncSession, box_id: int, *, lock: bool = False
     ) -> CrmPackagingBox | None:
         statement = select(CrmPackagingBox).where(CrmPackagingBox.id == box_id)
         return await session.scalar(statement.with_for_update() if lock else statement)
-
-    @staticmethod
-    async def list_packaging_rules(
-        session: AsyncSession,
-        *,
-        model_id: int | None,
-    ) -> Sequence[CrmGarmentPackagingRule]:
-        statement = select(CrmGarmentPackagingRule)
-        if model_id is not None:
-            statement = statement.where(CrmGarmentPackagingRule.garment_model_id == model_id)
-        return list(
-            await session.scalars(
-                statement.order_by(
-                    CrmGarmentPackagingRule.priority,
-                    CrmGarmentPackagingRule.id,
-                )
-            )
-        )
 
     @staticmethod
     async def get_packaging_rule_for_update(

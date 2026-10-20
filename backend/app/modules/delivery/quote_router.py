@@ -7,8 +7,10 @@ from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.openapi import json_request_schema
 from app.db.session import get_database_session
 from app.modules.delivery.provider import CdekProviderError
+from app.modules.delivery.quote_proof import DeliveryQuoteProof, InvalidDeliveryQuoteError
 from app.modules.delivery.quote_schemas import (
     MAX_CDEK_QUOTE_PAYLOAD_BYTES,
     CdekQuoteRequest,
@@ -39,7 +41,13 @@ def get_cdek_quote_service(request: Request) -> CdekQuoteService:
     openapi_extra={
         "requestBody": {
             "required": True,
-            "content": {"application/json": {"schema": CdekQuoteRequest.model_json_schema()}},
+            "content": {
+                "application/json": {
+                    "schema": json_request_schema(
+                        CdekQuoteRequest, path=router.prefix + "/calculate"
+                    )
+                }
+            },
         }
     },
 )
@@ -56,10 +64,15 @@ async def calculate_cdek_quote(
         # Release the implicit read transaction before external provider I/O.
         await session.rollback()
         quote = await service.calculate(prepared)
+        proof = DeliveryQuoteProof(service.settings).issue(prepared, quote.delivery_sum)
     except CdekQuoteValidationError as error:
+        if error.code == "cdek_directory_unavailable":
+            raise _error(503, {"code": error.code}, retry_after=60) from error
         if error.code in {"cdek_product_unavailable", "cdek_logistics_missing"}:
             raise _error(409, {"code": error.code}) from error
         raise _error(422, {"code": error.code}) from error
+    except InvalidDeliveryQuoteError as error:
+        raise _error(503, {"code": "cdek_quote_unavailable"}) from error
     except CdekProviderError as error:
         if error.rejected:
             raise _error(422, {"code": "cdek_quote_rejected"}) from error
@@ -76,6 +89,10 @@ async def calculate_cdek_quote(
     response.headers["Cache-Control"] = "no-store"
     return CdekQuoteResponse(
         delivery_price=float(quote.delivery_sum),
+        quote_token=proof,
+        delivery_city=prepared.delivery_city,
+        delivery_address=prepared.delivery_address,
+        cdek_point_code=prepared.cdek_point_code,
         period_min=quote.period_min,
         period_max=quote.period_max,
         tariff_code=prepared.tariff_code,

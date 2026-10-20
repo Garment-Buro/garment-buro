@@ -1,4 +1,4 @@
-const CACHE_NAME = 'garment-buro-shell-v2';
+const CACHE_NAME = 'garment-buro-shell-v3';
 const SHELL_FILES = [
     '/offline.html',
     '/pwa-icon-192.png',
@@ -32,18 +32,12 @@ self.addEventListener('fetch', event => {
     }
 
     if (request.mode === 'navigate') {
+        // Documents contain live profile/account data. Cache only the generic
+        // offline shell; activation also removes documents saved by v2.
         event.respondWith(
             fetch(request)
-                .then(response => {
-                    if (response.ok) {
-                        const copy = response.clone();
-                        void caches.open(CACHE_NAME).then(cache => cache.put(request, copy));
-                    }
-                    return response;
-                })
                 .catch(async () => (
-                    await caches.match(request)
-                    || await caches.match('/offline.html')
+                    await caches.match('/offline.html')
                     || Response.error()
                 )),
         );

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useConstructorPointerSession } from './useConstructorPointerSession';
 import type { KonvaCanvasProps, PlacedHardware } from '@/lib/constructor/types';
 import {
     CONSTRUCTOR_MAX_STAGE_SCALE as MAX_STAGE_SCALE,
@@ -27,6 +28,7 @@ export const useKonvaCanvasController = ({
     onCanvasInteraction,
     onViewportChange,
 }: KonvaCanvasProps) => {
+    const gesture = useConstructorPointerSession();
     const containerRef = useRef<HTMLDivElement>(null);
     const isPinchingRef = useRef(false);
     const pendingStageTouchRef = useRef<{
@@ -60,15 +62,10 @@ export const useKonvaCanvasController = ({
     const fittedScaleRef = useRef(1);
     const [fittedScale, setFittedScale] = useState(1);
     const initialModelIdRef = useRef<string | null>(null);
-    const modelBoundsRef = useRef(modelBounds);
 
     useEffect(() => {
         stageScaleRef.current = stageScale;
     }, [stageScale]);
-
-    useEffect(() => {
-        modelBoundsRef.current = modelBounds;
-    }, [modelBounds]);
 
     const clampStagePos = (
         pos: { x: number; y: number },
@@ -117,19 +114,15 @@ export const useKonvaCanvasController = ({
             if (!element) return;
 
             const { offsetWidth, offsetHeight } = element;
-            const bounds = modelBoundsRef.current;
+            const bounds = modelBounds;
             const visibleHeight = getVisibleCanvasHeight(offsetHeight, bottomInset);
             const nextFittedScale = getFittedScale(offsetWidth, offsetHeight, bounds);
             const wasZoomed = canPanStage(stageScaleRef.current, fittedScaleRef.current);
-            const nextScale = shouldResetScale || !wasZoomed ? nextFittedScale : stageScaleRef.current;
+            const nextScale = shouldResetScale || !wasZoomed ? nextFittedScale : Math.max(nextFittedScale, stageScaleRef.current);
 
             fittedScaleRef.current = nextFittedScale;
             setFittedScale(nextFittedScale);
-            if (shouldResetScale) {
-                setStageScale(nextScale);
-            } else if (!wasZoomed) {
-                setStageScale(nextScale);
-            }
+            setStageScale(nextScale);
             setStagePos(clampStagePos({
                 x: (offsetWidth - (bounds.x * 2 + bounds.width) * nextScale) / 2,
                 y: (visibleHeight - (bounds.y * 2 + bounds.height) * nextScale) / 2,
@@ -147,20 +140,7 @@ export const useKonvaCanvasController = ({
             window.removeEventListener("resize", handleResize);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [bottomInset, selectedModel?.id, isMounted]);
-
-    useEffect(() => {
-        const element = containerRef.current;
-        if (!element) return;
-
-        const currentScale = stageScaleRef.current;
-        const visibleHeight = getVisibleCanvasHeight(element.offsetHeight, bottomInset);
-        setStagePos(clampStagePos({
-            x: (element.offsetWidth - (modelBounds.x * 2 + modelBounds.width) * currentScale) / 2,
-            y: (visibleHeight - (modelBounds.y * 2 + modelBounds.height) * currentScale) / 2,
-        }, currentScale, modelBounds));
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [bottomInset, modelBounds]);
+    }, [bottomInset, selectedModel?.id, isMounted, modelBounds]);
 
     useEffect(() => {
         const element = containerRef.current;
@@ -217,6 +197,7 @@ export const useKonvaCanvasController = ({
         const target = event.target as HTMLElement;
         if (target.dataset.hardware === "true") return;
         if (isPinchingRef.current) return;
+        gesture.cancel();
 
         event.preventDefault();
 
@@ -272,6 +253,9 @@ export const useKonvaCanvasController = ({
             }
         };
 
+        const reset = () => {
+            if (pendingStageTouchRef.current?.pointerId === event.pointerId) pendingStageTouchRef.current = null;
+        };
         const handleUp = () => {
             const pendingTouch = pendingStageTouchRef.current;
             if (pendingTouch?.pointerId === event.pointerId && pendingTouch.shouldClearSelection && !isPinchingRef.current) {
@@ -279,18 +263,10 @@ export const useKonvaCanvasController = ({
                 onCanvasInteraction?.();
             }
 
-            if (pendingTouch?.pointerId === event.pointerId) {
-                pendingStageTouchRef.current = null;
-            }
-
-            window.removeEventListener("pointermove", handleMove);
-            window.removeEventListener("pointerup", handleUp);
-            window.removeEventListener("pointercancel", handleUp);
+            reset();
         };
 
-        window.addEventListener("pointermove", handleMove);
-        window.addEventListener("pointerup", handleUp);
-        window.addEventListener("pointercancel", handleUp);
+        gesture.start(event.pointerId, { onMove: handleMove, onEnd: handleUp, onCancel: reset });
     };
 
     const getTouchDistance = (touches: React.TouchList | TouchList) => {
@@ -320,6 +296,7 @@ export const useKonvaCanvasController = ({
         if (event.touches.length !== 2) return;
 
         event.preventDefault();
+        gesture.cancel();
         isPinchingRef.current = true;
         pendingStageTouchRef.current = null;
         if (deferredHardwareSelectionRef.current) {
@@ -387,6 +364,8 @@ export const useKonvaCanvasController = ({
     const handleHardwarePointerDown = (event: React.PointerEvent<HTMLElement>, item: PlacedHardware) => {
         event.preventDefault();
         event.stopPropagation();
+        if (isPinchingRef.current) return;
+        gesture.cancel();
 
         if (shouldDeferHardwareSelection(selectedHardwareUid, item.uid)) {
             const pendingSelection = {
@@ -403,6 +382,9 @@ export const useKonvaCanvasController = ({
                 }
             };
 
+            const reset = () => {
+                if (deferredHardwareSelectionRef.current === pendingSelection) deferredHardwareSelectionRef.current = null;
+            };
             const handleUp = (upEvent: PointerEvent) => {
                 if (
                     upEvent.pointerId === pendingSelection.pointerId
@@ -412,17 +394,10 @@ export const useKonvaCanvasController = ({
                     onSelectHardware(item.uid);
                 }
 
-                if (deferredHardwareSelectionRef.current === pendingSelection) {
-                    deferredHardwareSelectionRef.current = null;
-                }
-                window.removeEventListener("pointermove", handleMove);
-                window.removeEventListener("pointerup", handleUp);
-                window.removeEventListener("pointercancel", handleUp);
+                reset();
             };
 
-            window.addEventListener("pointermove", handleMove);
-            window.addEventListener("pointerup", handleUp);
-            window.addEventListener("pointercancel", handleUp);
+            gesture.start(event.pointerId, { onMove: handleMove, onEnd: handleUp, onCancel: reset });
             return;
         }
 
@@ -441,20 +416,14 @@ export const useKonvaCanvasController = ({
             });
         };
 
-        const handleUp = () => {
-            window.removeEventListener("pointermove", handleMove);
-            window.removeEventListener("pointerup", handleUp);
-            window.removeEventListener("pointercancel", handleUp);
-        };
-
-        window.addEventListener("pointermove", handleMove);
-        window.addEventListener("pointerup", handleUp);
-        window.addEventListener("pointercancel", handleUp);
+        gesture.start(event.pointerId, { onMove: handleMove });
     };
 
     const handleRotatePointerDown = (event: React.PointerEvent<HTMLButtonElement>, item: PlacedHardware) => {
         event.preventDefault();
         event.stopPropagation();
+        if (isPinchingRef.current) return;
+        gesture.cancel();
         onSelectHardware(item.uid);
 
         const containerRect = containerRef.current?.getBoundingClientRect();
@@ -470,13 +439,7 @@ export const useKonvaCanvasController = ({
             onUpdateItem(item.uid, { rotation: initialRotation + nextAngle - initialAngle });
         };
 
-        const handleUp = () => {
-            window.removeEventListener("pointermove", handleMove);
-            window.removeEventListener("pointerup", handleUp);
-        };
-
-        window.addEventListener("pointermove", handleMove);
-        window.addEventListener("pointerup", handleUp);
+        gesture.start(event.pointerId, { onMove: handleMove });
     };
 
     return {

@@ -2,28 +2,26 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-    createCdekGoods,
     createCheckoutOrderPayload,
-    EMPTY_CHECKOUT_FORM,
-    formatRussianPhone,
     getCartItemFitSummary,
-    getCheckoutErrors,
 } from './checkout.ts';
 
-test('checkout phone and required fields keep their current validation rules', () => {
-    assert.equal(formatRussianPhone('89991234567'), '+7 (999) 123-45-67');
-    assert.deepEqual(Object.keys(getCheckoutErrors(EMPTY_CHECKOUT_FORM)).sort(), ['agreeOffer', 'agreePolicy', 'deliveryAddress', 'email', 'firstName', 'phone']);
+test('purchase payload preserves independent contacts and uses the canonical signed destination', () => {
+    const buyer = { name: 'Покупатель', phone: '+79001234567', email: 'buyer@example.test' };
+    const recipient = { name: 'Получатель', phone: '+79007654321', email: 'recipient@example.test' };
+    const payload = createCheckoutOrderPayload({
+        buyer, recipient, items: [{ id: 'line', product_id: 7, price: 1000, quantity: 2 }], paymentMethod: 'card',
+        deliveryMethod: 'cdek_pickup',
+        quote: { delivery_price: 250, quote_token: 'proof', delivery_city: 'Тверь', delivery_address: 'Советская, 1', cdek_point_code: 'TVR1', currency: 'RUB' },
+    });
+    assert.deepEqual(payload, {
+        buyer, recipient, items: [{ id: 'line', product_id: 7, price: 1000, quantity: 2 }],
+        payment_method: 'card', delivery_method: 'cdek_pickup', currency: 'RUB',
+        delivery_city: 'Тверь', delivery_address: 'Советская, 1', cdek_point_code: 'TVR1',
+        claimed_total_price: 2250, delivery_price: 250, delivery_quote_token: 'proof',
+    });
 });
 
-test('CDEK goods expand cart quantities and keep a fallback package', () => {
-    assert.equal(createCdekGoods([]).length, 1);
-    assert.equal(createCdekGoods([{ quantity: 3 }]).length, 3);
-});
-
-test('checkout payload and fit summary preserve backend and UI contracts', () => {
-    const form = { ...EMPTY_CHECKOUT_FORM, email: 'test@example.com', phone: '+7', firstName: 'Иван', deliveryAddress: 'Москва', agreeOffer: true, agreePolicy: true };
-    const payload = createCheckoutOrderPayload({ form, items: [], totalPrice: 1000, deliveryPrice: 250 });
-    assert.equal(payload.total_price, 1250);
-    assert.equal(payload.delivery_method, 'cdek');
+test('fit summary describes the chosen sleeve mode', () => {
     assert.equal(getCartItemFitSummary({ customization: { fit: { sleeveMode: 'height', lengthCm: 70, widthCm: 55 } } }), 'Посадка: длина 70, ширина 55, рукава под рост');
 });

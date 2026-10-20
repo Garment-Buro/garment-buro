@@ -5,11 +5,11 @@ import base64
 import json
 import sqlite3
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from pathlib import Path
 
 import jwt
 import pytest
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.core.config import AppEnvironment, Settings
@@ -17,12 +17,15 @@ from app.core.exceptions import ConfigurationError
 from app.db.base import Base
 from app.db.session import DatabaseManager
 from app.factory import create_app
+from app.modules.identity.cutover import verify_identity_cutover
 from app.modules.identity.models import IdentityMigrationRun, UserStatus
 from app.modules.identity.repository import IdentityRepository
 from app.modules.notifications.crypto import (
     EncryptedNotificationPayload,
     NotificationPayloadCodec,
 )
+from app.modules.orders.models import LegacyOrderImport, Order
+from tests.migration_checks import check_migration
 
 FINGERPRINT = "f" * 64
 JWT_SECRET = "j" * 32
@@ -30,100 +33,18 @@ OTP_PEPPER = "p" * 32
 NOTIFICATION_KEY = base64.urlsafe_b64encode(b"n" * 32).decode("ascii").rstrip("=")
 
 
-def _settings(tmp_path: Path, *, fingerprint: str = FINGERPRINT) -> Settings:
+def _settings(tmp_path: Path) -> Settings:
     return Settings(
         _env_file=None,
         app_env=AppEnvironment.TEST,
-        legacy_database_url=f"sqlite:///{tmp_path / 'legacy.db'}",
         database_enabled=True,
         database_url=f"sqlite+aiosqlite:///{tmp_path / 'target.db'}",
         identity_api_enabled=True,
-        identity_migration_fingerprint=fingerprint,
         identity_legacy_token_grace_until=datetime.now(timezone.utc) + timedelta(days=1),
         jwt_secret=JWT_SECRET,
         identity_otp_pepper=OTP_PEPPER,
         notification_encryption_key=NOTIFICATION_KEY,
     )
-
-
-def _create_legacy_orders(path: Path) -> None:
-    with sqlite3.connect(path) as connection:
-        connection.execute(
-            """
-            CREATE TABLE orders (
-                id INTEGER PRIMARY KEY,
-                email TEXT,
-                phone TEXT,
-                first_name TEXT,
-                last_name TEXT,
-                patronymic TEXT,
-                delivery_city TEXT,
-                delivery_method TEXT,
-                delivery_address TEXT,
-                payment_method TEXT,
-                cart_items TEXT,
-                total_price REAL,
-                status TEXT,
-                cdek_uuid TEXT,
-                cdek_point_code TEXT,
-                delivery_price REAL,
-                payment_id TEXT,
-                payment_status TEXT,
-                created_at TEXT,
-                cdek_number TEXT,
-                cdek_status TEXT
-            )
-            """
-        )
-        connection.executemany(
-            """
-            INSERT INTO orders (
-                id, email, phone, first_name, cart_items, total_price, status,
-                payment_status, created_at, cdek_number, cdek_status
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            [
-                (
-                    10,
-                    "Customer@Example.TEST",
-                    "+79990000001",
-                    "Customer",
-                    json.dumps([{"title": "Owned item", "quantity": 1}]),
-                    1200.0,
-                    "new",
-                    "pending",
-                    "2026-08-11 08:00:00",
-                    "CDEK-10",
-                    "Создан",
-                ),
-                (
-                    11,
-                    "other@example.test",
-                    "+79990000002",
-                    "Other",
-                    json.dumps([{"title": "Other item", "quantity": 1}]),
-                    2400.0,
-                    "new",
-                    "pending",
-                    "2026-08-11 09:00:00",
-                    None,
-                    None,
-                ),
-                (
-                    12,
-                    None,
-                    "+79990000001",
-                    "Phone only",
-                    "[]",
-                    500.0,
-                    "new",
-                    "pending",
-                    "2026-08-11 10:00:00",
-                    None,
-                    None,
-                ),
-            ],
-        )
 
 
 def _seed_target(settings: Settings) -> None:
@@ -135,6 +56,25 @@ def _seed_target(settings: Settings) -> None:
                 await connection.run_sync(Base.metadata.create_all)
             async with database.session() as session:
                 await IdentityRepository().ensure_system_authorization(session)
+                session.add(
+                    Order(
+                        id=10,
+                        email="Customer@Example.TEST",
+                        email_normalized="customer@example.test",
+                        phone="+79990000001",
+                        first_name="Customer",
+                        items_subtotal=Decimal("1200.00"),
+                        delivery_price=Decimal("0.00"),
+                        total_price=Decimal("1200.00"),
+                        request_fingerprint_sha256="a" * 64,
+                        legacy_import=LegacyOrderImport(
+                            source_order_id=10,
+                            source_row_sha256="a" * 64,
+                            raw_cart_items=json.dumps([{"title": "Owned item", "quantity": 1}]),
+                            legacy_total_price=Decimal("1200.00"),
+                        ),
+                    )
+                )
                 session.add(
                     IdentityMigrationRun(
                         fingerprint_sha256=FINGERPRINT,
@@ -189,22 +129,13 @@ def _login(client: TestClient, target_path: Path, email: str) -> tuple[str, dict
 def test_guarded_identity_api_preserves_contract_and_secures_order_ownership(
     tmp_path: Path,
 ) -> None:
-    legacy_path = tmp_path / "legacy.db"
     target_path = tmp_path / "target.db"
-    _create_legacy_orders(legacy_path)
     settings = _settings(tmp_path)
     _seed_target(settings)
-
-    legacy = FastAPI()
-
-    @legacy.get("/api/legacy-probe")
-    async def legacy_probe() -> dict[str, str]:
-        return {"source": "legacy"}
 
     application = create_app(
         settings=settings,
         database=DatabaseManager(settings),
-        legacy_app=legacy,
     )
     with TestClient(application) as client:
         invalid = client.post(
@@ -221,6 +152,7 @@ def test_guarded_identity_api_preserves_contract_and_secures_order_ownership(
         headers = {"Authorization": f"Bearer {token}"}
         profile = client.get("/api/auth/me", headers=headers)
         assert profile.status_code == 200
+        assert profile.headers.get("cache-control") == "no-store"
         assert profile.json()["email"] == "Customer@Example.TEST"
 
         access = client.get("/api/auth/access", headers=headers)
@@ -249,11 +181,11 @@ def test_guarded_identity_api_preserves_contract_and_secures_order_ownership(
         assert updated.json()["email"] == "Customer@Example.TEST"
 
         orders = client.get("/api/auth/orders", headers=headers)
+        assert orders.headers.get("cache-control") == "no-store"
         assert orders.status_code == 200
-        assert [order["id"] for order in orders.json()] == [10]
-        assert orders.json()[0]["cart_items"] == json.dumps(
-            [{"title": "Owned item", "quantity": 1}]
-        )
+        assert [order["id"] for order in orders.json()["items"]] == [10]
+        assert "cart_items" not in orders.json()["items"][0]
+        assert orders.json()["next_cursor"] is None
 
         email_request = client.post(
             "/api/auth/me/email/request",
@@ -271,8 +203,8 @@ def test_guarded_identity_api_preserves_contract_and_secures_order_ownership(
         assert email_verified.json()["email"] == "changed@example.test"
 
         orders_after_email_change = client.get("/api/auth/orders", headers=headers)
-        assert [order["id"] for order in orders_after_email_change.json()] == [10]
-        assert client.get("/api/legacy-probe").json() == {"source": "legacy"}
+        assert [order["id"] for order in orders_after_email_change.json()["items"]] == [10]
+        assert client.get("/api/legacy-probe").status_code == 404
 
         deleted = client.delete("/api/auth/me", headers=headers)
         assert deleted.status_code == 200
@@ -306,9 +238,7 @@ def test_guarded_identity_api_preserves_contract_and_secures_order_ownership(
 
 
 def test_refresh_rotation_reuse_csrf_and_legacy_token_grace(tmp_path: Path) -> None:
-    legacy_path = tmp_path / "legacy.db"
     target_path = tmp_path / "target.db"
-    _create_legacy_orders(legacy_path)
     settings = _settings(tmp_path)
     _seed_target(settings)
     application = create_app(settings=settings, database=DatabaseManager(settings))
@@ -380,36 +310,84 @@ def test_refresh_rotation_reuse_csrf_and_legacy_token_grace(tmp_path: Path) -> N
         )
 
 
+def test_auth_methods_password_and_disabled_phone_contract(tmp_path: Path) -> None:
+    target_path = tmp_path / "target.db"
+    settings = _settings(tmp_path)
+    _seed_target(settings)
+    application = create_app(settings=settings, database=DatabaseManager(settings))
+
+    with TestClient(application) as client:
+        methods = client.get("/api/auth/methods")
+        assert methods.status_code == 200
+        indexed = {item["code"]: item for item in methods.json()["methods"]}
+        assert indexed["email"]["enabled"] is True
+        assert indexed["password"]["enabled"] is True
+        assert indexed["phone"] == {
+            "code": "phone",
+            "kind": "otp",
+            "enabled": False,
+            "reason": "provider_not_configured",
+        }
+        assert indexed["telegram"]["enabled"] is False
+
+        assert (
+            client.post("/api/auth/phone/request", json={"phone": "+79991234567"}).status_code
+            == 503
+        )
+        assert (
+            client.post(
+                "/api/auth/telegram",
+                json={"id": 1, "auth_date": 1, "hash": "a" * 64},
+            ).status_code
+            == 503
+        )
+
+        token, user = _login(client, target_path, "password-contract@example.test")
+        password_set = client.put(
+            "/api/auth/password",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"new_password": "correct horse battery staple"},
+        )
+        assert password_set.status_code == 200
+        assert password_set.json() == {"status": "password_updated"}
+
+        logged_in = client.post(
+            "/api/auth/password/login",
+            json={
+                "identifier": "PASSWORD-CONTRACT@example.test",
+                "password": "correct horse battery staple",
+            },
+        )
+        assert logged_in.status_code == 200
+        assert logged_in.json()["user"]["id"] == user["id"]
+        assert (
+            client.post(
+                "/api/auth/password/login",
+                json={
+                    "identifier": "password-contract@example.test",
+                    "password": "incorrect password value",
+                },
+            ).status_code
+            == 401
+        )
+
+
 def test_identity_cutover_refuses_unreviewed_target(tmp_path: Path) -> None:
-    _create_legacy_orders(tmp_path / "legacy.db")
     seeded_settings = _settings(tmp_path)
     _seed_target(seeded_settings)
-    wrong_settings = _settings(tmp_path, fingerprint="e" * 64)
-    application = create_app(
-        settings=wrong_settings,
-        database=DatabaseManager(wrong_settings),
-    )
-
     with pytest.raises(ConfigurationError, match="fingerprint is not present"):
-        with TestClient(application):
-            pass
+        check_migration(seeded_settings, verify_identity_cutover, "e" * 64)
 
 
 def test_identity_cutover_refuses_tampered_counts_and_permissions(tmp_path: Path) -> None:
-    _create_legacy_orders(tmp_path / "legacy.db")
     settings = _settings(tmp_path)
     _seed_target(settings)
     target_path = tmp_path / "target.db"
 
     with sqlite3.connect(target_path) as connection:
         connection.execute("UPDATE identity_migration_runs SET users_count = 1")
-    count_application = create_app(
-        settings=settings,
-        database=DatabaseManager(settings),
-    )
     with pytest.raises(ConfigurationError, match="fewer users"):
-        with TestClient(count_application):
-            pass
+        check_migration(settings, verify_identity_cutover, FINGERPRINT)
 
     with sqlite3.connect(target_path) as connection:
         connection.execute("UPDATE identity_migration_runs SET users_count = 0")
@@ -422,10 +400,5 @@ def test_identity_cutover_refuses_tampered_counts_and_permissions(tmp_path: Path
               )
             """
         )
-    permission_application = create_app(
-        settings=settings,
-        database=DatabaseManager(settings),
-    )
     with pytest.raises(ConfigurationError, match="permissions are incomplete"):
-        with TestClient(permission_application):
-            pass
+        check_migration(settings, verify_identity_cutover, FINGERPRINT)
