@@ -2,6 +2,11 @@ name: Build and deploy
 
 on:
   workflow_dispatch:
+    inputs:
+      preflight_only:
+        description: Check production access and release prerequisites without changing services
+        type: boolean
+        default: false
   push:
     branches:
       - main
@@ -21,13 +26,65 @@ env:
   FRONTEND_IMAGE: ghcr.io/garment-buro/garment-buro-frontend:${{ github.ref_name == 'main' && 'production' || 'development' }}-${{ github.sha }}
 
 jobs:
+  production-preflight:
+    name: Read-only production preflight
+    if: github.event_name == 'workflow_dispatch' && inputs.preflight_only
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: production
+    concurrency:
+      group: garment-buro-server-cutover
+      cancel-in-progress: false
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_PORT: ${{ secrets.DEPLOY_SSH_PORT || '22' }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+    steps:
+      - name: Configure verified SSH connection
+        shell: bash
+        run: |
+          install -d -m 0700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" >~/.ssh/garment_buro_ci
+          chmod 0600 ~/.ssh/garment_buro_ci
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" >~/.ssh/known_hosts
+          chmod 0600 ~/.ssh/known_hosts
+      - name: Inspect access and release metadata only
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=yes \
+            -p "$DEPLOY_PORT" -i ~/.ssh/garment_buro_ci -o IdentitiesOnly=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          printf 'deploy_uid=%s\n' "$(id -u)"
+          if sudo -n true >/dev/null 2>&1; then echo sudo_without_password=yes; else echo sudo_without_password=no; fi
+          for path in /home/plus2opacity/nginx.conf /var/run/docker.sock /srv/garment-buro /srv/garment-buro/production; do
+            if test -e "$path"; then
+              stat -c '%a %U %G %n' "$path"
+              if test -w "$path"; then printf 'writable=%s\n' "$path"; fi
+            fi
+          done
+          df -h /srv/garment-buro
+          docker info --format '{{json .SecurityOptions}}'
+          docker ps --format '{{.Names}} {{.Image}} {{.Status}}'
+          if test -f /srv/garment-buro/production/.release; then
+            grep -E '^(REVISION|DEPLOYED_AT|BACKEND_IMAGE|FRONTEND_IMAGE)=' /srv/garment-buro/production/.release || true
+          fi
+          if test -d /srv/garment-buro/maintenance; then
+            stat -c '%a %U %n' /srv/garment-buro/maintenance
+            find /srv/garment-buro/maintenance -maxdepth 1 -type f -name '*.active' -printf '%f\n'
+          fi
+          REMOTE
+
   quality:
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    if: (!inputs.preflight_only) && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     uses: ./.github/workflows/ci.yml
     secrets: inherit
 
   build:
     name: Publish GHCR images
+    if: '!inputs.preflight_only'
     runs-on: ubuntu-latest
     needs: quality
     environment: ${{ github.ref_name == 'main' && 'production' || 'development' }}
