@@ -11,6 +11,10 @@ on:
         description: Use the temporary root bootstrap credential for read-only proxy inspection
         type: boolean
         default: false
+      prepare_public_proxy:
+        description: Install and exercise the public maintenance gate using temporary root access
+        type: boolean
+        default: false
   push:
     branches:
       - main
@@ -31,11 +35,13 @@ env:
 
 jobs:
   production-preflight:
-    name: Read-only production preflight
+    name: ${{ inputs.prepare_public_proxy && 'Prepare public production proxy' || 'Read-only production preflight' }}
     if: github.event_name == 'workflow_dispatch' && inputs.preflight_only
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: production
+    permissions:
+      contents: read
     concurrency:
       group: garment-buro-server-cutover
       cancel-in-progress: false
@@ -114,6 +120,26 @@ jobs:
           PY
           fi
           REMOTE
+      - name: Checkout reviewed proxy preparation
+        if: inputs.root_preflight && inputs.prepare_public_proxy
+        uses: actions/checkout@v7
+      - name: Install proxy gate with configuration backup and rollback
+        if: inputs.root_preflight && inputs.prepare_public_proxy
+        env:
+          SSHPASS: ${{ secrets.ROOT_BOOTSTRAP_PASSWORD }}
+          SOURCE_REVISION: ${{ github.sha }}
+        shell: bash
+        run: |
+          test -n "$SSHPASS"
+          remote="/root/garment-proxy-source-$SOURCE_REVISION"
+          connection=(sshpass -e ssh -o PubkeyAuthentication=no -o PreferredAuthentications=password -o NumberOfPasswordPrompts=1 -o ConnectTimeout=15 -o StrictHostKeyChecking=yes -p "$DEPLOY_PORT")
+          "${connection[@]}" "root@$DEPLOY_HOST" "umask 077; mkdir -p '$remote'"
+          sshpass -e scp -o PubkeyAuthentication=no -o PreferredAuthentications=password -o NumberOfPasswordPrompts=1 -o StrictHostKeyChecking=yes -P "$DEPLOY_PORT" -r \
+            deploy/nginx/logging deploy/nginx/maintenance \
+            deploy/scripts/public-maintenance.py deploy/scripts/install-public-release-gate.py \
+            "root@$DEPLOY_HOST:$remote/"
+          "${connection[@]}" "root@$DEPLOY_HOST" \
+            "python3 '$remote/install-public-release-gate.py' --source-root '$remote' --revision '$SOURCE_REVISION'"
 
   quality:
     if: (!inputs.preflight_only) && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
