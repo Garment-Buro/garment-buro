@@ -98,3 +98,12 @@ Docker/Actions, прежний образ и production этим не подтв
 Источники: [pip-audit](https://github.com/pypa/pip-audit),
 [FastAPI release notes](https://fastapi.tiangolo.com/release-notes/),
 [Starlette release notes](https://starlette.dev/release-notes/).
+
+
+## Перед production-выпуском, 20 октября 2026
+
+Настоящий Actions-аудит обнаружил три записи для aiohttp 3.14.3 с исправлением
+в 3.14.4. Версия в политике обновлена, оба hashed lock пересозданы; остальные
+версии пакетов сохранены. Повторный строгий audit production и development
+наборов не обнаружил известных уязвимостей. Исключения и отключение gate
+не применялись. [Advisory aiohttp](https://github.com/aio-libs/aiohttp/security/advisories/GHSA-2g87-pp6c-29x5).
