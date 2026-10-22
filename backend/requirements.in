@@ -24,7 +24,7 @@ python-dotenv==1.2.2
 python-multipart==0.0.32
 pycparser==3.0
 pycryptodome==3.23.0
-SQLAlchemy==2.0.48
+SQLAlchemy==2.1.5
 starlette==1.8.0
 typing-inspection==0.4.2
 typing_extensions==4.15.0
